@@ -1,9 +1,12 @@
+import uuid
+
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 from django.db import models
 from common.fields import CompatibleJSONField
 
 
 class Tenant(models.Model):
+    uuid = models.UUIDField(default=uuid.uuid4, editable=False, verbose_name="UUID")
     name = models.CharField(max_length=128, verbose_name="企业名称")
     slug = models.SlugField(max_length=64, unique=True, verbose_name="唯一标识")
     status = models.BooleanField(default=True, verbose_name="状态")
@@ -27,6 +30,7 @@ class Tenant(models.Model):
 
 
 class Department(models.Model):
+    uuid = models.UUIDField(default=uuid.uuid4, editable=False, verbose_name="UUID")
     tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE, verbose_name="所属企业")
     name = models.CharField(max_length=128, verbose_name="部门名称")
     code = models.CharField(max_length=64, null=True, blank=True, verbose_name="部门编码")
@@ -70,6 +74,7 @@ class UserManager(BaseUserManager):
 
 
 class User(AbstractBaseUser, PermissionsMixin):
+    uuid = models.UUIDField(default=uuid.uuid4, editable=False, verbose_name="UUID")
     USER_TYPE_CHOICES = (
         ("internal", "内部用户"),
         ("external", "外部游客"),

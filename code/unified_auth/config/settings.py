@@ -69,6 +69,7 @@ MIDDLEWARE = [
     'middlewares.admin_auth.AdminAuthenticationMiddleware',
     'middlewares.permission.PermissionMiddleware',
     'middlewares.audit_log.AuditLogMiddleware',
+    'middlewares.api_stat.ApiStatMiddleware',
 ]
 
 ROOT_URLCONF = 'config.urls'

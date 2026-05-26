@@ -37,7 +37,8 @@ def _user_serialize(u):
     role_ids = list(u.roles.values_list("id", flat=True))
     role_names = list(u.roles.values_list("name", flat=True))
     return {
-        "id": u.id, "username": u.username, "user_type": u.user_type,
+        "id": u.id, "uuid": str(u.uuid), "username": u.username,
+        "user_type": u.user_type,
         "email": u.email, "phone": u.phone, "nickname": u.nickname,
         "avatar": u.avatar, "department": u.department,
         "dept_id": u.dept_id,
@@ -56,8 +57,8 @@ def _app_serialize(a):
     bindings = AppRoleBinding.objects.filter(app=a)
     permission_ids = [b.permission_id for b in bindings]
     return {
-        "id": a.id, "tenant_id": a.tenant_id, "name": a.name,
-        "app_key": a.app_key,
+        "id": a.id, "uuid": str(a.uuid), "tenant_id": a.tenant_id,
+        "name": a.name, "app_key": a.app_key,
         "callback_urls": a.callback_urls,
         "default_access_user_types": a.default_access_user_types or [],
         "permission_ids": permission_ids,
@@ -72,10 +73,12 @@ def _app_serialize(a):
 
 
 def _role_serialize(r):
+    perms = r.permissions.all().values("id", "code", "name", "description", "category")
     return {
         "id": r.id, "tenant_id": r.tenant_id, "name": r.name,
         "code": r.code,
-        "permission_ids": list(r.permissions.values_list("id", flat=True)),
+        "permission_ids": [p["id"] for p in perms],
+        "permissions": list(perms),
         "created_at": r.created_at.isoformat() if r.created_at else None,
     }
 
@@ -624,6 +627,7 @@ def permissions_view(request):
             {
                 "id": p.id, "code": p.code, "name": p.name,
                 "method": p.method, "path": p.path, "category": p.category,
+                "description": p.description or "",
             }
             for p in perms
         ],
@@ -728,6 +732,8 @@ def roles_view(request):
     for pid in data.get("permission_ids", []):
         RolePermission.objects.get_or_create(role=role, permission_id=pid)
 
+    pid_list = data.get("permission_ids", [])
+    perm_names = list(ApiPermission.objects.filter(id__in=pid_list).values_list("name", flat=True))
     AuditLog.objects.create(
         tenant_id=request.tenant_id,
         actor_id=request.user_id,
@@ -735,7 +741,7 @@ def roles_view(request):
         action="admin.role.create",
         resource_type="role",
         resource_id=role.id,
-        detail={"name": data["name"], "code": data["code"]},
+        detail={"name": data["name"], "code": data["code"], "permissions": perm_names},
     )
     return Response(success(_role_serialize(role)), status=201)
 
@@ -757,10 +763,14 @@ def role_detail_view(request, role_id):
     if "name" in ser.validated_data and ser.validated_data["name"]:
         role.name = ser.validated_data["name"]
 
+    update_detail = {"name": ser.validated_data.get("name", role.name)}
     if "permission_ids" in ser.validated_data:
         role.permissions.clear()
         for pid in ser.validated_data["permission_ids"]:
             RolePermission.objects.get_or_create(role=role, permission_id=pid)
+        pid_list = ser.validated_data["permission_ids"]
+        perm_names = list(ApiPermission.objects.filter(id__in=pid_list).values_list("name", flat=True))
+        update_detail["permissions"] = perm_names
 
     role.save(update_fields=["name"])
     AuditLog.objects.create(
@@ -770,7 +780,7 @@ def role_detail_view(request, role_id):
         action="admin.role.update",
         resource_type="role",
         resource_id=role_id,
-        detail=ser.validated_data,
+        detail=update_detail,
     )
     return Response(success(_role_serialize(role)))
 
@@ -856,7 +866,7 @@ def superadmin_global_stats(request):
     tenant_stats = Tenant.objects.annotate(
         user_count=Count('user', distinct=True),
         app_count=Count('application', distinct=True),
-    ).values('id', 'name', 'slug', 'status', 'user_count', 'app_count', 'created_at')
+    ).values('id', 'uuid', 'name', 'slug', 'status', 'user_count', 'app_count', 'created_at')
 
     today = tz.now().date()
     seven_days_ago = today - timedelta(days=6)
@@ -886,7 +896,9 @@ def superadmin_global_stats(request):
         "total_roles": total_roles,
         "tenant_stats": [
             {
-                "id": t["id"], "name": t["name"], "slug": t["slug"],
+                "id": t["id"],
+                "uuid": str(t["uuid"]) if t["uuid"] else None,
+                "name": t["name"], "slug": t["slug"],
                 "status": t["status"], "user_count": t["user_count"],
                 "app_count": t["app_count"],
                 "created_at": t["created_at"].isoformat() if t["created_at"] else None,
@@ -920,8 +932,8 @@ def superadmin_tenants_view(request):
         return Response(success({
             "tenants": [
                 {
-                    "id": t.id, "name": t.name, "slug": t.slug,
-                    "status": t.status,
+                    "id": t.id, "uuid": str(t.uuid), "name": t.name,
+                    "slug": t.slug, "status": t.status,
                     "created_at": t.created_at.isoformat() if t.created_at else None,
                     "updated_at": t.updated_at.isoformat() if t.updated_at else None,
                 }
@@ -945,6 +957,7 @@ def superadmin_tenants_view(request):
 
     return Response(success({
         "id": tenant.id,
+        "uuid": str(tenant.uuid),
         "name": tenant.name,
         "slug": tenant.slug,
         "status": tenant.status,
@@ -965,6 +978,7 @@ def superadmin_tenant_detail_view(request, tenant_id):
     if request.method == "GET":
         return Response(success({
             "id": tenant.id,
+            "uuid": str(tenant.uuid),
             "name": tenant.name,
             "slug": tenant.slug,
             "status": tenant.status,
@@ -989,6 +1003,7 @@ def superadmin_tenant_detail_view(request, tenant_id):
 
     return Response(success({
         "id": tenant.id,
+        "uuid": str(tenant.uuid),
         "name": tenant.name,
         "slug": tenant.slug,
         "status": tenant.status,
@@ -1177,8 +1192,8 @@ def superadmin_impersonate_exit(request):
 
 def _department_serialize(d):
     return {
-        "id": d.id, "tenant_id": d.tenant_id, "name": d.name,
-        "code": d.code,
+        "id": d.id, "uuid": str(d.uuid), "tenant_id": d.tenant_id,
+        "name": d.name, "code": d.code,
         "parent_id": d.parent_id, "sort_order": d.sort_order,
         "created_at": d.created_at.isoformat() if d.created_at else None,
     }
@@ -1396,10 +1411,14 @@ def app_permissions_view(request, app_id):
 
     if request.method == "GET":
         bindings = AppRoleBinding.objects.filter(app=app).select_related("permission")
-        bound_permission_ids = [b.permission_id for b in bindings]
+        bound_permissions = [
+            {"id": b.permission_id, "code": b.permission.code, "name": b.permission.name, "description": b.permission.description or ""}
+            for b in bindings
+        ]
         return Response(success({
             "app_id": app.id,
-            "permission_ids": bound_permission_ids,
+            "permission_ids": [b["id"] for b in bound_permissions],
+            "permissions": bound_permissions,
         }))
 
     ser = AdminAppPermissionSerializer(data=request.data)
@@ -1411,6 +1430,7 @@ def app_permissions_view(request, app_id):
     for pid in permission_ids:
         AppRoleBinding.objects.create(app=app, permission_id=pid)
 
+    perm_names = list(ApiPermission.objects.filter(id__in=permission_ids).values_list("name", flat=True))
     AuditLog.objects.create(
         tenant_id=request.tenant_id,
         actor_id=request.user_id,
@@ -1418,7 +1438,7 @@ def app_permissions_view(request, app_id):
         action="admin.app.permissions",
         resource_type="application",
         resource_id=app_id,
-        detail={"permission_ids": permission_ids},
+        detail={"permission_ids": permission_ids, "permissions": perm_names},
     )
 
     return Response(success({
@@ -1507,6 +1527,287 @@ def superadmin_api_stats_view(request):
 
 
 # ======================== 超管统计报表 API ========================
+
+
+@api_view(["POST"])
+def superadmin_report_tenants(request):
+    """
+    超级管理员租户统计报表（支持搜索、分页、排序、日期范围）
+    """
+    from django.db.models import Count, Q, Sum, Subquery, OuterRef, Value
+    from django.db.models.functions import Coalesce
+    from apps.applications.models import AppApiCallStat, TenantApiCallStat
+
+    data = request.data or {}
+    search = data.get("search", "").strip()
+    page = int(data.get("page", 1))
+    page_size = min(int(data.get("page_size", 20)), 100)
+    date_from = data.get("date_from", "").strip()
+    date_to = data.get("date_to", "").strip()
+    sort_by = data.get("sort_by", "created_at")
+    sort_order = data.get("sort_order", "desc")
+
+    api_date_filter = Q()
+    if date_from:
+        api_date_filter &= Q(call_date__gte=date_from)
+    if date_to:
+        api_date_filter &= Q(call_date__lte=date_to)
+
+    app_call_qs = AppApiCallStat.objects.filter(api_date_filter, tenant_id=OuterRef("id"))
+    app_call_sub = app_call_qs.values("tenant_id").annotate(total=Sum("call_count")).values("total")
+
+    tenant_call_qs = TenantApiCallStat.objects.filter(api_date_filter, tenant_id=OuterRef("id"))
+    tenant_call_sub = tenant_call_qs.values("tenant_id").annotate(total=Sum("call_count")).values("total")
+
+    qs = Tenant.objects.annotate(
+        user_count=Count("user", distinct=True),
+        active_users_30d=Count(
+            "user",
+            filter=Q(user__last_login__date__gte=datetime.now(tz.get_current_timezone()).date() - timedelta(days=30)),
+            distinct=True,
+        ),
+        app_count=Count("application", distinct=True),
+        app_api_calls=Coalesce(Subquery(app_call_sub), Value(0)),
+        tenant_api_calls=Coalesce(Subquery(tenant_call_sub), Value(0)),
+    )
+
+    if search:
+        qs = qs.filter(Q(name__icontains=search) | Q(slug__icontains=search))
+    if date_from:
+        qs = qs.filter(created_at__date__gte=date_from)
+    if date_to:
+        qs = qs.filter(created_at__date__lte=date_to)
+
+    sortable_fields = {"user_count", "active_users_30d", "app_count", "name", "slug", "status", "created_at", "app_api_calls", "tenant_api_calls"}
+    total = qs.count()
+    if sort_by in sortable_fields:
+        order_prefix = "-" if sort_order == "desc" else ""
+        qs = qs.order_by(f"{order_prefix}{sort_by}")
+    else:
+        qs = qs.order_by("-created_at")
+
+    items = qs.values(
+        "id", "name", "slug", "status",
+        "user_count", "active_users_30d", "app_count",
+        "app_api_calls", "tenant_api_calls", "created_at",
+    )
+    offset = (page - 1) * page_size
+    page_items = list(items[offset:offset + page_size])
+
+    return Response(success({
+        "items": [
+            {
+                "id": t["id"], "name": t["name"], "slug": t["slug"],
+                "status": t["status"],
+                "user_count": t["user_count"],
+                "active_users_30d": t["active_users_30d"],
+                "app_count": t["app_count"],
+                "total_api_calls": t["app_api_calls"] + t["tenant_api_calls"],
+                "created_at": t["created_at"].isoformat() if t["created_at"] else None,
+            }
+            for t in page_items
+        ],
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+    }))
+
+
+@api_view(["POST"])
+def superadmin_report_apps(request):
+    """
+    超级管理员应用统计报表（支持搜索、分页、排序、日期范围、租户筛选）
+    """
+    from django.db.models import Sum, Q
+    from apps.applications.models import Application, AppApiCallStat
+
+    data = request.data or {}
+    search = data.get("search", "").strip()
+    tenant_id = data.get("tenant_id")
+    page = int(data.get("page", 1))
+    page_size = min(int(data.get("page_size", 20)), 100)
+    date_from = data.get("date_from", "").strip()
+    date_to = data.get("date_to", "").strip()
+    sort_by = data.get("sort_by", "created_at")
+    sort_order = data.get("sort_order", "desc")
+
+    call_date_filter = Q()
+    if date_from:
+        call_date_filter &= Q(call_date__gte=date_from)
+    if date_to:
+        call_date_filter &= Q(call_date__lte=date_to)
+    if not date_from and not date_to:
+        thirty_days_ago = datetime.now(tz.get_current_timezone()).date() - timedelta(days=30)
+        call_date_filter &= Q(call_date__gte=thirty_days_ago)
+
+    call_stats_qs = (
+        AppApiCallStat.objects.filter(call_date_filter)
+        .values("app_id")
+        .annotate(total_calls=Sum("call_count"))
+    )
+    call_stats_map = {s["app_id"]: s["total_calls"] for s in call_stats_qs}
+
+    qs = Application.objects.select_related("tenant").all()
+    if search:
+        qs = qs.filter(Q(name__icontains=search) | Q(app_key__icontains=search))
+    if tenant_id:
+        try:
+            qs = qs.filter(tenant_id=int(tenant_id))
+        except (ValueError, TypeError):
+            pass
+    if date_from:
+        qs = qs.filter(created_at__date__gte=date_from)
+    if date_to:
+        qs = qs.filter(created_at__date__lte=date_to)
+
+    total = qs.count()
+    sortable_fields = {"name", "app_key", "status", "created_at", "tenant_id", "call_count"}
+    if sort_by in sortable_fields:
+        order_prefix = "-" if sort_order == "desc" else ""
+        qs = qs.order_by(f"{order_prefix}{sort_by}")
+    else:
+        qs = qs.order_by("-created_at")
+
+    items = []
+    offset = (page - 1) * page_size
+    for app in qs[offset:offset + page_size]:
+        call_count = call_stats_map.get(app.id, 0)
+        items.append({
+            "id": app.id,
+            "name": app.name,
+            "app_key": app.app_key[:8] + "****" if app.app_key else "",
+            "tenant_id": app.tenant_id,
+            "tenant_name": app.tenant.name if app.tenant else "",
+            "status": app.status,
+            "call_count": call_count,
+            "created_at": app.created_at.isoformat() if app.created_at else None,
+        })
+
+    if sort_by == "call_count":
+        reverse = sort_order == "desc"
+        items.sort(key=lambda x: x["call_count"], reverse=reverse)
+
+    return Response(success({
+        "items": items,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+    }))
+
+
+@api_view(["POST"])
+def superadmin_report_endpoint_stats(request):
+    """
+    接口维度统计报表 - 按租户或应用返回各接口调用量
+    支持按租户ID、应用ID筛选，也支持全局统计
+    """
+    from django.db.models import Sum, Q
+    from apps.applications.models import AppApiCallStat, TenantApiCallStat
+
+    data = request.data or {}
+    tenant_id = data.get("tenant_id")
+    app_id = data.get("app_id")
+    page = int(data.get("page", 1))
+    page_size = min(int(data.get("page_size", 50)), 200)
+    date_from = data.get("date_from", "").strip()
+    date_to = data.get("date_to", "").strip()
+    stat_type = data.get("stat_type", "all")
+
+    api_date_filter = Q()
+    if date_from:
+        api_date_filter &= Q(call_date__gte=date_from)
+    if date_to:
+        api_date_filter &= Q(call_date__lte=date_to)
+
+    endpoint_stats = []
+
+    if stat_type in ("all", "app"):
+        app_qs = AppApiCallStat.objects.filter(api_date_filter)
+        if tenant_id:
+            try:
+                app_qs = app_qs.filter(tenant_id=int(tenant_id))
+            except (ValueError, TypeError):
+                pass
+        if app_id:
+            try:
+                app_qs = app_qs.filter(app_id=int(app_id))
+            except (ValueError, TypeError):
+                pass
+        app_stats = (
+            app_qs.values("api_path", "app__name", "app_id", "tenant_id")
+            .annotate(call_count=Sum("call_count"))
+            .order_by("-call_count")
+        )
+        for s in app_stats:
+            endpoint_stats.append({
+                "api_path": s["api_path"],
+                "call_count": s["call_count"],
+                "source": "app",
+                "app_name": s["app__name"],
+                "app_id": s["app_id"],
+                "tenant_id": s["tenant_id"],
+            })
+
+    if stat_type in ("all", "tenant"):
+        tenant_qs = TenantApiCallStat.objects.filter(api_date_filter)
+        if tenant_id:
+            try:
+                tenant_qs = tenant_qs.filter(tenant_id=int(tenant_id))
+            except (ValueError, TypeError):
+                pass
+        tenant_stats = (
+            tenant_qs.values("api_path", "tenant_id")
+            .annotate(call_count=Sum("call_count"))
+            .order_by("-call_count")
+        )
+        for s in tenant_stats:
+            tenant_name = ""
+            try:
+                from apps.accounts.models import Tenant
+                t = Tenant.objects.filter(id=s["tenant_id"]).values_list("name", flat=True).first()
+                if t:
+                    tenant_name = t
+            except Exception:
+                pass
+            endpoint_stats.append({
+                "api_path": s["api_path"],
+                "call_count": s["call_count"],
+                "source": "tenant",
+                "app_name": "",
+                "app_id": None,
+                "tenant_id": s["tenant_id"],
+                "tenant_name": tenant_name,
+            })
+
+    if not endpoint_stats:
+        return Response(success({
+            "items": [],
+            "total": 0,
+            "page": 1,
+            "page_size": page_size,
+        }))
+
+    if stat_type == "all":
+        merged = {}
+        for s in endpoint_stats:
+            key = s["api_path"]
+            if key in merged:
+                merged[key]["call_count"] += s["call_count"]
+            else:
+                merged[key] = dict(s)
+        endpoint_stats = list(merged.values())
+
+    endpoint_stats.sort(key=lambda x: x["call_count"], reverse=True)
+    total = len(endpoint_stats)
+    offset = (page - 1) * page_size
+    page_items = endpoint_stats[offset:offset + page_size]
+
+    return Response(success({
+        "items": page_items,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+    }))
 
 
 @api_view(["GET"])

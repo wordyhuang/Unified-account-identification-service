@@ -49,6 +49,7 @@
         <div class="app-body">
             <aside class="sidebar">
                 <nav class="sidebar-nav">
+                    <div class="nav-section-label" data-superadmin style="display:none">平台管理</div>
                     <a class="nav-item" data-page="superadmin_dashboard" data-superadmin style="display:none" onclick="switchPage('superadmin_dashboard')">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
                         平台总览
@@ -61,6 +62,10 @@
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M9 15l2 2 4-4"/></svg>
                         全局审计
                     </a>
+                    <a class="nav-item" data-page="superadmin_report" data-superadmin style="display:none" onclick="switchPage('superadmin_report')">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12v-2a5 5 0 0 0-5-5H8a5 5 0 0 0-5 5v2"/><path d="M3 12h18"/><path d="M12 3v18"/><path d="M3 12a9 9 0 0 0 9 9 9 9 0 0 0 9-9"/></svg>
+                        统计报表
+                    </a>
                     <a class="nav-item" data-page="superadmin_apistats" data-superadmin style="display:none" onclick="switchPage('superadmin_apistats')">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/></svg>
                         API统计
@@ -69,32 +74,32 @@
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
                         全局配置
                     </a>
-                    <div class="nav-divider" data-superadmin style="display:none"></div>
-                    <a class="nav-item active" data-page="dashboard" onclick="switchPage('dashboard')">
+                    <div class="nav-section-label" data-admin>租户管理</div>
+                    <a class="nav-item active" data-page="dashboard" data-admin onclick="switchPage('dashboard')">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
                         仪表盘
                     </a>
-                    <a class="nav-item" data-page="users" onclick="switchPage('users')">
+                    <a class="nav-item" data-page="users" data-admin onclick="switchPage('users')">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
                         用户管理
                     </a>
-                    <a class="nav-item" data-page="applications" onclick="switchPage('applications')">
+                    <a class="nav-item" data-page="applications" data-admin onclick="switchPage('applications')">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8"/><rect x="2" y="14" width="8" height="8"/><rect x="14" y="14" width="8" height="8"/></svg>
                         应用管理
                     </a>
-                    <a class="nav-item" data-page="roles" onclick="switchPage('roles')">
+                    <a class="nav-item" data-page="roles" data-admin onclick="switchPage('roles')">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
                         角色权限
                     </a>
-                    <a class="nav-item" data-page="departments" onclick="switchPage('departments')">
+                    <a class="nav-item" data-page="departments" data-admin onclick="switchPage('departments')">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
                         部门管理
                     </a>
-                    <a class="nav-item" data-page="audit" onclick="switchPage('audit')">
+                    <a class="nav-item" data-page="audit" data-admin onclick="switchPage('audit')">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
                         审计日志
                     </a>
-                    <a class="nav-item" data-page="sms_config" onclick="switchPage('sms_config')">
+                    <a class="nav-item" data-page="sms_config" data-admin onclick="switchPage('sms_config')">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
                         短信配置
                     </a>

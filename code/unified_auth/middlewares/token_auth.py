@@ -27,8 +27,9 @@ class TokenAuthenticationMiddleware(MiddlewareMixin):
             return None
         if request.method == "OPTIONS":
             return None
-        if request.path in PUBLIC_PATHS:
-            return None
+        for p in PUBLIC_PATHS:
+            if request.path == p or request.path == p + "/":
+                return None
         if request.path.startswith("/api/v1/open/"):
             return None
         if request.path.startswith("/api/v1/superadmin/"):

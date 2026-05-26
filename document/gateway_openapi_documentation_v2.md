@@ -59,22 +59,28 @@ curl -X POST http://localhost:8000/api/v1/open/verify_token \
 
 **签名生成算法**:
 
+签名固定使用 `{}` 作为消息前缀，不包含请求体内容。
+
 ```python
 import hmac
 import hashlib
 
-# 签名公式
+# 第一步：对 app_secret 做 SHA256 哈希
+APP_SECRET_HASH = hashlib.sha256(app_secret.encode()).hexdigest()
+
+# 第二步：签名公式
 signature = hmac.new(
-    app_secret.encode('utf-8'),
-    (timestamp + request_body).encode('utf-8'),
+    APP_SECRET_HASH.encode("utf-8"),
+    ("{}" + timestamp).encode("utf-8"),
     hashlib.sha256
 ).hexdigest()
 ```
 
 **注意事项**:
 
-- 请求体为空时，签名仅使用timestamp
-- timestamp必须为字符串格式
+- 先对 `app_secret` 做 SHA256 哈希得到 `APP_SECRET_HASH`，再用它做 HMAC 签名
+- 签名消息固定为 `{}{timestamp}`（空字典 + 时间戳），**不包含请求体内容**
+- timestamp 必须为 Unix 秒级时间戳字符串
 - 签名不区分大小写
 
 ### 2. 用户Token认证
@@ -134,9 +140,9 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 
 **请求参数**:
 
-| 参数 | 必填 | 说明         |
-| -- | -- | ---------- |
-| 无  | -  | 不支持分页和搜索参数 |
+| 参数 | 必填 | 说明 |
+| -- | -- | -- |
+| 无 | - | 返回当前租户下所有用户（不分页） |
 
 **成功响应** (200):
 
@@ -215,7 +221,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 
 ```json
 {
-    "code": 4001,
+    "code": -10101,
     "message": "用户名已存在"
 }
 ```
@@ -402,7 +408,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 
 ```json
 {
-    "code": 4001,
+    "code": -10101,
     "message": "密码错误"
 }
 ```
@@ -411,7 +417,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 
 ```json
 {
-    "code": 4003,
+    "code": -10102,
     "message": "用户已禁用"
 }
 ```
@@ -587,7 +593,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 
 ```json
 {
-    "code": 4006,
+    "code": -10002,
     "message": "Token无效"
 }
 ```
@@ -685,7 +691,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 
 ```json
 {
-    "code": 4001,
+    "code": -10101,
     "message": "原密码错误"
 }
 ```
@@ -745,12 +751,13 @@ import hmac
 import hashlib
 
 APP_KEY = "your_app_key"
-# 注意：此处需使用 app_secret 的 SHA256 哈希值进行签名
+# 签名使用 app_secret 的 SHA256 哈希值
 APP_SECRET_HASH = hashlib.sha256("your_app_secret".encode()).hexdigest()
 BASE_URL = "http://localhost:8000"
 
-def generate_signature(timestamp, body_str=""):
-    message = f"{body_str}{timestamp}".encode("utf-8")
+def generate_signature(timestamp):
+    # 签名固定使用 "{}" + timestamp，不包含请求体
+    message = f"{{}}{timestamp}".encode("utf-8")
     return hmac.new(
         APP_SECRET_HASH.encode("utf-8"),
         message,
@@ -759,8 +766,7 @@ def generate_signature(timestamp, body_str=""):
 
 def verify_token(user_token):
     timestamp = str(int(time.time()))
-    body = '{"token":"%s"}' % user_token
-    signature = generate_signature(timestamp, body)
+    signature = generate_signature(timestamp)
     
     headers = {
         "Content-Type": "application/json",
@@ -772,7 +778,7 @@ def verify_token(user_token):
     response = requests.post(
         f"{BASE_URL}/api/v1/open/verify_token",
         headers=headers,
-        data=body
+        json={"token": user_token}
     )
     return response.json()
 
@@ -787,22 +793,21 @@ print(result)
 const crypto = require('crypto');
 
 const APP_KEY = 'your_app_key';
-// 注意：此处需使用 app_secret 的 SHA256 哈希值进行签名
+// 签名使用 app_secret 的 SHA256 哈希值
 const APP_SECRET_HASH = crypto.createHash('sha256').update('your_app_secret').digest('hex');
 const BASE_URL = 'http://localhost:8000';
 
-function generateSignature(timestamp, bodyStr = '') {
-    const message = `${bodyStr}${timestamp}`;
+function generateSignature(timestamp) {
+    // 签名固定使用 "{}" + timestamp，不包含请求体
     return crypto
         .createHmac('sha256', APP_SECRET_HASH)
-        .update(message)
+        .update('{}' + timestamp)
         .digest('hex');
 }
 
 async function verifyToken(userToken) {
     const timestamp = Math.floor(Date.now() / 1000).toString();
-    const body = JSON.stringify({ token: userToken });
-    const signature = generateSignature(timestamp, body);
+    const signature = generateSignature(timestamp);
     
     const response = await fetch(`${BASE_URL}/api/v1/open/verify_token`, {
         method: 'POST',
@@ -812,7 +817,7 @@ async function verifyToken(userToken) {
             'X-Timestamp': timestamp,
             'X-Signature': signature
         },
-        body: body
+        body: JSON.stringify({ token: userToken })
     });
     
     return response.json();
@@ -857,25 +862,22 @@ verifyToken('user_jwt_token').then(console.log);
 如有问题或需要帮助，请联系技术支持团队：
 
 - **技术支持邮箱**: <395051729@qq.com>
-- **文档版本**: v2.0
-- **最后更新**: 2024年
+- **文档版本**: v2.1
+- **最后更新**: 2026-05-26
 
 ***
 
 ## 附录：权限编码列表
 
-| 权限编码              | 权限名称 | 说明        |
-| ----------------- | ---- | --------- |
-| `user.view`       | 用户查看 | 查看用户列表和详情 |
-| `user.create`     | 用户创建 | 创建新用户     |
-| `user.update`     | 用户修改 | 修改用户信息    |
-| `user.delete`     | 用户删除 | 删除用户      |
-| `user.status`     | 用户状态 | 启用/禁用用户   |
-| `app.view`        | 应用查看 | 查看应用列表    |
-| `app.create`      | 应用创建 | 创建应用      |
-| `role.view`       | 角色查看 | 查看角色列表    |
-| `role.create`     | 角色创建 | 创建角色      |
-| `permission.view` | 权限查看 | 查看权限列表    |
+| 权限编码 | 权限名称 | 说明 | 对应接口 |
+| -------- | ------- | ---- | ------- |
+| `user:read` | 用户查看 | 查看用户列表和详情 | `GET /api/v1/open/users` |
+| `user:create` | 用户创建 | 创建新用户 | `POST /api/v1/open/users` |
+| `user:update` | 用户修改 | 修改用户信息 | `PUT /api/v1/open/users/{id}` |
+| `user:delete` | 用户删除 | 删除用户 | - |
+| `user:status` | 用户状态 | 启用/禁用用户 | `PATCH /api/v1/open/users/{id}/status` |
+| `token:verify` | Token验证 | 验证用户Token | `POST /api/v1/open/verify_token` |
+| `permission:check` | 权限校验 | 检查用户权限 | `POST /api/v1/open/check_permission` |
 
 ***
 

@@ -35,4 +35,7 @@ urlpatterns = [
     path('api/v1/superadmin/stats/global-login-trend', admin_views.superadmin_global_login_trend_view, name="superadmin-stats-global-login-trend"),
     path('api/v1/superadmin/stats/global-login-distribution', admin_views.superadmin_global_login_distribution_view, name="superadmin-stats-global-login-distribution"),
     path('api/v1/superadmin/stats/app-call-ranking', admin_views.superadmin_app_call_ranking_view, name="superadmin-stats-app-call-ranking"),
+    path('api/v1/superadmin/report/tenants', admin_views.superadmin_report_tenants, name="superadmin-report-tenants"),
+    path('api/v1/superadmin/report/apps', admin_views.superadmin_report_apps, name="superadmin-report-apps"),
+    path('api/v1/superadmin/report/endpoint-stats', admin_views.superadmin_report_endpoint_stats, name="superadmin-report-endpoint-stats"),
 ]

@@ -163,7 +163,9 @@ def update_user_status(request, user_id):
 
     user.status = ser.validated_data["status"]
     user.save(update_fields=["status"])
-    return Response(success({"user_id": user.id, "status": user.status}))
+    return Response(success({
+        "user_id": user.id, "user_uuid": str(user.uuid), "status": user.status
+    }))
 
 
 @api_view(["POST"])
@@ -185,6 +187,7 @@ def check_permission(request):
 
     return Response(success({
         "user_id": user.id,
+        "user_uuid": str(user.uuid),
         "permission_code": data["permission_code"],
         "has_permission": has_perm,
     }))

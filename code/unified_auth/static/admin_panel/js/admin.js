@@ -83,7 +83,13 @@ function showApp() {
         el.style.display = user.is_superadmin ? "" : "none";
     });
 
-    switchPage("dashboard");
+    const adminMenus = document.querySelectorAll('[data-admin]');
+    const isPureSuperadmin = user.is_superadmin && !user.impersonated;
+    adminMenus.forEach(el => {
+        el.style.display = isPureSuperadmin ? "none" : "";
+    });
+
+    switchPage(isPureSuperadmin ? "superadmin_dashboard" : "dashboard");
 }
 
 // ================== Page Router ==================
@@ -99,6 +105,7 @@ const PAGES = {
     superadmin_dashboard: renderSuperadminDashboard,
     superadmin_tenants: renderSuperadminTenants,
     superadmin_audit: renderSuperadminAudit,
+    superadmin_report: renderSuperadminReport,
     superadmin_apistats: renderSuperadminApiStats,
     superadmin_config: renderSuperadminConfig,
 };
@@ -907,10 +914,14 @@ async function loadAppPermissions(appId, assignedPermIds) {
             return;
         }
         section.innerHTML = `<div class="perm-grid">
-            ${cats.map(cat => allPerms.filter(p => p.category === cat).map(p => `
-                <label class="perm-item ${assignedPermIds.includes(p.id) ? 'selected' : ''}" onclick="event.preventDefault();this.classList.toggle('selected');var cb=this.querySelector('input');cb.checked=!cb.checked">
+            ${cats.map(cat => `<div style="margin:8px 0 4px;font-weight:600;font-size:13px;color:var(--primary)">${cat}</div>`
+                + allPerms.filter(p => p.category === cat).map(p => `
+                <label class="perm-item ${assignedPermIds.includes(p.id) ? 'selected' : ''}" onclick="event.preventDefault();this.classList.toggle('selected');var cb=this.querySelector('input');cb.checked=!cb.checked" title="${p.description}">
                     <input type="checkbox" value="${p.id}" ${assignedPermIds.includes(p.id) ? 'checked' : ''} style="display:none">
-                    <span class="perm-tag">${cat}</span> ${p.code}
+                    <span style="display:flex;flex-direction:column;gap:2px;padding:2px 0;cursor:pointer">
+                        <strong style="font-size:13px">${p.name}</strong>
+                        <small style="font-size:11px;color:var(--text-light)">${p.description || p.code}</small>
+                    </span>
                 </label>`).join("")).join("")}
         </div>`;
     } catch (e) {
@@ -941,22 +952,22 @@ async function renderRoles(container) {
             <table><thead><tr>
                 <th>ID</th><th>角色名称</th><th>角色编码</th><th>权限</th><th>创建时间</th><th>操作</th>
             </tr></thead><tbody>
-            ${roles.length ? roles.map(r => `
-                <tr>
+            ${roles.length ? roles.map(r => {
+                const rPerms = r.permissions || [];
+                const shown = rPerms.slice(0, 8);
+                return `<tr>
                     <td>${r.id}</td>
                     <td><strong>${r.name}</strong></td>
                     <td><code style="background:#f1f5f9;padding:2px 6px;border-radius:3px;font-size:12px">${r.code}</code></td>
                     <td>
-                        ${(r.permission_ids || []).slice(0, 8).map(pid => {
-                            const p = allPerms.find(pp => pp.id === pid);
-                            return p ? `<span class="perm-tag">${p.code}</span>` : '';
-                        }).join("")}
-                        ${(r.permission_ids || []).length > 8 ? `<span class="perm-tag">+${r.permission_ids.length - 8}</span>` : ''}
-                        ${!(r.permission_ids || []).length ? '<span style="color:var(--text-light)">无权限</span>' : ''}
+                        ${shown.map(p => `<span class="perm-tag" title="${p.description || p.name}">${p.name}</span>`).join("")}
+                        ${rPerms.length > 8 ? `<span class="perm-tag">+${rPerms.length - 8}</span>` : ''}
+                        ${!rPerms.length ? '<span style="color:var(--text-light)">无权限</span>' : ''}
                     </td>
                     <td>${formatTime(r.created_at)}</td>
                     <td><button class="btn btn-sm btn-text" onclick="showEditRoleModal(${r.id},${JSON.stringify(allPerms).replace(/"/g, "'")})">编辑</button></td>
-                </tr>`).join("") : '<tr><td colspan="6"><div class="empty-state">暂无数据</div></td></tr>'}
+                </tr>`;
+            }).join("") : '<tr><td colspan="6"><div class="empty-state">暂无数据</div></td></tr>'}
             </tbody></table></div></div>`;
     } catch (e) { container.innerHTML = `<div class="empty-state">加载失败: ${e.message}</div>`; }
 }
@@ -970,10 +981,14 @@ function showCreateRoleModal(allPerms) {
             <div class="form-group"><label>角色编码 *</label><input id="cr-code" required placeholder="如：admin, operator"></div>
             <div class="form-group"><label>权限分配</label>
                 <div class="perm-grid">
-                    ${cats.map(cat => allPerms.filter(p => p.category === cat).map(p => `
-                        <label class="perm-item" onclick="event.preventDefault();this.classList.toggle('selected');var cb=this.querySelector('input');cb.checked=!cb.checked">
+                    ${cats.map(cat => `<div style="margin:8px 0 4px;font-weight:600;font-size:13px;color:var(--primary)">${cat}</div>`
+                        + allPerms.filter(p => p.category === cat).map(p => `
+                        <label class="perm-item" onclick="event.preventDefault();this.classList.toggle('selected');var cb=this.querySelector('input');cb.checked=!cb.checked" title="${p.description}">
                             <input type="checkbox" value="${p.id}" style="display:none">
-                            <span class="perm-tag">${cat}</span> ${p.code}
+                            <span style="display:flex;flex-direction:column;gap:2px;padding:2px 0;cursor:pointer">
+                                <strong style="font-size:13px">${p.name}</strong>
+                                <small style="font-size:11px;color:var(--text-light)">${p.description || p.code}</small>
+                            </span>
                         </label>`).join("")).join("")}
                 </div></div>
             <div class="modal-footer">
@@ -1014,10 +1029,14 @@ async function showEditRoleModal(id, allPerms) {
                 <div class="form-group"><label>角色编码</label><input value="${r.code}" disabled style="background:#f1f5f9"></div>
                 <div class="form-group"><label>权限分配</label>
                     <div class="perm-grid">
-                        ${cats.map(cat => allPerms.filter(p => p.category === cat).map(p => `
-                            <label class="perm-item ${assigned.includes(p.id) ? 'selected' : ''}" onclick="event.preventDefault();this.classList.toggle('selected');var cb=this.querySelector('input');cb.checked=!cb.checked">
+                        ${cats.map(cat => `<div style="margin:8px 0 4px;font-weight:600;font-size:13px;color:var(--primary)">${cat}</div>`
+                            + allPerms.filter(p => p.category === cat).map(p => `
+                            <label class="perm-item ${assigned.includes(p.id) ? 'selected' : ''}" onclick="event.preventDefault();this.classList.toggle('selected');var cb=this.querySelector('input');cb.checked=!cb.checked" title="${p.description}">
                                 <input type="checkbox" value="${p.id}" ${assigned.includes(p.id) ? 'checked' : ''} style="display:none">
-                                <span class="perm-tag">${cat}</span> ${p.code}
+                                <span style="display:flex;flex-direction:column;gap:2px;padding:2px 0;cursor:pointer">
+                                    <strong style="font-size:13px">${p.name}</strong>
+                                    <small style="font-size:11px;color:var(--text-light)">${p.description || p.code}</small>
+                                </span>
                             </label>`).join("")).join("")}
                     </div></div>
                 <div class="modal-footer">
@@ -1780,6 +1799,365 @@ async function exportSuperadminAuditLogs() {
         showToast("导出成功", "success");
     } catch (e) {
         showToast("导出失败: " + e.message, "error");
+    }
+}
+
+// ================== SUPERADMIN REPORT ==================
+
+async function renderSuperadminReport(container) {
+    container.innerHTML = `
+        <div class="page-header"><h1>统计报表</h1></div>
+        <div class="tabs" style="display:flex;gap:0;margin-bottom:16px;border-bottom:2px solid var(--border)">
+            <button id="report-tab-tenants" class="tab-btn active" onclick="switchReportTab('tenants')" style="padding:10px 24px;border:none;background:none;cursor:pointer;font-size:14px;border-bottom:2px solid var(--primary);margin-bottom:-2px;color:var(--primary);font-weight:600">租户报表</button>
+            <button id="report-tab-apps" class="tab-btn" onclick="switchReportTab('apps')" style="padding:10px 24px;border:none;background:none;cursor:pointer;font-size:14px;color:var(--text-light)">应用报表</button>
+            <button id="report-tab-endpoints" class="tab-btn" onclick="switchReportTab('endpoints')" style="padding:10px 24px;border:none;background:none;cursor:pointer;font-size:14px;color:var(--text-light)">接口统计</button>
+        </div>
+        <div id="report-content"></div>`;
+    __reportTenantReset();
+    __reportTenantLoad();
+}
+
+let __reportTab = "tenants";
+
+function switchReportTab(tab) {
+    __reportTab = tab;
+    document.querySelectorAll(".tab-btn").forEach(b => {
+        b.style.borderBottomColor = "transparent";
+        b.style.color = "var(--text-light)";
+        b.style.fontWeight = "400";
+    });
+    const activeBtn = document.getElementById("report-tab-" + tab);
+    if (activeBtn) {
+        activeBtn.style.borderBottomColor = "var(--primary)";
+        activeBtn.style.color = "var(--primary)";
+        activeBtn.style.fontWeight = "600";
+    }
+    if (tab === "tenants") {
+        __reportTenantReset();
+        __reportTenantLoad();
+    } else if (tab === "endpoints") {
+        __reportEndpointReset();
+        __reportEndpointLoad();
+    } else {
+        __reportAppReset();
+        __reportAppLoad();
+    }
+}
+
+// 租户报表全局状态
+let __rtPage = 1, __rtSearch = "", __rtDateFrom = "", __rtDateTo = "";
+let __rtSortBy = "created_at", __rtSortOrder = "desc";
+
+function __reportTenantReset() {
+    __rtPage = 1; __rtSearch = ""; __rtDateFrom = ""; __rtDateTo = "";
+    __rtSortBy = "created_at"; __rtSortOrder = "desc";
+}
+
+async function __reportTenantLoad() {
+    const container = document.getElementById("report-content");
+    if (!container) return;
+    container.innerHTML = '<div class="loading"></div>';
+    const data = { search: __rtSearch, page: __rtPage, page_size: 20, sort_by: __rtSortBy, sort_order: __rtSortOrder };
+    if (__rtDateFrom) data.date_from = __rtDateFrom;
+    if (__rtDateTo) data.date_to = __rtDateTo;
+    try {
+        const res = await apiCall(API.superadmin + "/report/tenants", {
+            method: "POST", body: JSON.stringify(data)
+        });
+        if (!res) return;
+        const d = res.data;
+        const pageSize = 20;
+        let html = `
+            <div class="toolbar" style="flex-wrap:wrap;gap:8px">
+                <div class="search-bar" style="flex:1;min-width:200px">
+                    <input type="text" id="rt-search" placeholder="搜索租户名称/标识" value="${__rtSearch}" onkeydown="if(event.key==='Enter'){__rtSearch=this.value;__reportTenantLoad()}">
+                </div>
+                <input type="date" id="rt-date-from" value="${__rtDateFrom}" onchange="__rtDateFrom=this.value" style="padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px">
+                <input type="date" id="rt-date-to" value="${__rtDateTo}" onchange="__rtDateTo=this.value" style="padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px">
+                <button class="btn btn-primary" onclick="__rtSearch=document.getElementById('rt-search').value;__rtDateFrom=document.getElementById('rt-date-from').value;__rtDateTo=document.getElementById('rt-date-to').value;__rtPage=1;__reportTenantLoad()" style="height:38px">查询</button>
+            </div>`;
+
+        if (d.items && d.items.length) {
+            const totalPages = Math.ceil(d.total / pageSize);
+            function sortLink(field) {
+                const nextOrder = __rtSortBy === field && __rtSortOrder === "asc" ? "desc" : "asc";
+                const arrow = __rtSortBy === field ? (__rtSortOrder === "asc" ? "▲" : "▼") : "";
+                const labels = { name: "名称", slug: "标识", status: "状态", user_count: "用户数", active_users_30d: "活跃用户", app_count: "应用数", total_api_calls: "API调用", created_at: "创建时间" };
+                return `<a href="javascript:void(0)" onclick="__rtSortBy='${field}';__rtSortOrder='${nextOrder}';__rtPage=1;__reportTenantLoad()" style="color:var(--text-primary);text-decoration:none">${labels[field] || field} ${arrow}</a>`;
+            }
+            html += `<div class="table-wrap"><table><thead><tr>
+                <th>${sortLink("name")}</th>
+                <th>${sortLink("slug")}</th>
+                <th>${sortLink("status")}</th>
+                <th>${sortLink("user_count")}</th>
+                <th>${sortLink("active_users_30d")}</th>
+                <th>${sortLink("app_count")}</th>
+                <th>${sortLink("total_api_calls")}</th>
+                <th>${sortLink("created_at")}</th>
+                <th>操作</th>
+            </tr></thead><tbody>`;
+            d.items.forEach(t => {
+                const statusText = t.status ? "启用" : "禁用";
+                const badgeClass = t.status ? "badge badge-active" : "badge badge-disabled";
+                html += `<tr>
+                    <td><strong>${t.name}</strong></td>
+                    <td><code style="background:#f1f5f9;padding:2px 6px;border-radius:3px;font-size:12px">${t.slug}</code></td>
+                    <td><span class="${badgeClass}">${statusText}</span></td>
+                    <td>${t.user_count}</td>
+                    <td>${t.active_users_30d}</td>
+                    <td>${t.app_count}</td>
+                    <td><strong>${t.total_api_calls || 0}</strong></td>
+                    <td>${formatTime(t.created_at)}</td>
+                    <td><button class="btn btn-sm" onclick="showTenantEndpoints(${t.id},'${t.name.replace(/'/g, "\\'")}')" style="font-size:12px">查看接口</button></td>
+                </tr>`;
+            });
+            html += `</tbody></table></div>`;
+            html += `<div class="pagination" style="display:flex;justify-content:space-between;align-items:center;padding:12px 0">
+                <span style="color:var(--text-light);font-size:13px">共 ${d.total} 条，第 ${__rtPage}/${totalPages} 页</span>
+                <div>${__rtPage > 1 ? `<button class="btn" onclick="__rtPage--;__reportTenantLoad()" style="margin-right:4px">上一页</button>` : ""}
+                ${__rtPage < totalPages ? `<button class="btn btn-primary" onclick="__rtPage++;__reportTenantLoad()">下一页</button>` : ""}</div>
+            </div>`;
+        } else {
+            html += '<div class="empty-state">暂无租户数据</div>';
+        }
+        container.innerHTML = html;
+    } catch (e) {
+        container.innerHTML = `<div class="empty-state">加载失败: ${e.message}</div>`;
+    }
+}
+
+// 应用报表全局状态
+let __raPage = 1, __raSearch = "", __raTenantId = "", __raDateFrom = "", __raDateTo = "";
+let __raSortBy = "created_at", __raSortOrder = "desc";
+
+function __reportAppReset() {
+    __raPage = 1; __raSearch = ""; __raTenantId = ""; __raDateFrom = ""; __raDateTo = "";
+    __raSortBy = "created_at"; __raSortOrder = "desc";
+}
+
+async function __reportAppLoad() {
+    const container = document.getElementById("report-content");
+    if (!container) return;
+    container.innerHTML = '<div class="loading"></div>';
+    const data = { search: __raSearch, page: __raPage, page_size: 20, sort_by: __raSortBy, sort_order: __raSortOrder };
+    if (__raTenantId) data.tenant_id = __raTenantId;
+    if (__raDateFrom) data.date_from = __raDateFrom;
+    if (__raDateTo) data.date_to = __raDateTo;
+    try {
+        const res = await apiCall(API.superadmin + "/report/apps", {
+            method: "POST", body: JSON.stringify(data)
+        });
+        if (!res) return;
+        const d = res.data;
+        const pageSize = 20;
+        let html = `
+            <div class="toolbar" style="flex-wrap:wrap;gap:8px">
+                <div class="search-bar" style="flex:1;min-width:200px">
+                    <input type="text" id="ra-search" placeholder="搜索应用名称/AppKey" value="${__raSearch}" onkeydown="if(event.key==='Enter'){__raSearch=this.value;__reportAppLoad()}">
+                </div>
+                <input type="number" id="ra-tenant-id" placeholder="租户ID（可选）" value="${__raTenantId}" style="padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px;width:120px">
+                <input type="date" id="ra-date-from" value="${__raDateFrom}" onchange="__raDateFrom=this.value" style="padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px">
+                <input type="date" id="ra-date-to" value="${__raDateTo}" onchange="__raDateTo=this.value" style="padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px">
+                <button class="btn btn-primary" onclick="__raSearch=document.getElementById('ra-search').value;__raTenantId=document.getElementById('ra-tenant-id').value;__raDateFrom=document.getElementById('ra-date-from').value;__raDateTo=document.getElementById('ra-date-to').value;__raPage=1;__reportAppLoad()" style="height:38px">查询</button>
+            </div>`;
+
+        if (d.items && d.items.length) {
+            const totalPages = Math.ceil(d.total / pageSize);
+            function sortLink(field, label) {
+                const nextOrder = __raSortBy === field && __raSortOrder === "asc" ? "desc" : "asc";
+                const arrow = __raSortBy === field ? (__raSortOrder === "asc" ? "▲" : "▼") : "";
+                return `<a href="javascript:void(0)" onclick="__raSortBy='${field}';__raSortOrder='${nextOrder}';__raPage=1;__reportAppLoad()" style="color:var(--text-primary);text-decoration:none">${label} ${arrow}</a>`;
+            }
+            html += `<div class="table-wrap"><table><thead><tr>
+                <th>${sortLink("name", "应用名称")}</th>
+                <th>AppKey</th>
+                <th>${sortLink("tenant_id", "所属租户")}</th>
+                <th>${sortLink("status", "状态")}</th>
+                <th>${sortLink("call_count", "调用次数")}</th>
+                <th>${sortLink("created_at", "创建时间")}</th>
+                <th>操作</th>
+            </tr></thead><tbody>`;
+            d.items.forEach(a => {
+                const statusText = a.status ? "启用" : "禁用";
+                const badgeClass = a.status ? "badge badge-active" : "badge badge-disabled";
+                html += `<tr>
+                    <td><strong>${a.name}</strong></td>
+                    <td><code style="background:#f1f5f9;padding:2px 6px;border-radius:3px;font-size:12px">${a.app_key}</code></td>
+                    <td>${a.tenant_name}</td>
+                    <td><span class="${badgeClass}">${statusText}</span></td>
+                    <td><strong>${a.call_count}</strong></td>
+                    <td>${formatTime(a.created_at)}</td>
+                    <td><button class="btn btn-sm" onclick="showAppEndpoints(${a.id},'${a.name.replace(/'/g, "\\'")}')" style="font-size:12px">查看接口</button></td>
+                </tr>`;
+            });
+            html += `</tbody></table></div>`;
+            html += `<div class="pagination" style="display:flex;justify-content:space-between;align-items:center;padding:12px 0">
+                <span style="color:var(--text-light);font-size:13px">共 ${d.total} 条，第 ${__raPage}/${totalPages} 页</span>
+                <div>${__raPage > 1 ? `<button class="btn" onclick="__raPage--;__reportAppLoad()" style="margin-right:4px">上一页</button>` : ""}
+                ${__raPage < totalPages ? `<button class="btn btn-primary" onclick="__raPage++;__reportAppLoad()">下一页</button>` : ""}</div>
+            </div>`;
+        } else {
+            html += '<div class="empty-state">暂无应用数据</div>';
+        }
+        container.innerHTML = html;
+    } catch (e) {
+        container.innerHTML = `<div class="empty-state">加载失败: ${e.message}</div>`;
+    }
+}
+
+// 接口统计全局状态
+let __rePage = 1, __reStatType = "all", __reTenantId = "", __reAppId = "";
+let __reDateFrom = "", __reDateTo = "";
+
+function __reportEndpointReset() {
+    __rePage = 1; __reStatType = "all"; __reTenantId = ""; __reAppId = "";
+    __reDateFrom = ""; __reDateTo = "";
+}
+
+async function __reportEndpointLoad() {
+    const container = document.getElementById("report-content");
+    if (!container) return;
+    container.innerHTML = '<div class="loading"></div>';
+    const data = { stat_type: __reStatType, page: __rePage, page_size: 50 };
+    if (__reTenantId) data.tenant_id = __reTenantId;
+    if (__reAppId) data.app_id = __reAppId;
+    if (__reDateFrom) data.date_from = __reDateFrom;
+    if (__reDateTo) data.date_to = __reDateTo;
+    try {
+        const res = await apiCall(API.superadmin + "/report/endpoint-stats", {
+            method: "POST", body: JSON.stringify(data)
+        });
+        if (!res) return;
+        const d = res.data;
+        const pageSize = 50;
+        let html = `
+            <div class="toolbar" style="flex-wrap:wrap;gap:8px">
+                <select id="re-stat-type" onchange="__reStatType=this.value" style="padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px">
+                    <option value="all" ${__reStatType === "all" ? "selected" : ""}>全部接口</option>
+                    <option value="app" ${__reStatType === "app" ? "selected" : ""}>应用接口(OpenAPI)</option>
+                    <option value="tenant" ${__reStatType === "tenant" ? "selected" : ""}>租户接口(管理端)</option>
+                </select>
+                <input type="number" id="re-tenant-id" placeholder="租户ID筛选" value="${__reTenantId}" style="padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px;width:120px">
+                <input type="number" id="re-app-id" placeholder="应用ID筛选" value="${__reAppId}" style="padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px;width:120px">
+                <input type="date" id="re-date-from" value="${__reDateFrom}" style="padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px">
+                <input type="date" id="re-date-to" value="${__reDateTo}" style="padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px">
+                <button class="btn btn-primary" onclick="__reStatType=document.getElementById('re-stat-type').value;__reTenantId=document.getElementById('re-tenant-id').value;__reAppId=document.getElementById('re-app-id').value;__reDateFrom=document.getElementById('re-date-from').value;__reDateTo=document.getElementById('re-date-to').value;__rePage=1;__reportEndpointLoad()" style="height:38px">查询</button>
+            </div>`;
+        if (d.items && d.items.length) {
+            const totalPages = Math.ceil(d.total / pageSize);
+            html += `<div style="margin-bottom:12px;color:var(--text-light);font-size:13px">共 <strong>${d.total}</strong> 个接口路径</div>`;
+            html += `<div class="table-wrap"><table><thead><tr>
+                <th>API路径</th>
+                <th>调用次数</th>
+                <th>来源</th>
+                <th>所属租户/应用</th>
+            </tr></thead><tbody>`;
+            d.items.forEach(s => {
+                const sourceLabel = s.source === "app" ? "应用接口" : "管理接口";
+                const detail = s.source === "app" ? `${s.app_name || "应用#" + s.app_id}` : `${s.tenant_name || "租户#" + s.tenant_id}`;
+                html += `<tr>
+                    <td><code style="background:#f1f5f9;padding:2px 6px;border-radius:3px;font-size:12px">${s.api_path}</code></td>
+                    <td><strong>${s.call_count}</strong></td>
+                    <td><span class="badge ${s.source === 'app' ? 'badge-active' : 'badge'}">${sourceLabel}</span></td>
+                    <td style="font-size:13px;color:var(--text-light)">${detail}</td>
+                </tr>`;
+            });
+            html += `</tbody></table></div>`;
+            html += `<div class="pagination" style="display:flex;justify-content:space-between;align-items:center;padding:12px 0">
+                <span style="color:var(--text-light);font-size:13px">共 ${d.total} 条，第 ${__rePage}/${totalPages} 页</span>
+                <div>${__rePage > 1 ? `<button class="btn" onclick="__rePage--;__reportEndpointLoad()" style="margin-right:4px">上一页</button>` : ""}
+                ${__rePage < totalPages ? `<button class="btn btn-primary" onclick="__rePage++;__reportEndpointLoad()">下一页</button>` : ""}</div>
+            </div>`;
+        } else {
+            html += '<div class="empty-state">暂无接口统计数据</div>';
+        }
+        container.innerHTML = html;
+    } catch (e) {
+        container.innerHTML = `<div class="empty-state">加载失败: ${e.message}</div>`;
+    }
+}
+
+// 从租户报表查看具体租户的接口详情弹窗
+async function showTenantEndpoints(tenantId, tenantName) {
+    const overlay = document.createElement("div");
+    overlay.className = "modal-overlay";
+    overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:999;display:flex;align-items:center;justify-content:center;padding:20px";
+    overlay.innerHTML = `
+        <div class="modal" style="background:#fff;border-radius:12px;width:90%;max-width:800px;max-height:80vh;overflow-y:auto;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,0.2)">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+                <h3 style="margin:0">接口调用详情 - ${tenantName}</h3>
+                <button onclick="this.closest('.modal-overlay').remove()" style="background:none;border:none;font-size:24px;cursor:pointer;color:var(--text-light)">&times;</button>
+            </div>
+            <div id="endpoint-detail-content"><div class="loading"></div></div>
+        </div>`;
+    document.body.appendChild(overlay);
+    try {
+        const res = await apiCall(API.superadmin + "/report/endpoint-stats", {
+            method: "POST", body: JSON.stringify({ tenant_id: tenantId, stat_type: "all", page: 1, page_size: 200 })
+        });
+        if (!res) return;
+        const d = res.data;
+        const detailContainer = document.getElementById("endpoint-detail-content");
+        if (!d.items || !d.items.length) {
+            detailContainer.innerHTML = '<div class="empty-state">暂无接口调用记录</div>';
+            return;
+        }
+        let html = `<div class="table-wrap"><table><thead><tr>
+            <th>API路径</th><th>调用次数</th><th>来源</th>
+        </tr></thead><tbody>`;
+        d.items.forEach(s => {
+            const sourceLabel = s.source === "app" ? "应用接口" : "管理接口";
+            html += `<tr>
+                <td><code style="background:#f1f5f9;padding:2px 6px;border-radius:3px;font-size:12px">${s.api_path}</code></td>
+                <td><strong>${s.call_count}</strong></td>
+                <td><span class="badge ${s.source === 'app' ? 'badge-active' : 'badge'}">${sourceLabel}</span></td>
+            </tr>`;
+        });
+        html += `</tbody></table></div>`;
+        detailContainer.innerHTML = html;
+    } catch (e) {
+        document.getElementById("endpoint-detail-content").innerHTML = `<div class="empty-state">加载失败: ${e.message}</div>`;
+    }
+}
+
+// 从应用报表查看具体应用的接口详情弹窗
+async function showAppEndpoints(appId, appName) {
+    const overlay = document.createElement("div");
+    overlay.className = "modal-overlay";
+    overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:999;display:flex;align-items:center;justify-content:center;padding:20px";
+    overlay.innerHTML = `
+        <div class="modal" style="background:#fff;border-radius:12px;width:90%;max-width:800px;max-height:80vh;overflow-y:auto;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,0.2)">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+                <h3 style="margin:0">接口调用详情 - ${appName}</h3>
+                <button onclick="this.closest('.modal-overlay').remove()" style="background:none;border:none;font-size:24px;cursor:pointer;color:var(--text-light)">&times;</button>
+            </div>
+            <div id="endpoint-detail-content"><div class="loading"></div></div>
+        </div>`;
+    document.body.appendChild(overlay);
+    try {
+        const res = await apiCall(API.superadmin + "/report/endpoint-stats", {
+            method: "POST", body: JSON.stringify({ app_id: appId, stat_type: "app", page: 1, page_size: 200 })
+        });
+        if (!res) return;
+        const d = res.data;
+        const detailContainer = document.getElementById("endpoint-detail-content");
+        if (!d.items || !d.items.length) {
+            detailContainer.innerHTML = '<div class="empty-state">暂无接口调用记录</div>';
+            return;
+        }
+        let html = `<div class="table-wrap"><table><thead><tr>
+            <th>API路径</th><th>调用次数</th>
+        </tr></thead><tbody>`;
+        d.items.forEach(s => {
+            html += `<tr>
+                <td><code style="background:#f1f5f9;padding:2px 6px;border-radius:3px;font-size:12px">${s.api_path}</code></td>
+                <td><strong>${s.call_count}</strong></td>
+            </tr>`;
+        });
+        html += `</tbody></table></div>`;
+        detailContainer.innerHTML = html;
+    } catch (e) {
+        document.getElementById("endpoint-detail-content").innerHTML = `<div class="empty-state">加载失败: ${e.message}</div>`;
     }
 }
 

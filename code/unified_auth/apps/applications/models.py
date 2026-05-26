@@ -1,8 +1,11 @@
+import uuid
+
 from django.db import models
 from common.fields import CompatibleJSONField
 
 
 class Application(models.Model):
+    uuid = models.UUIDField(default=uuid.uuid4, editable=False, verbose_name="UUID")
     tenant = models.ForeignKey("accounts.Tenant", on_delete=models.CASCADE)
     name = models.CharField(max_length=128, verbose_name="应用名称")
     app_key = models.CharField(max_length=64, unique=True, verbose_name="AppKey")
@@ -43,3 +46,15 @@ class AppApiCallStat(models.Model):
         db_table = "app_api_call_stat"
         unique_together = ("app", "api_path", "call_date")
         verbose_name = "应用API调用统计"
+
+
+class TenantApiCallStat(models.Model):
+    tenant = models.ForeignKey("accounts.Tenant", on_delete=models.CASCADE, db_index=True)
+    api_path = models.CharField(max_length=255, db_index=True)
+    call_date = models.DateField(db_index=True)
+    call_count = models.PositiveIntegerField(default=1)
+
+    class Meta:
+        db_table = "tenant_api_call_stat"
+        unique_together = ("tenant", "api_path", "call_date")
+        verbose_name = "租户API调用统计"
