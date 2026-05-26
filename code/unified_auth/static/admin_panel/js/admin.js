@@ -1,0 +1,1737 @@
+const API = {
+    auth: "/api/v1/auth",
+    admin: "/api/v1/admin",
+    superadmin: "/api/v1/superadmin",
+};
+
+const TOKEN_KEY = "admin_token";
+const USER_KEY = "admin_user";
+
+function getToken() { return localStorage.getItem(TOKEN_KEY); }
+function getUser() {
+    try { return JSON.parse(localStorage.getItem(USER_KEY)) || {}; }
+    catch { return {}; }
+}
+
+async function apiCall(url, options = {}) {
+    const token = getToken();
+    const headers = { "Content-Type": "application/json", ...options.headers };
+    if (token) headers["Authorization"] = "Bearer " + token;
+    const res = await fetch(url, { ...options, headers });
+    const data = await res.json();
+    if (data.code < 0 && (url.startsWith(API.admin) || url.startsWith(API.superadmin))) {
+        if (data.code === -10001 || data.code === -10002) {
+            localStorage.removeItem(TOKEN_KEY);
+            localStorage.removeItem(USER_KEY);
+            showLogin();
+            return null;
+        }
+        throw new Error(data.message || "请求失败");
+    }
+    return data;
+}
+
+// ================== Login / Logout ==================
+
+async function handleLogin() {
+    const username = document.getElementById("login-username").value.trim();
+    const password = document.getElementById("login-password").value.trim();
+    const errEl = document.getElementById("login-error");
+    if (!username || !password) { errEl.textContent = "请输入用户名和密码"; return; }
+    errEl.textContent = "";
+
+    try {
+        const res = await apiCall(API.auth + "/login", {
+            method: "POST",
+            body: JSON.stringify({ username, password, app_id: null }),
+            headers: {},
+        });
+        if (res.code < 0) { errEl.textContent = res.message; return; }
+        const d = res.data;
+        const isAdmin = d.is_superuser || d.is_superadmin;
+        if (!isAdmin) { errEl.textContent = "仅管理员可登录管理后台"; return; }
+        localStorage.setItem(TOKEN_KEY, d.access_token);
+        localStorage.setItem(USER_KEY, JSON.stringify(d));
+        showApp();
+    } catch (e) {
+        errEl.textContent = e.message || "登录失败，请检查网络";
+    }
+}
+
+function handleLogout() {
+    localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(USER_KEY);
+    showLogin();
+}
+
+function showLogin() {
+    document.getElementById("app-login").style.display = "flex";
+    document.getElementById("app-main").style.display = "none";
+    document.getElementById("login-username").value = "";
+    document.getElementById("login-password").value = "";
+}
+
+function showApp() {
+    document.getElementById("app-login").style.display = "none";
+    document.getElementById("app-main").style.display = "flex";
+    const user = getUser();
+    const label = user.is_superadmin ? "超级管理员" : "管理员";
+    document.getElementById("topbar-user").textContent = (user.nickname || user.username) + " " + label;
+
+    const superadminMenus = document.querySelectorAll('[data-superadmin]');
+    superadminMenus.forEach(el => {
+        el.style.display = user.is_superadmin ? "" : "none";
+    });
+
+    switchPage("dashboard");
+}
+
+// ================== Page Router ==================
+
+const PAGES = {
+    dashboard: renderDashboard,
+    users: renderUsers,
+    applications: renderApplications,
+    roles: renderRoles,
+    departments: renderDepartments,
+    audit: renderAudit,
+    superadmin_dashboard: renderSuperadminDashboard,
+    superadmin_tenants: renderSuperadminTenants,
+    superadmin_audit: renderSuperadminAudit,
+    superadmin_apistats: renderSuperadminApiStats,
+    superadmin_config: renderSuperadminConfig,
+};
+
+function switchPage(name) {
+    document.querySelectorAll(".nav-item").forEach(el => el.classList.remove("active"));
+    const navEl = document.querySelector(`.nav-item[data-page="${name}"]`);
+    if (navEl) navEl.classList.add("active");
+    const content = document.getElementById("page-content");
+    content.innerHTML = '<div class="loading"></div>';
+    if (PAGES[name]) PAGES[name](content);
+}
+
+// ================== Toast ==================
+
+function showToast(msg, type) {
+    const el = document.createElement("div");
+    el.className = "toast " + type;
+    el.textContent = msg;
+    document.body.appendChild(el);
+    setTimeout(() => el.remove(), 2500);
+}
+
+// ================== Modal ==================
+
+function openModal(html) {
+    document.getElementById("modal-container").innerHTML = html;
+    document.getElementById("modal-overlay").style.display = "flex";
+}
+
+function closeModal() {
+    document.getElementById("modal-overlay").style.display = "none";
+}
+
+let __chartInstances = {};
+let batchUserIds = [];
+
+function destroyChart(id) {
+    if (__chartInstances[id]) {
+        __chartInstances[id].destroy();
+        delete __chartInstances[id];
+    }
+}
+
+function renderMiniLineChart(canvasId, labels, data, label, color) {
+    destroyChart(canvasId);
+    const canvas = document.getElementById(canvasId);
+    if (!canvas || !window.Chart) return;
+    const ctx = canvas.getContext("2d");
+    __chartInstances[canvasId] = new Chart(ctx, {
+        type: "line",
+        data: { labels, datasets: [{ label, data, borderColor: color, backgroundColor: color + "20", fill: true, tension: 0.3, pointRadius: 2, borderWidth: 2 }] },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { display: false }, y: { display: false, beginAtZero: true } } },
+    });
+}
+
+function renderPieChart(canvasId, labels, data, colors) {
+    destroyChart(canvasId);
+    const canvas = document.getElementById(canvasId);
+    if (!canvas || !window.Chart) return;
+    const ctx = canvas.getContext("2d");
+    __chartInstances[canvasId] = new Chart(ctx, {
+        type: "doughnut",
+        data: { labels, datasets: [{ data, backgroundColor: colors, borderWidth: 0 }] },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: "bottom", labels: { boxWidth: 10, padding: 8, font: { size: 11 } } } } },
+    });
+}
+
+// ================== DASHBOARD ==================
+
+async function renderDashboard(container) {
+    container.innerHTML = '<div class="loading"></div>';
+    try {
+        const [statRes, actRes, trendRes, distRes] = await Promise.all([
+            apiCall(API.admin + "/stats"),
+            apiCall(API.admin + "/recent-activities"),
+            apiCall(API.admin + "/stats/login-trend?days=7"),
+            apiCall(API.admin + "/stats/user-type-distribution"),
+        ]);
+        if (!statRes) return;
+        const s = statRes.data;
+        const a = actRes ? actRes.data : { activities: [] };
+        const trend = trendRes ? trendRes.data : null;
+        const dist = distRes ? distRes.data : null;
+        const appStats = s.app_stats || [];
+
+        container.innerHTML = `
+            <div class="stats-grid">
+                <div class="stat-card"><span class="stat-label">用户总数</span><span class="stat-value primary">${s.total_users}</span></div>
+                <div class="stat-card"><span class="stat-label">活跃用户</span><span class="stat-value success">${s.active_users}</span></div>
+                <div class="stat-card"><span class="stat-label">今日新增</span><span class="stat-value warning">${s.today_new_users}</span></div>
+                <div class="stat-card"><span class="stat-label">应用总数</span><span class="stat-value">${s.total_apps}</span></div>
+                <div class="stat-card"><span class="stat-label">活跃应用</span><span class="stat-value primary">${s.active_apps}</span></div>
+                <div class="stat-card"><span class="stat-label">角色数</span><span class="stat-value">${s.total_roles}</span></div>
+            </div>
+            <div class="row" style="display:flex;gap:16px;flex-wrap:wrap">
+                <div class="card" style="flex:1;min-width:300px">
+                    <div class="card-title">登录趋势（近7天）</div>
+                    <div style="height:140px"><canvas id="loginTrendChart"></canvas></div>
+                </div>
+                <div class="card" style="flex:1;min-width:260px">
+                    <div class="card-title">用户类型分布</div>
+                    <div style="height:140px"><canvas id="userTypeChart"></canvas></div>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-title">应用统计（近7天调用）</div>
+                ${appStats.length
+                    ? `<div class="table-wrap"><table><thead><tr><th>应用名称</th><th>AppKey</th><th>状态</th><th>调用次数</th><th>创建时间</th></tr></thead><tbody>
+                    ${appStats.map(app => `
+                        <tr>
+                            <td><strong>${app.name}</strong></td>
+                            <td><code style="background:#f1f5f9;padding:2px 6px;border-radius:3px;font-size:12px">${app.app_key}</code></td>
+                            <td><span class="badge ${app.status ? 'badge-active' : 'badge-disabled'}">${app.status ? "启用" : "禁用"}</span></td>
+                            <td>${app.call_count_7d}</td>
+                            <td>${formatTime(app.created_at)}</td>
+                        </tr>`).join("")}
+                    </tbody></table></div>`
+                    : '<div class="empty-state">暂无应用</div>'}
+            </div>
+            <div class="card">
+                <div class="card-title">最近操作动态</div>
+                ${a.activities.length
+                    ? `<ul class="activity-list">${a.activities.map(log => `
+                        <li class="activity-item">
+                            <span><strong>${log.actor_name || "系统"}</strong> ${formatAction(log.action)}</span>
+                            <span class="activity-time">${formatTime(log.created_at)}</span>
+                        </li>`).join("")}</ul>`
+                    : '<div class="empty-state">暂无操作记录</div>'}
+            </div>`;
+
+        if (trend && trend.trend && trend.trend.length) {
+            renderMiniLineChart("loginTrendChart",
+                trend.trend.map(d => d.date.slice(5)),
+                trend.trend.map(d => d.total),
+                "登录次数", "#1a73e8");
+        }
+        if (dist && dist.items) {
+            const entries = Object.entries(dist.items);
+            renderPieChart("userTypeChart",
+                entries.map(e => e[0]),
+                entries.map(e => e[1].count),
+                ["#1a73e8", "#e8710a", "#0a9e5e", "#8b5cf6"]);
+        }
+    } catch (e) {
+        container.innerHTML = `<div class="empty-state">加载失败: ${e.message}</div>`;
+    }
+}
+
+function formatAction(action) {
+    const map = {
+        "admin.user.delete": "删除了用户",
+        "admin.user.update": "修改了用户信息",
+        "admin.user.status": "修改了用户状态",
+        "admin.user.reset_password": "重置了用户密码",
+        "admin.app.create": "注册了新应用",
+        "admin.app.update": "修改了应用配置",
+        "admin.app.status": "修改了应用状态",
+        "admin.app.regenerate_secret": "重新生成应用密钥",
+        "admin.role.create": "创建了新角色",
+        "admin.role.update": "修改了角色配置",
+        "superadmin.login": "超级管理员登录",
+        "superadmin.tenant.create": "创建了租户",
+        "superadmin.tenant.update": "修改了租户",
+        "superadmin.tenant.delete": "删除了租户",
+    };
+    return map[action] || action;
+}
+
+// ================== USERS ==================
+
+async function renderUsers(container) {
+    let page = 1, search = "", status = "";
+    const pageSize = 20;
+
+    async function load() {
+        const params = new URLSearchParams({ page, page_size: pageSize });
+        if (search) params.set("search", search);
+        if (status) params.set("status", status);
+        container.innerHTML = '<div class="loading"></div>';
+        try {
+            const res = await apiCall(API.admin + "/users?" + params);
+            if (!res) return;
+            const d = res.data;
+            container.innerHTML = `
+                <div class="toolbar">
+                    <div class="search-bar">
+                        <input type="text" id="user-search" placeholder="搜索用户名/手机号/邮箱" value="${search}" onkeydown="if(event.key==='Enter'){search=this.value;renderUsers(document.getElementById('page-content'))}">
+                        <select id="user-status-filter" onchange="status=this.value;renderUsers(document.getElementById('page-content'))">
+                            <option value="">全部状态</option>
+                            <option value="1" ${status==='1'?'selected':''}>正常</option>
+                            <option value="0" ${status==='0'?'selected':''}>禁用</option>
+                        </select>
+                        <button class="btn btn-primary" onclick="document.getElementById('user-search').value='';search='';status='';renderUsers(document.getElementById('page-content'))">重置</button>
+                    </div>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+                        <button class="btn btn-sm btn-primary" onclick="batchAction('enable')">批量启用</button>
+                        <button class="btn btn-sm btn-warning" onclick="batchAction('disable')" style="background:var(--warning);color:#fff">批量禁用</button>
+                        <button class="btn btn-sm btn-danger" onclick="batchAction('delete')" style="background:var(--danger);color:#fff">批量删除</button>
+                        <button class="btn btn-sm btn-text" onclick="showImportUsers()">导入用户</button>
+                        <button class="btn btn-sm btn-text" onclick="exportUsers()">导出用户</button>
+                    </div>
+                    <button class="btn btn-primary" onclick="showCreateUserModal()">+ 新增用户</button>
+                </div>
+                <div class="card"><div class="table-wrap">
+                <table><thead><tr>
+                    <th style="width:40px"><input type="checkbox" onchange="toggleAllUsers(this.checked)"></th>
+                    <th>ID</th><th>用户名</th><th>昵称</th><th>手机号</th><th>邮箱</th><th>类型</th><th>部门</th><th>角色</th><th>状态</th><th>创建时间</th><th>操作</th>
+                </tr></thead><tbody>
+                ${d.users.length ? d.users.map(u => `
+                    <tr>
+                        <td><input type="checkbox" class="user-checkbox" value="${u.id}" onchange="toggleUser(${u.id}, this.checked)"></td>
+                        <td>${u.id}</td>
+                        <td><strong>${u.username}</strong></td>
+                        <td>${u.nickname || "-"}</td>
+                        <td>${u.phone || "-"}</td>
+                        <td>${u.email || "-"}</td>
+                        <td><span class="badge badge-info">${u.user_type === "internal" ? "内部" : "外部"}</span></td>
+                        <td>${u.department || "-"}</td>
+                        <td>${(u.role_names || []).length ? u.role_names.map(r => `<span class="perm-tag">${r}</span>`).join("") : '<span style="color:var(--text-light)">-</span>'}</td>
+                        <td><span class="badge ${u.status ? 'badge-active' : 'badge-disabled'}">${u.status ? "正常" : "禁用"}</span></td>
+                        <td>${formatTime(u.created_at)}</td>
+                        <td style="white-space:nowrap">
+                            <button class="btn btn-sm btn-text" onclick="showEditUserModal(${u.id})">编辑</button>
+                            <button class="btn btn-sm btn-text" onclick="toggleUserStatus(${u.id},${u.status})">${u.status ? "禁用" : "启用"}</button>
+                            <button class="btn btn-sm btn-text" onclick="showResetPasswordModal(${u.id},'${u.username}')">重置密码</button>
+                            ${u.status ? `<button class="btn btn-sm btn-text" onclick="deleteUser(${u.id})" style="color:var(--danger)">删除</button>` : ''}
+                        </td>
+                    </tr>`).join("") : '<tr><td colspan="11"><div class="empty-state">暂无数据</div></td></tr>'}
+                </tbody></table></div>
+                ${renderPagination(d.total, page, pageSize, p => { page = p; load(); })}
+                </div>`;
+        } catch (e) { container.innerHTML = `<div class="empty-state">加载失败: ${e.message}</div>`; }
+    }
+    load();
+}
+
+async function showCreateUserModal() {
+    const res = await apiCall(API.admin + "/departments");
+    const depts = res ? res.data.departments || [] : [];
+    
+    const buildDeptOptions = (items, parentId = null, prefix = "") => {
+        return items
+            .filter(d => d.parent_id === parentId)
+            .map(d => `<option value="${d.id}">${prefix}${d.name}</option>` + buildDeptOptions(items, d.id, prefix + "├─ "))
+            .join("");
+    };
+
+    openModal(`
+        <div class="modal-header"><h2>新增用户</h2><button class="modal-close" onclick="closeModal()">&times;</button></div>
+        <form id="create-user-form" onsubmit="return false">
+            <div class="form-group"><label>用户名 *</label><input id="cu-username" required></div>
+            <div class="form-group"><label>密码 *</label><input type="password" id="cu-password" required minlength="8"></div>
+            <div class="form-group"><label>用户类型</label>
+                <select id="cu-type"><option value="internal">内部用户</option><option value="external">外部用户</option></select></div>
+            <div class="form-group"><label>昵称</label><input id="cu-nickname"></div>
+            <div class="form-group"><label>邮箱</label><input type="email" id="cu-email"></div>
+            <div class="form-group"><label>手机号</label><input id="cu-phone"></div>
+            <div class="form-group"><label>部门</label>
+                <select id="cu-dept">
+                    <option value="">请选择部门</option>
+                    ${buildDeptOptions(depts)}
+                </select>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-text" onclick="closeModal()">取消</button>
+                <button class="btn btn-primary" onclick="createUser()">确认创建</button>
+            </div>
+        </form>`);
+}
+
+async function createUser() {
+    const deptId = document.getElementById("cu-dept").value;
+    const data = {
+        username: document.getElementById("cu-username").value.trim(),
+        password: document.getElementById("cu-password").value.trim(),
+        user_type: document.getElementById("cu-type").value,
+        nickname: document.getElementById("cu-nickname").value.trim() || null,
+        email: document.getElementById("cu-email").value.trim() || null,
+        phone: document.getElementById("cu-phone").value.trim() || null,
+        dept_id: deptId ? parseInt(deptId) : null,
+    };
+    if (!data.username || !data.password) { showToast("用户名和密码不能为空", "error"); return; }
+    try {
+        const res = await apiCall(API.admin + "/users", { method: "POST", body: JSON.stringify(data) });
+        if (!res) return;
+        if (res.code < 0) { showToast(res.message, "error"); return; }
+        showToast("用户创建成功", "success");
+        closeModal();
+        switchPage("users");
+    } catch (e) { showToast(e.message, "error"); }
+}
+
+async function showEditUserModal(id) {
+    try {
+        const [userRes, rolesRes, deptRes] = await Promise.all([
+            apiCall(API.admin + "/users/" + id),
+            apiCall(API.admin + "/roles"),
+            apiCall(API.admin + "/departments"),
+        ]);
+        if (!userRes) return;
+        const u = userRes.data;
+        const roles = rolesRes ? rolesRes.data.roles : [];
+        const assignedRoles = u.role_ids || [];
+        const depts = deptRes ? deptRes.data.departments || [] : [];
+
+        const buildDeptOptions = (items, parentId = null, prefix = "") => {
+            return items
+                .filter(d => d.parent_id === parentId)
+                .map(d => `<option value="${d.id}" ${u.dept_id === d.id ? 'selected' : ''}>${prefix}${d.name}</option>` + buildDeptOptions(items, d.id, prefix + "├─ "))
+                .join("");
+        };
+
+        openModal(`
+            <div class="modal-header"><h2>编辑用户 #${id}</h2><button class="modal-close" onclick="closeModal()">&times;</button></div>
+            <form id="edit-user-form" onsubmit="return false">
+                <div class="form-group"><label>用户名</label><input value="${u.username}" disabled style="background:#f1f5f9"></div>
+                <div class="form-group"><label>昵称</label><input id="eu-nickname" value="${u.nickname || ""}"></div>
+                <div class="form-group"><label>邮箱</label><input id="eu-email" value="${u.email || ""}"></div>
+                <div class="form-group"><label>手机号</label><input id="eu-phone" value="${u.phone || ""}"></div>
+                <div class="form-group"><label>部门</label>
+                    <select id="eu-dept">
+                        <option value="">请选择部门</option>
+                        ${buildDeptOptions(depts)}
+                    </select>
+                </div>
+                <div class="form-group"><label>角色分配</label>
+                    <div class="perm-grid" id="eu-roles-container">
+                        ${roles.length ? roles.map(r => `
+                            <label class="perm-item ${assignedRoles.includes(r.id) ? 'selected' : ''}" onclick="event.preventDefault();this.classList.toggle('selected');var cb=this.querySelector('input');cb.checked=!cb.checked">
+                                <input type="checkbox" value="${r.id}" ${assignedRoles.includes(r.id) ? 'checked' : ''} style="display:none">
+                                <span class="perm-tag">${r.code}</span> ${r.name}
+                            </label>`).join("") : '<span style="color:var(--text-light)">暂无角色</span>'}
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-text" onclick="closeModal()">取消</button>
+                    <button class="btn btn-primary" onclick="editUser(${id})">保存</button>
+                </div>
+            </form>`);
+    } catch (e) { showToast(e.message, "error"); }
+}
+
+async function editUser(id) {
+    const deptId = document.getElementById("eu-dept").value;
+    const data = {
+        nickname: document.getElementById("eu-nickname").value.trim() || null,
+        email: document.getElementById("eu-email").value.trim() || null,
+        phone: document.getElementById("eu-phone").value.trim() || null,
+        dept_id: deptId ? parseInt(deptId) : null,
+    };
+    try {
+        const res = await apiCall(API.admin + "/users/" + id, { method: "PUT", body: JSON.stringify(data) });
+        if (!res) return;
+        if (res.code < 0) { showToast(res.message, "error"); return; }
+
+        const roleIds = Array.from(document.querySelectorAll("#eu-roles-container input:checked")).map(el => parseInt(el.value));
+        const roleRes = await apiCall(API.admin + "/users/" + id + "/roles", {
+            method: "PUT", body: JSON.stringify({ role_ids: roleIds }),
+        });
+        if (roleRes && roleRes.code < 0) {
+            showToast("角色更新失败: " + roleRes.message, "error");
+        }
+
+        showToast("用户信息已更新", "success");
+        closeModal();
+        switchPage("users");
+    } catch (e) { showToast("保存失败: " + e.message, "error"); }
+}
+
+async function toggleUserStatus(id, current) {
+    if (!confirm(`确定${current ? "禁用" : "启用"}该用户吗？`)) return;
+    try {
+        const res = await apiCall(API.admin + "/users/" + id + "/status", {
+            method: "PATCH", body: JSON.stringify({ status: current ? 0 : 1 }),
+        });
+        if (!res) return;
+        if (res.code < 0) { showToast(res.message, "error"); return; }
+        showToast("状态已更新", "success");
+        switchPage("users");
+    } catch (e) { showToast(e.message, "error"); }
+}
+
+async function deleteUser(id) {
+    if (!confirm("确定删除该用户吗？此操作不可恢复。")) return;
+    try {
+        const res = await apiCall(API.admin + "/users/" + id, { method: "DELETE" });
+        if (!res) return;
+        if (res.code < 0) { showToast(res.message, "error"); return; }
+        showToast("用户已删除", "success");
+        switchPage("users");
+    } catch (e) { showToast(e.message, "error"); }
+}
+
+function showResetPasswordModal(id, username) {
+    openModal(`
+        <div class="modal-header"><h2>重置密码</h2><button class="modal-close" onclick="closeModal()">&times;</button></div>
+        <p style="margin-bottom:16px;color:var(--text-secondary)">用户: <strong>${username}</strong></p>
+        <form onsubmit="return false">
+            <div class="form-group"><label>新密码 *</label><input type="password" id="rp-password" required minlength="8"></div>
+            <div class="modal-footer">
+                <button class="btn btn-text" onclick="closeModal()">取消</button>
+                <button class="btn btn-primary" onclick="resetPassword(${id})">确认重置</button>
+            </div>
+        </form>`);
+}
+
+async function resetPassword(id) {
+    const pw = document.getElementById("rp-password").value.trim();
+    if (!pw || pw.length < 8) { showToast("密码至少8位", "error"); return; }
+    try {
+        const res = await apiCall(API.admin + "/users/" + id + "/reset-password", {
+            method: "POST", body: JSON.stringify({ new_password: pw }),
+        });
+        if (!res) return;
+        if (res.code < 0) { showToast(res.message, "error"); return; }
+        showToast("密码已重置", "success");
+        closeModal();
+    } catch (e) { showToast(e.message, "error"); }
+}
+
+function toggleAllUsers(checked) {
+    document.querySelectorAll(".user-checkbox").forEach(cb => {
+        cb.checked = checked;
+        const id = parseInt(cb.value);
+        if (checked) {
+            if (!batchUserIds.includes(id)) batchUserIds.push(id);
+        } else {
+            batchUserIds = batchUserIds.filter(i => i !== id);
+        }
+    });
+}
+
+function toggleUser(id, checked) {
+    if (checked) {
+        if (!batchUserIds.includes(id)) batchUserIds.push(id);
+    } else {
+        batchUserIds = batchUserIds.filter(i => i !== id);
+    }
+}
+
+async function batchAction(action) {
+    if (!batchUserIds.length) { showToast("请先选择用户", "error"); return; }
+    const actionMap = {
+        enable: { label: "启用", method: "PATCH", url: id => API.admin + "/users/" + id + "/status", body: () => JSON.stringify({ status: 1 }) },
+        disable: { label: "禁用", method: "PATCH", url: id => API.admin + "/users/" + id + "/status", body: () => JSON.stringify({ status: 0 }) },
+        delete: { label: "删除", method: "DELETE", url: id => API.admin + "/users/" + id, body: () => null },
+    };
+    const act = actionMap[action];
+    if (!act) return;
+    if (!confirm(`确定${act.label}选中的 ${batchUserIds.length} 个用户吗？${action === 'delete' ? '此操作不可恢复。' : ''}`)) return;
+    try {
+        for (const id of batchUserIds) {
+            const opts = { method: act.method };
+            const body = act.body();
+            if (body) opts.body = body;
+            await apiCall(act.url(id), opts);
+        }
+        showToast("批量" + act.label + "成功", "success");
+        batchUserIds = [];
+        switchPage("users");
+    } catch (e) {
+        showToast("批量操作失败: " + e.message, "error");
+    }
+}
+
+function showImportUsers() {
+    openModal(`
+        <div class="modal-header"><h2>导入用户</h2><button class="modal-close" onclick="closeModal()">&times;</button></div>
+        <form onsubmit="return false">
+            <div class="form-group">
+                <label>选择CSV文件</label>
+                <input type="file" id="import-csv-file" accept=".csv" style="padding:8px 0">
+            </div>
+            <div style="background:#f8f9fa;padding:12px;border-radius:var(--radius-sm);margin-bottom:16px;font-size:13px;color:var(--text-secondary);line-height:1.8">
+                <strong>CSV格式要求：</strong><br>
+                第一行为列标题，支持以下列：<br>
+                username（必填）, password（必填）, nickname, email, phone, department, user_type<br>
+                文件编码请使用 UTF-8。
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-text" onclick="closeModal()">取消</button>
+                <button class="btn btn-primary" onclick="importUsersFromCSV()">开始导入</button>
+            </div>
+        </form>`);
+}
+
+async function importUsersFromCSV() {
+    const fileInput = document.getElementById("import-csv-file");
+    if (!fileInput.files || !fileInput.files[0]) { showToast("请选择文件", "error"); return; }
+    const file = fileInput.files[0];
+    const text = await file.text();
+    const lines = text.trim().split("\n");
+    if (lines.length < 2) { showToast("CSV文件至少需要包含标题行和一条数据", "error"); return; }
+    const headers = lines[0].split(",").map(h => h.trim().toLowerCase());
+    const results = { success: 0, fail: 0, errors: [] };
+    for (let i = 1; i < lines.length; i++) {
+        const vals = lines[i].split(",").map(v => v.trim());
+        const row = {};
+        headers.forEach((h, idx) => { row[h] = vals[idx] || ""; });
+        if (!row.username || !row.password) {
+            results.fail++;
+            results.errors.push(`第${i + 1}行: 缺少username或password`);
+            continue;
+        }
+        try {
+            const res = await apiCall(API.admin + "/users", {
+                method: "POST",
+                body: JSON.stringify({
+                    username: row.username,
+                    password: row.password,
+                    nickname: row.nickname || null,
+                    email: row.email || null,
+                    phone: row.phone || null,
+                    department: row.department || null,
+                    user_type: row.user_type || "internal",
+                }),
+            });
+            if (!res) { results.fail++; results.errors.push(`第${i + 1}行: 请求失败`); continue; }
+            if (res.code < 0) { results.fail++; results.errors.push(`第${i + 1}行: ${res.message}`); continue; }
+            results.success++;
+        } catch (e) {
+            results.fail++;
+            results.errors.push(`第${i + 1}行: ${e.message}`);
+        }
+    }
+    closeModal();
+    let msg = `导入完成: 成功 ${results.success} 条, 失败 ${results.fail} 条`;
+    if (results.errors.length) {
+        msg += "<br><br>" + results.errors.slice(0, 10).map(e => "• " + e).join("<br>");
+        if (results.errors.length > 10) msg += `<br>...以及另外 ${results.errors.length - 10} 条错误`;
+    }
+    openModal(`
+        <div class="modal-header"><h2>导入结果</h2><button class="modal-close" onclick="closeModal()">&times;</button></div>
+        <div style="line-height:2">${msg}</div>
+        <div class="modal-footer"><button class="btn btn-primary" onclick="closeModal();switchPage('users')">确定</button></div>`);
+}
+
+async function exportUsers() {
+    try {
+        const params = new URLSearchParams({ page: 1, page_size: 99999 });
+        const res = await apiCall(API.admin + "/users?" + params);
+        if (!res) return;
+        const users = res.data.users;
+        const csv = "\uFEFFID,用户名,昵称,手机号,邮箱,类型,部门,状态,创建时间\n" +
+            users.map(u =>
+                `"${u.id}","${u.username}","${u.nickname || ""}","${u.phone || ""}","${u.email || ""}","${u.user_type}","${u.department || ""}","${u.status ? '正常' : '禁用'}","${formatTime(u.created_at)}"`
+            ).join("\n");
+        const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "用户数据_" + new Date().toISOString().slice(0, 10) + ".csv";
+        a.click();
+        URL.revokeObjectURL(url);
+        showToast("导出成功", "success");
+    } catch (e) {
+        showToast("导出失败: " + e.message, "error");
+    }
+}
+
+// ================== APPLICATIONS ==================
+
+async function renderApplications(container) {
+    let page = 1, search = "", status = "";
+    const pageSize = 20;
+
+    async function load() {
+        const params = new URLSearchParams({ page, page_size: pageSize });
+        if (search) params.set("search", search);
+        if (status) params.set("status", status);
+        container.innerHTML = '<div class="loading"></div>';
+        try {
+            const res = await apiCall(API.admin + "/applications?" + params);
+            if (!res) return;
+            const d = res.data;
+            container.innerHTML = `
+                <div class="toolbar">
+                    <div class="search-bar">
+                        <input type="text" id="app-search" placeholder="搜索应用名称" value="${search}" onkeydown="if(event.key==='Enter'){search=this.value;renderApplications(document.getElementById('page-content'))}">
+                        <select id="app-status-filter" onchange="status=this.value;renderApplications(document.getElementById('page-content'))">
+                            <option value="">全部状态</option>
+                            <option value="true" ${status==='true'?'selected':''}>启用</option>
+                            <option value="false" ${status==='false'?'selected':''}>禁用</option>
+                        </select>
+                        <button class="btn btn-primary" onclick="document.getElementById('app-search').value='';search='';status='';renderApplications(document.getElementById('page-content'))">重置</button>
+                    </div>
+                    <button class="btn btn-primary" onclick="showCreateAppModal()">+ 注册应用</button>
+                </div>
+                <div class="card"><div class="table-wrap">
+                <table><thead><tr>
+                    <th>ID</th><th>名称</th><th>AppKey</th><th>回调地址</th><th>默认访问</th><th>状态</th><th>创建时间</th><th>操作</th>
+                </tr></thead><tbody>
+                ${d.apps.length ? d.apps.map(a => `
+                    <tr>
+                        <td>${a.id}</td>
+                        <td><strong>${a.name}</strong></td>
+                        <td style="font-family:monospace;font-size:12px">${a.app_key}</td>
+                        <td style="max-width:150px;overflow:hidden;text-overflow:ellipsis">${(a.callback_urls||[]).join(", ") || "-"}</td>
+                        <td>${(a.default_access_user_types||[]).join(", ") || "-"}</td>
+                        <td><span class="badge ${a.status ? 'badge-active' : 'badge-disabled'}">${a.status ? "启用" : "禁用"}</span></td>
+                        <td>${formatTime(a.created_at)}</td>
+                        <td style="white-space:nowrap">
+                            <button class="btn btn-sm btn-text" onclick="showEditAppModal(${a.id})">编辑</button>
+                            <button class="btn btn-sm btn-text" onclick="toggleAppStatus(${a.id},${a.status})">${a.status ? "禁用" : "启用"}</button>
+                            <button class="btn btn-sm btn-text" onclick="showAppSecret(${a.id})">查看密钥</button>
+                            <button class="btn btn-sm btn-text" onclick="showAppApiStats(${a.id})">API统计</button>
+                        </td>
+                    </tr>`).join("") : '<tr><td colspan="8"><div class="empty-state">暂无数据</div></td></tr>'}
+                </tbody></table></div>
+                ${renderPagination(d.total, page, pageSize, p => { page = p; load(); })}
+                </div>`;
+        } catch (e) { container.innerHTML = `<div class="empty-state">加载失败: ${e.message}</div>`; }
+    }
+    load();
+}
+
+function showCreateAppModal() {
+    openModal(`
+        <div class="modal-header"><h2>注册应用</h2><button class="modal-close" onclick="closeModal()">&times;</button></div>
+        <form id="create-app-form" onsubmit="return false">
+            <div class="form-group"><label>应用名称 *</label><input id="ca-name" required></div>
+            <div class="form-group"><label>默认访问用户类型</label>
+                <div style="display:flex;gap:16px;padding:4px 0">
+                    <label style="display:flex;align-items:center;gap:4px"><input type="checkbox" value="internal" id="ca-type-internal"> 内部用户</label>
+                    <label style="display:flex;align-items:center;gap:4px"><input type="checkbox" value="external" id="ca-type-external"> 外部用户</label>
+                </div></div>
+            <div class="form-group"><label>回调地址（每行一个）</label>
+                <textarea id="ca-urls" rows="3" placeholder="https://example.com/callback" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:14px"></textarea></div>
+            <div class="modal-footer">
+                <button class="btn btn-text" onclick="closeModal()">取消</button>
+                <button class="btn btn-primary" onclick="createApp()">确认注册</button>
+            </div>
+        </form>`);
+}
+
+async function createApp() {
+    const urls = document.getElementById("ca-urls").value.trim().split("\n").filter(Boolean);
+    const types = [];
+    if (document.getElementById("ca-type-internal").checked) types.push("internal");
+    if (document.getElementById("ca-type-external").checked) types.push("external");
+    const data = {
+        name: document.getElementById("ca-name").value.trim(),
+        callback_urls: urls.length ? urls : null,
+        default_access_user_types: types.length ? types : null,
+    };
+    if (!data.name) { showToast("应用名称不能为空", "error"); return; }
+    try {
+        const res = await apiCall(API.admin + "/applications", { method: "POST", body: JSON.stringify(data) });
+        if (!res) return;
+        if (res.code < 0) { showToast(res.message, "error"); return; }
+        const secret = res.data.app_secret_raw;
+        closeModal();
+        showToast("应用注册成功", "success");
+        if (secret) {
+            openModal(`
+                <div class="modal-header"><h2>应用注册成功</h2><button class="modal-close" onclick="closeModal()">&times;</button></div>
+                <p style="margin-bottom:12px;color:var(--text-secondary)">请保存以下密钥，关闭后不再显示：</p>
+                <div style="background:#f1f5f9;padding:12px;border-radius:var(--radius-sm);margin-bottom:16px">
+                    <div style="margin-bottom:8px"><label style="font-size:12px;color:var(--text-secondary)">AppKey</label><div style="font-family:monospace;font-size:13px">${res.data.app_key}</div></div>
+                    <div><label style="font-size:12px;color:var(--text-secondary)">AppSecret</label><div style="font-family:monospace;font-size:13px">${secret}</div></div>
+                </div>
+                <button class="btn btn-primary btn-block" onclick="closeModal();switchPage('applications')">我已保存，返回列表</button>`);
+        } else {
+            switchPage("applications");
+        }
+    } catch (e) { showToast(e.message, "error"); }
+}
+
+async function showEditAppModal(id) {
+    try {
+        const res = await apiCall(API.admin + "/applications/" + id);
+        if (!res) return;
+        const a = res.data;
+        const types = a.default_access_user_types || [];
+        const assignedPerms = a.permission_ids || [];
+        openModal(`
+            <div class="modal-header"><h2>编辑应用 #${id}</h2><button class="modal-close" onclick="closeModal()">&times;</button></div>
+            <form onsubmit="return false">
+                <div class="form-group"><label>应用名称</label><input id="ea-name" value="${a.name}"></div>
+                <div class="form-group"><label>默认访问用户类型</label>
+                    <div style="display:flex;gap:16px;padding:4px 0">
+                        <label style="display:flex;align-items:center;gap:4px"><input type="checkbox" value="internal" id="ea-type-internal" ${types.includes("internal")?"checked":""}> 内部用户</label>
+                        <label style="display:flex;align-items:center;gap:4px"><input type="checkbox" value="external" id="ea-type-external" ${types.includes("external")?"checked":""}> 外部用户</label>
+                    </div></div>
+                <div class="form-group"><label>回调地址（每行一个）</label>
+                    <textarea id="ea-urls" rows="3" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:var(--radius-sm)">${(a.callback_urls||[]).join("\\n")}</textarea></div>
+                <div class="form-group"><label>权限配置</label>
+                    <div id="ea-permissions-section" style="padding:4px 0;min-height:40px"><span style="color:var(--text-light)">加载中...</span></div></div>
+                <div class="modal-footer">
+                    <button class="btn btn-text" onclick="closeModal()">取消</button>
+                    <button class="btn btn-primary" onclick="editApp(${id})">保存</button>
+                </div>
+            </form>`);
+        loadAppPermissions(id, assignedPerms);
+    } catch (e) { showToast(e.message, "error"); }
+}
+
+async function editApp(id) {
+    const urls = document.getElementById("ea-urls").value.trim().split("\n").filter(Boolean);
+    const types = [];
+    if (document.getElementById("ea-type-internal").checked) types.push("internal");
+    if (document.getElementById("ea-type-external").checked) types.push("external");
+    const permIds = Array.from(document.querySelectorAll("#ea-permissions-section input[type=checkbox]:checked")).map(el => parseInt(el.value));
+    const data = {
+        name: document.getElementById("ea-name").value.trim(),
+        callback_urls: urls.length ? urls : null,
+        default_access_user_types: types.length ? types : null,
+        permission_ids: permIds.length ? permIds : null,
+    };
+    if (!data.name) { showToast("应用名称不能为空", "error"); return; }
+    try {
+        const res = await apiCall(API.admin + "/applications/" + id, { method: "PUT", body: JSON.stringify(data) });
+        if (!res) return;
+        if (res.code < 0) { showToast(res.message, "error"); return; }
+        showToast("应用已更新", "success");
+        closeModal();
+        switchPage("applications");
+    } catch (e) { showToast(e.message, "error"); }
+}
+
+async function toggleAppStatus(id, current) {
+    if (!confirm(`确定${current ? "禁用" : "启用"}该应用吗？`)) return;
+    try {
+        const res = await apiCall(API.admin + "/applications/" + id + "/status", {
+            method: "PATCH", body: JSON.stringify({ status: !current }),
+        });
+        if (!res) return;
+        if (res.code < 0) { showToast(res.message, "error"); return; }
+        showToast("状态已更新", "success");
+        switchPage("applications");
+    } catch (e) { showToast(e.message, "error"); }
+}
+
+async function showAppSecret(id) {
+    try {
+        const res = await apiCall(API.admin + "/applications/" + id + "/regenerate-secret", {
+            method: "POST",
+        });
+        if (!res) return;
+        if (res.code < 0) { showToast(res.message, "error"); return; }
+        openModal(`
+            <div class="modal-header"><h2>应用密钥</h2><button class="modal-close" onclick="closeModal()">&times;</button></div>
+            <p style="margin-bottom:12px;color:var(--text-secondary)">已重新生成密钥，请立即保存：</p>
+            <div style="background:#f1f5f9;padding:12px;border-radius:var(--radius-sm);margin-bottom:16px">
+                <div><label style="font-size:12px;color:var(--text-secondary)">AppSecret</label>
+                <div style="font-family:monospace;font-size:13px;word-break:break-all">${res.data.app_secret_raw}</div></div>
+            </div>
+            <button class="btn btn-primary btn-block" onclick="closeModal()">我已保存</button>`);
+    } catch (e) { showToast(e.message, "error"); }
+}
+
+async function showAppApiStats(id) {
+    const days = prompt("统计天数（1-365，默认7天）", "7") || "7";
+    try {
+        const res = await apiCall(API.admin + "/applications/" + id + "/api-stats?days=" + days);
+        if (!res) return;
+        const d = res.data;
+        let html = `
+            <div class="modal-header"><h2>API调用统计 — ${d.app_name}</h2><button class="modal-close" onclick="closeModal()">&times;</button></div>
+            <div style="padding:16px 0">最近 ${d.period_days} 天的调用情况：</div>`;
+        if (d.daily_totals && d.daily_totals.length) {
+            html += `<div class="card"><div class="card-title">每日调用趋势</div><div class="table-wrap"><table><thead><tr><th>日期</th><th>调用次数</th></tr></thead><tbody>`;
+            d.daily_totals.forEach(s => {
+                html += `<tr><td>${s.date}</td><td><strong>${s.count}</strong></td></tr>`;
+            });
+            html += `</tbody></table></div></div>`;
+        }
+        if (d.path_totals && d.path_totals.length) {
+            html += `<div class="card" style="margin-top:16px"><div class="card-title">接口调用排行</div><div class="table-wrap"><table><thead><tr><th>API路径</th><th>调用次数</th></tr></thead><tbody>`;
+            d.path_totals.forEach(s => {
+                const path = s.api_path.replace("/api/v1/open/", "");
+                html += `<tr><td style="font-family:monospace;font-size:12px">${path}</td><td><strong>${s.count}</strong></td></tr>`;
+            });
+            html += `</tbody></table></div></div>`;
+        }
+        if (!d.daily_totals || !d.daily_totals.length) {
+            html += `<div class="empty-state">暂无调用记录</div>`;
+        }
+        html += `<div style="margin-top:16px"><button class="btn btn-text btn-block" onclick="showAppApiStats(${id})">刷新</button></div>`;
+        openModal(html);
+    } catch (e) { showToast(e.message, "error"); }
+}
+
+async function loadAppPermissions(appId, assignedPermIds) {
+    try {
+        const res = await apiCall(API.admin + "/permissions");
+        if (!res) return;
+        const allPerms = res.data.permissions || [];
+        const cats = [...new Set(allPerms.map(p => p.category))];
+        const section = document.getElementById("ea-permissions-section");
+        if (!section) return;
+        if (!allPerms.length) {
+            section.innerHTML = '<span style="color:var(--text-light)">无可用权限</span>';
+            return;
+        }
+        section.innerHTML = `<div class="perm-grid">
+            ${cats.map(cat => allPerms.filter(p => p.category === cat).map(p => `
+                <label class="perm-item ${assignedPermIds.includes(p.id) ? 'selected' : ''}" onclick="event.preventDefault();this.classList.toggle('selected');var cb=this.querySelector('input');cb.checked=!cb.checked">
+                    <input type="checkbox" value="${p.id}" ${assignedPermIds.includes(p.id) ? 'checked' : ''} style="display:none">
+                    <span class="perm-tag">${cat}</span> ${p.code}
+                </label>`).join("")).join("")}
+        </div>`;
+    } catch (e) {
+        const section = document.getElementById("ea-permissions-section");
+        if (section) section.innerHTML = '<span style="color:var(--danger)">加载失败</span>';
+    }
+}
+
+// ================== ROLES ==================
+
+async function renderRoles(container) {
+    container.innerHTML = '<div class="loading"></div>';
+    try {
+        const [roleRes, permRes] = await Promise.all([
+            apiCall(API.admin + "/roles"),
+            apiCall(API.admin + "/permissions"),
+        ]);
+        if (!roleRes) return;
+        const roles = roleRes.data.roles;
+        const allPerms = permRes ? permRes.data.permissions : [];
+
+        container.innerHTML = `
+            <div class="toolbar">
+                <div></div>
+                <button class="btn btn-primary" onclick="showCreateRoleModal(${JSON.stringify(allPerms).replace(/"/g, "'")})">+ 新增角色</button>
+            </div>
+            <div class="card"><div class="table-wrap">
+            <table><thead><tr>
+                <th>ID</th><th>角色名称</th><th>角色编码</th><th>权限</th><th>创建时间</th><th>操作</th>
+            </tr></thead><tbody>
+            ${roles.length ? roles.map(r => `
+                <tr>
+                    <td>${r.id}</td>
+                    <td><strong>${r.name}</strong></td>
+                    <td><code style="background:#f1f5f9;padding:2px 6px;border-radius:3px;font-size:12px">${r.code}</code></td>
+                    <td>
+                        ${(r.permission_ids || []).slice(0, 8).map(pid => {
+                            const p = allPerms.find(pp => pp.id === pid);
+                            return p ? `<span class="perm-tag">${p.code}</span>` : '';
+                        }).join("")}
+                        ${(r.permission_ids || []).length > 8 ? `<span class="perm-tag">+${r.permission_ids.length - 8}</span>` : ''}
+                        ${!(r.permission_ids || []).length ? '<span style="color:var(--text-light)">无权限</span>' : ''}
+                    </td>
+                    <td>${formatTime(r.created_at)}</td>
+                    <td><button class="btn btn-sm btn-text" onclick="showEditRoleModal(${r.id},${JSON.stringify(allPerms).replace(/"/g, "'")})">编辑</button></td>
+                </tr>`).join("") : '<tr><td colspan="6"><div class="empty-state">暂无数据</div></td></tr>'}
+            </tbody></table></div></div>`;
+    } catch (e) { container.innerHTML = `<div class="empty-state">加载失败: ${e.message}</div>`; }
+}
+
+function showCreateRoleModal(allPerms) {
+    const cats = [...new Set(allPerms.map(p => p.category))];
+    openModal(`
+        <div class="modal-header"><h2>新增角色</h2><button class="modal-close" onclick="closeModal()">&times;</button></div>
+        <form onsubmit="return false">
+            <div class="form-group"><label>角色名称 *</label><input id="cr-name" required></div>
+            <div class="form-group"><label>角色编码 *</label><input id="cr-code" required placeholder="如：admin, operator"></div>
+            <div class="form-group"><label>权限分配</label>
+                <div class="perm-grid">
+                    ${cats.map(cat => allPerms.filter(p => p.category === cat).map(p => `
+                        <label class="perm-item" onclick="event.preventDefault();this.classList.toggle('selected');var cb=this.querySelector('input');cb.checked=!cb.checked">
+                            <input type="checkbox" value="${p.id}" style="display:none">
+                            <span class="perm-tag">${cat}</span> ${p.code}
+                        </label>`).join("")).join("")}
+                </div></div>
+            <div class="modal-footer">
+                <button class="btn btn-text" onclick="closeModal()">取消</button>
+                <button class="btn btn-primary" onclick="createRole()">确认创建</button>
+            </div>
+        </form>`);
+}
+
+async function createRole() {
+    const name = document.getElementById("cr-name").value.trim();
+    const code = document.getElementById("cr-code").value.trim();
+    const permIds = Array.from(document.querySelectorAll(".perm-item input:checked")).map(el => parseInt(el.value));
+    if (!name || !code) { showToast("名称和编码不能为空", "error"); return; }
+    try {
+        const res = await apiCall(API.admin + "/roles", {
+            method: "POST", body: JSON.stringify({ name, code, permission_ids: permIds }),
+        });
+        if (!res) return;
+        if (res.code < 0) { showToast(res.message, "error"); return; }
+        showToast("角色创建成功", "success");
+        closeModal();
+        switchPage("roles");
+    } catch (e) { showToast(e.message, "error"); }
+}
+
+async function showEditRoleModal(id, allPerms) {
+    try {
+        const res = await apiCall(API.admin + "/roles/" + id);
+        if (!res) return;
+        const r = res.data;
+        const cats = [...new Set(allPerms.map(p => p.category))];
+        const assigned = r.permission_ids || [];
+        openModal(`
+            <div class="modal-header"><h2>编辑角色 #${id}</h2><button class="modal-close" onclick="closeModal()">&times;</button></div>
+            <form onsubmit="return false">
+                <div class="form-group"><label>角色名称</label><input id="er-name" value="${r.name}"></div>
+                <div class="form-group"><label>角色编码</label><input value="${r.code}" disabled style="background:#f1f5f9"></div>
+                <div class="form-group"><label>权限分配</label>
+                    <div class="perm-grid">
+                        ${cats.map(cat => allPerms.filter(p => p.category === cat).map(p => `
+                            <label class="perm-item ${assigned.includes(p.id) ? 'selected' : ''}" onclick="event.preventDefault();this.classList.toggle('selected');var cb=this.querySelector('input');cb.checked=!cb.checked">
+                                <input type="checkbox" value="${p.id}" ${assigned.includes(p.id) ? 'checked' : ''} style="display:none">
+                                <span class="perm-tag">${cat}</span> ${p.code}
+                            </label>`).join("")).join("")}
+                    </div></div>
+                <div class="modal-footer">
+                    <button class="btn btn-text" onclick="closeModal()">取消</button>
+                    <button class="btn btn-primary" onclick="copyRole(${id})" style="background:var(--warning)">复制角色</button>
+                    <button class="btn btn-primary" onclick="editRole(${id})">保存</button>
+                </div>
+            </form>`);
+    } catch (e) { showToast(e.message, "error"); }
+}
+
+async function editRole(id) {
+    const name = document.getElementById("er-name").value.trim();
+    const permIds = Array.from(document.querySelectorAll(".perm-item input:checked")).map(el => parseInt(el.value));
+    if (!name) { showToast("名称不能为空", "error"); return; }
+    try {
+        const res = await apiCall(API.admin + "/roles/" + id, {
+            method: "PUT", body: JSON.stringify({ name, permission_ids: permIds }),
+        });
+        if (!res) return;
+        if (res.code < 0) { showToast(res.message, "error"); return; }
+        showToast("角色已更新", "success");
+        closeModal();
+        switchPage("roles");
+    } catch (e) { showToast(e.message, "error"); }
+}
+
+async function copyRole(id) {
+    try {
+        const res = await apiCall(API.admin + "/roles/" + id);
+        if (!res) return;
+        const r = res.data;
+        const newName = prompt("请输入新角色名称（复制自: " + r.name + "）", r.name + "_副本");
+        if (!newName) return;
+        const newCode = prompt("请输入新角色编码", r.code + "_copy");
+        if (!newCode) return;
+        const createRes = await apiCall(API.admin + "/roles", {
+            method: "POST", body: JSON.stringify({
+                name: newName,
+                code: newCode,
+                permission_ids: r.permission_ids || [],
+            }),
+        });
+        if (!createRes) return;
+        if (createRes.code < 0) { showToast(createRes.message, "error"); return; }
+        showToast("角色复制成功", "success");
+        closeModal();
+        switchPage("roles");
+    } catch (e) { showToast(e.message, "error"); }
+}
+
+// ================== DEPARTMENTS ==================
+
+async function renderDepartments(container) {
+    container.innerHTML = '<div class="loading"></div>';
+    try {
+        const res = await apiCall(API.admin + "/departments");
+        if (!res) return;
+        const depts = res.data.departments || [];
+        const buildTree = (parentId) => {
+            return depts.filter(d => d.parent_id === parentId).map(d => ({
+                ...d,
+                children: buildTree(d.id),
+            }));
+        };
+        const tree = buildTree(null);
+        const renderTree = (nodes, depth = 0) => {
+            return nodes.map(d => `
+                <div style="padding-left:${depth * 24}px;display:flex;align-items:center;gap:8px;padding-top:6px;padding-bottom:6px;border-bottom:1px solid var(--border-light)">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;color:var(--text-light)"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                    <span style="flex:1"><strong>${d.name}</strong></span>
+                    <span style="color:var(--text-secondary);font-size:13px">${d.code || "-"}</span>
+                    <span style="color:var(--text-secondary);font-size:13px">${d.user_count !== undefined ? d.user_count + "人" : ""}</span>
+                    <button class="btn btn-sm btn-text" onclick="showDepartmentDialog(${d.id},'${d.name}')">编辑</button>
+                    <button class="btn btn-sm btn-text" onclick="showDepartmentDialog(null,'','${d.id}')">+ 子部门</button>
+                    <button class="btn btn-sm btn-text" onclick="deleteDepartment(${d.id},'${d.name}')" style="color:var(--danger)">删除</button>
+                </div>
+                ${d.children && d.children.length ? renderTree(d.children, depth + 1) : ''}
+            `).join("");
+        };
+        container.innerHTML = `
+            <div class="toolbar">
+                <div></div>
+                <button class="btn btn-primary" onclick="showDepartmentDialog(null,'')">+ 新增部门</button>
+            </div>
+            <div class="card">
+                <div class="card-title">部门结构</div>
+                ${tree.length ? renderTree(tree) : '<div class="empty-state">暂无部门，请先创建</div>'}
+            </div>`;
+    } catch (e) { container.innerHTML = `<div class="empty-state">加载失败: ${e.message}</div>`; }
+}
+
+function showDepartmentDialog(id, name, parentId) {
+    const isEdit = id !== null;
+    const title = parentId ? "新增子部门" : (isEdit ? "编辑部门" : "新增部门");
+    openModal(`
+        <div class="modal-header"><h2>${title}</h2><button class="modal-close" onclick="closeModal()">&times;</button></div>
+        <form onsubmit="return false">
+            ${parentId ? `<div class="form-group"><label>父部门ID</label><input value="${parentId}" disabled style="background:#f1f5f9"></div>` : ''}
+            <div class="form-group"><label>部门名称 *</label><input id="dept-name" value="${isEdit ? name : ''}" placeholder="如：技术部"></div>
+            <div class="form-group"><label>部门编码</label><input id="dept-code" value="" placeholder="如：tech（可选）"></div>
+            <div class="modal-footer">
+                <button class="btn btn-text" onclick="closeModal()">取消</button>
+                <button class="btn btn-primary" onclick="saveDepartment(${isEdit ? id : 'null'}, ${parentId || 'null'})">${isEdit ? "保存" : "创建"}</button>
+            </div>
+        </form>`);
+}
+
+async function saveDepartment(id, parentId) {
+    const name = document.getElementById("dept-name").value.trim();
+    const code = document.getElementById("dept-code").value.trim() || null;
+    if (!name) { showToast("部门名称不能为空", "error"); return; }
+    try {
+        const body = { name, code };
+        if (parentId) body.parent_id = parentId;
+        const url = id ? API.admin + "/departments/" + id : API.admin + "/departments";
+        const method = id ? "PUT" : "POST";
+        const res = await apiCall(url, { method, body: JSON.stringify(body) });
+        if (!res) return;
+        if (res.code < 0) { showToast(res.message, "error"); return; }
+        showToast(id ? "部门已更新" : "部门创建成功", "success");
+        closeModal();
+        switchPage("departments");
+    } catch (e) { showToast(e.message, "error"); }
+}
+
+async function deleteDepartment(id, name) {
+    if (!confirm(`确定删除部门"${name}"吗？子部门将一并删除。`)) return;
+    try {
+        const res = await apiCall(API.admin + "/departments/" + id, { method: "DELETE" });
+        if (!res) return;
+        if (res.code < 0) { showToast(res.message, "error"); return; }
+        showToast("部门已删除", "success");
+        switchPage("departments");
+    } catch (e) { showToast(e.message, "error"); }
+}
+
+// ================== AUDIT LOGS ==================
+
+async function renderAudit(container) {
+    let page = 1, action = "", actor = "", dateFrom = "", dateTo = "";
+    const pageSize = 20;
+
+    async function load() {
+        const params = new URLSearchParams({ page, page_size: pageSize });
+        if (action) params.set("action", action);
+        if (actor) params.set("actor", actor);
+        if (dateFrom) params.set("date_from", dateFrom);
+        if (dateTo) params.set("date_to", dateTo);
+        container.innerHTML = '<div class="loading"></div>';
+        try {
+            const res = await apiCall(API.admin + "/audit-logs?" + params);
+            if (!res) return;
+            const d = res.data;
+            container.innerHTML = `
+                <div class="search-bar" id="audit-search-bar">
+                    <input type="text" data-audit-filter="action" placeholder="操作类型" value="${action}">
+                    <input type="text" data-audit-filter="actor" placeholder="操作人" value="${actor}">
+                    <input type="date" data-audit-filter="dateFrom" value="${dateFrom}" style="flex:0 0 auto">
+                    <span style="color:var(--text-secondary)">~</span>
+                    <input type="date" data-audit-filter="dateTo" value="${dateTo}" style="flex:0 0 auto">
+                    <button class="btn btn-primary" data-audit-reset>重置</button>
+                    <button class="btn btn-primary" onclick="exportAuditLogs()">导出</button>
+                </div>
+                <div class="card"><div class="table-wrap">
+                <table><thead><tr>
+                    <th>时间</th><th>操作人</th><th>操作类型</th><th>资源类型</th><th>资源ID</th><th>IP</th><th>详情</th>
+                </tr></thead><tbody>
+                ${d.logs.length ? d.logs.map(log => `
+                    <tr data-audit-detail='${JSON.stringify(log).replace(/'/g, "&#39;")}' style="cursor:pointer">
+                        <td style="white-space:nowrap">${formatTime(log.created_at)}</td>
+                        <td>${log.actor_name || "-"}</td>
+                        <td><code style="background:#f1f5f9;padding:2px 6px;border-radius:3px;font-size:12px">${log.action}</code></td>
+                        <td>${log.resource_type || "-"}</td>
+                        <td>${log.resource_id || "-"}</td>
+                        <td style="font-family:monospace;font-size:12px">${log.ip_address || "-"}</td>
+                        <td><button class="btn btn-sm btn-text" data-audit-detail='${JSON.stringify(log).replace(/'/g, "&#39;")}'>查看</button></td>
+                    </tr>`).join("") : '<tr><td colspan="7"><div class="empty-state">暂无日志</div></td></tr>'}
+                </tbody></table></div>
+                ${renderPagination(d.total, page, pageSize, p => { page = p; load(); })}
+                </div>`;
+
+            // 绑定搜索事件
+            const bar = container.querySelector('#audit-search-bar');
+            if (bar) {
+                bar.querySelectorAll('[data-audit-filter]').forEach(el => {
+                    el.addEventListener('change', () => {
+                        const key = el.dataset.auditFilter;
+                        if (key === 'action') action = el.value;
+                        else if (key === 'actor') actor = el.value;
+                        else if (key === 'dateFrom') dateFrom = el.value;
+                        else if (key === 'dateTo') dateTo = el.value;
+                        load();
+                    });
+                });
+                bar.querySelector('[data-audit-reset]').addEventListener('click', () => {
+                    action = ''; actor = ''; dateFrom = ''; dateTo = '';
+                    load();
+                });
+            }
+            // 使用事件委托监听表格中的查看按钮
+            container.addEventListener('click', function __auditClick(e) {
+                const btn = e.target.closest('[data-audit-detail]');
+                if (btn) {
+                    e.stopPropagation();
+                    try {
+                        const log = JSON.parse(btn.dataset.auditDetail.replace(/&#39;/g, "'"));
+                        showAuditDetail(log);
+                    } catch(ex) { /* ignore parse errors */ }
+                }
+            });
+        } catch (e) { container.innerHTML = `<div class="empty-state">加载失败: ${e.message}</div>`; }
+    }
+    load();
+}
+
+async function exportAuditLogs() {
+    try {
+        const params = new URLSearchParams({ page: 1, page_size: 99999 });
+        const res = await apiCall(API.admin + "/audit-logs?" + params);
+        if (!res) return;
+        const logs = res.data.logs;
+        const csv = "\uFEFF时间,操作人,操作类型,资源类型,资源ID,IP,详情\n" +
+            logs.map(log =>
+                `"${formatTime(log.created_at)}","${log.actor_name || ""}","${log.action}","${log.resource_type || ""}","${log.resource_id || ""}","${log.ip_address || ""}","${(log.detail ? JSON.stringify(log.detail).replace(/"/g, '""') : "")}"`
+            ).join("\n");
+        const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "审计日志_" + new Date().toISOString().slice(0, 10) + ".csv";
+        a.click();
+        URL.revokeObjectURL(url);
+        showToast("导出成功", "success");
+    } catch (e) {
+        showToast("导出失败: " + e.message, "error");
+    }
+}
+
+function showAuditDetail(log) {
+    openModal(`
+        <div class="modal-header"><h2>操作详情</h2><button class="modal-close" onclick="closeModal()">&times;</button></div>
+        <div style="line-height:2">
+            <div><strong>时间：</strong>${formatTime(log.created_at)}</div>
+            <div><strong>操作人：</strong>${log.actor_name || "-"}</div>
+            <div><strong>操作类型：</strong><code style="background:#f1f5f9;padding:2px 6px;border-radius:3px">${log.action}</code></div>
+            <div><strong>资源类型：</strong>${log.resource_type || "-"}</div>
+            <div><strong>资源ID：</strong>${log.resource_id || "-"}</div>
+            <div><strong>IP地址：</strong>${log.ip_address || "-"}</div>
+            <div><strong>UserAgent：</strong><span style="font-size:12px;word-break:break-all">${log.user_agent || "-"}</span></div>
+            ${log.detail ? `<div><strong>变更详情：</strong><pre style="background:#f1f5f9;padding:12px;border-radius:var(--radius-sm);margin-top:4px;font-size:12px;overflow-x:auto">${JSON.stringify(log.detail, null, 2)}</pre></div>` : ''}
+        </div>
+        <div class="modal-footer"><button class="btn btn-primary" onclick="closeModal()">关闭</button></div>`);
+}
+
+// ================== SUPERADMIN DASHBOARD ==================
+
+async function renderSuperadminDashboard(container) {
+    container.innerHTML = '<div class="loading"></div>';
+    try {
+        const [statsRes, tenantGrowthRes, activityRankRes, appCallRes] = await Promise.all([
+            apiCall(API.superadmin + "/global-stats"),
+            apiCall(API.superadmin + "/stats/tenant-growth?days=7"),
+            apiCall(API.superadmin + "/stats/tenant-activity-ranking"),
+            apiCall(API.superadmin + "/stats/app-call-ranking?days=30"),
+        ]);
+        if (!statsRes) return;
+        const s = statsRes.data;
+        const tg = tenantGrowthRes ? tenantGrowthRes.data : null;
+        const ar = activityRankRes ? activityRankRes.data : null;
+        const ac = appCallRes ? appCallRes.data : null;
+
+        container.innerHTML = `
+            <div class="stats-grid">
+                <div class="stat-card"><span class="stat-label">租户总数</span><span class="stat-value primary">${s.total_tenants}</span></div>
+                <div class="stat-card"><span class="stat-label">活跃租户</span><span class="stat-value success">${s.active_tenants}</span></div>
+                <div class="stat-card"><span class="stat-label">总用户数</span><span class="stat-value">${s.total_users}</span></div>
+                <div class="stat-card"><span class="stat-label">活跃用户</span><span class="stat-value success">${s.active_users}</span></div>
+                <div class="stat-card"><span class="stat-label">应用总数</span><span class="stat-value">${s.total_apps}</span></div>
+                <div class="stat-card"><span class="stat-label">活跃应用</span><span class="stat-value primary">${s.active_apps}</span></div>
+                <div class="stat-card"><span class="stat-label">角色数</span><span class="stat-value">${s.total_roles}</span></div>
+            </div>
+            <div class="card">
+                <div class="card-title">租户增长趋势（近7天）</div>
+                <div style="height:120px"><canvas id="saTenantGrowthChart"></canvas></div>
+            </div>
+            <div class="row" style="display:flex;gap:16px;flex-wrap:wrap">
+                <div class="card" style="flex:1;min-width:320px">
+                    <div class="card-title">活跃租户排行 Top 5</div>
+                    ${ar && ar.rankings && ar.rankings.length
+                        ? `<div class="table-wrap"><table><thead><tr><th>#</th><th>租户</th><th>活跃用户</th><th>总用户</th><th>应用数</th></tr></thead><tbody>
+                        ${ar.rankings.slice(0, 5).map((t, i) => `
+                            <tr><td>${i + 1}</td><td><strong>${t.tenant_name}</strong></td><td>${t.active_users}</td><td>${t.total_users}</td><td>${t.app_count}</td></tr>
+                        `).join("")}</tbody></table></div>`
+                        : '<div class="empty-state">暂无数据</div>'}
+                </div>
+                <div class="card" style="flex:1;min-width:320px">
+                    <div class="card-title">应用调用排行 Top 5</div>
+                    ${ac && ac.rankings && ac.rankings.length
+                        ? `<div class="table-wrap"><table><thead><tr><th>#</th><th>应用</th><th>接口</th><th>调用次数</th></tr></thead><tbody>
+                        ${ac.rankings.slice(0, 5).map((a, i) => {
+                            const path = a.api_path ? a.api_path.replace("/api/v1/open/", "") : "-";
+                            return `<tr><td>${i + 1}</td><td><strong>${a.app_name}</strong></td><td style="font-family:monospace;font-size:11px">${path}</td><td>${a.total_calls}</td></tr>`;
+                        }).join("")}</tbody></table></div>`
+                        : '<div class="empty-state">暂无数据</div>'}
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-title">租户概览</div>
+                ${s.tenant_stats && s.tenant_stats.length
+                    ? `<div class="table-wrap"><table><thead><tr>
+                        <th>ID</th><th>名称</th><th>标识</th><th>状态</th><th>用户数</th><th>应用数</th><th>创建时间</th>
+                    </tr></thead><tbody>
+                    ${s.tenant_stats.map(t => `
+                        <tr>
+                            <td>${t.id}</td>
+                            <td><strong>${t.name}</strong></td>
+                            <td><code style="background:#f1f5f9;padding:2px 6px;border-radius:3px;font-size:12px">${t.slug}</code></td>
+                            <td><span class="badge ${t.status ? 'badge-active' : 'badge-disabled'}">${t.status ? "启用" : "禁用"}</span></td>
+                            <td>${t.user_count}</td>
+                            <td>${t.app_count}</td>
+                            <td>${formatTime(t.created_at)}</td>
+                        </tr>`).join("")}
+                    </tbody></table></div>`
+                    : '<div class="empty-state">暂无租户数据</div>'}
+            </div>`;
+
+        if (tg && tg.trend && tg.trend.length) {
+            renderMiniLineChart("saTenantGrowthChart",
+                tg.trend.map(d => d.date.slice(5)),
+                tg.trend.map(d => d.new_tenants),
+                "新增租户", "#0a9e5e");
+        }
+    } catch (e) {
+        container.innerHTML = `<div class="empty-state">加载失败: ${e.message}</div>`;
+    }
+}
+
+// ================== SUPERADMIN TENANTS ==================
+
+async function renderSuperadminTenants(container) {
+    let page = 1, search = "", status = "";
+    const pageSize = 20;
+
+    async function load() {
+        const params = new URLSearchParams({ page, page_size: pageSize });
+        if (search) params.set("search", search);
+        if (status) params.set("status", status);
+        container.innerHTML = '<div class="loading"></div>';
+        try {
+            const res = await apiCall(API.superadmin + "/tenants?" + params);
+            if (!res) return;
+            const d = res.data;
+            container.innerHTML = `
+                <div class="toolbar">
+                    <div class="search-bar">
+                        <input type="text" id="t-search" placeholder="搜索名称/标识" value="${search}" onkeydown="if(event.key==='Enter'){search=this.value;renderSuperadminTenants(document.getElementById('page-content'))}">
+                        <select id="t-status-filter" onchange="status=this.value;renderSuperadminTenants(document.getElementById('page-content'))">
+                            <option value="">全部状态</option>
+                            <option value="true" ${status==='true'?'selected':''}>启用</option>
+                            <option value="false" ${status==='false'?'selected':''}>禁用</option>
+                        </select>
+                        <button class="btn btn-primary" onclick="document.getElementById('t-search').value='';search='';status='';renderSuperadminTenants(document.getElementById('page-content'))">重置</button>
+                    </div>
+                    <button class="btn btn-primary" onclick="showCreateTenantModal()">+ 新建租户</button>
+                </div>
+                <div class="card"><div class="table-wrap">
+                <table><thead><tr>
+                    <th>ID</th><th>名称</th><th>标识</th><th>状态</th><th>创建时间</th><th>更新时间</th><th>操作</th>
+                </tr></thead><tbody>
+                ${d.tenants.length ? d.tenants.map(t => `
+                    <tr>
+                        <td>${t.id}</td>
+                        <td><strong>${t.name}</strong></td>
+                        <td><code style="background:#f1f5f9;padding:2px 6px;border-radius:3px;font-size:12px">${t.slug}</code></td>
+                        <td><span class="badge ${t.status ? 'badge-active' : 'badge-disabled'}">${t.status ? "启用" : "禁用"}</span></td>
+                        <td>${formatTime(t.created_at)}</td>
+                        <td>${formatTime(t.updated_at)}</td>
+                        <td style="white-space:nowrap">
+                            <button class="btn btn-sm btn-text" onclick="impersonateTenant(${t.id})" style="color:var(--primary)">模拟</button>
+                            <button class="btn btn-sm btn-text" onclick="showEditTenantModal(${t.id})">编辑</button>
+                            <button class="btn btn-sm btn-text" onclick="toggleTenantStatus(${t.id},${t.status})">${t.status ? "禁用" : "启用"}</button>
+                            <button class="btn btn-sm btn-text" onclick="deleteTenant(${t.id},'${t.name}')" style="color:var(--danger)">删除</button>
+                        </td>
+                    </tr>`).join("") : '<tr><td colspan="7"><div class="empty-state">暂无租户</div></td></tr>'}
+                </tbody></table></div>
+                ${renderPagination(d.total, page, pageSize, p => { page = p; load(); })}
+                </div>`;
+        } catch (e) { container.innerHTML = `<div class="empty-state">加载失败: ${e.message}</div>`; }
+    }
+    load();
+}
+
+function showCreateTenantModal() {
+    openModal(`
+        <div class="modal-header"><h2>新建租户</h2><button class="modal-close" onclick="closeModal()">&times;</button></div>
+        <form id="create-tenant-form" onsubmit="return false">
+            <div class="form-group"><label>企业名称 *</label><input id="ct-name" required placeholder="如：XX科技有限公司"></div>
+            <div class="form-group"><label>唯一标识 *</label><input id="ct-slug" required placeholder="如：company_xxx（字母/数字/下划线）"></div>
+            <div class="modal-footer">
+                <button class="btn btn-text" onclick="closeModal()">取消</button>
+                <button class="btn btn-primary" onclick="createTenant()">确认创建</button>
+            </div>
+        </form>`);
+}
+
+async function createTenant() {
+    const name = document.getElementById("ct-name").value.trim();
+    const slug = document.getElementById("ct-slug").value.trim();
+    if (!name || !slug) { showToast("名称和标识不能为空", "error"); return; }
+    try {
+        const res = await apiCall(API.superadmin + "/tenants", {
+            method: "POST", body: JSON.stringify({ name, slug }),
+        });
+        if (!res) return;
+        if (res.code < 0) { showToast(res.message, "error"); return; }
+        showToast("租户创建成功", "success");
+        closeModal();
+        switchPage("superadmin_tenants");
+    } catch (e) { showToast(e.message, "error"); }
+}
+
+async function showEditTenantModal(id) {
+    try {
+        const res = await apiCall(API.superadmin + "/tenants/" + id);
+        if (!res) return;
+        const t = res.data;
+        openModal(`
+            <div class="modal-header"><h2>编辑租户 #${id}</h2><button class="modal-close" onclick="closeModal()">&times;</button></div>
+            <form onsubmit="return false">
+                <div class="form-group"><label>企业名称</label><input id="et-name" value="${t.name}"></div>
+                <div class="form-group"><label>唯一标识</label><input id="et-slug" value="${t.slug}"></div>
+                <div class="form-group"><label>状态</label>
+                    <select id="et-status">
+                        <option value="true" ${t.status ? "selected" : ""}>启用</option>
+                        <option value="false" ${!t.status ? "selected" : ""}>禁用</option>
+                    </select></div>
+                <div class="modal-footer">
+                    <button class="btn btn-text" onclick="closeModal()">取消</button>
+                    <button class="btn btn-primary" onclick="editTenant(${id})">保存</button>
+                </div>
+            </form>`);
+    } catch (e) { showToast(e.message, "error"); }
+}
+
+async function editTenant(id) {
+    const data = {
+        name: document.getElementById("et-name").value.trim(),
+        slug: document.getElementById("et-slug").value.trim(),
+        status: document.getElementById("et-status").value === "true",
+    };
+    if (!data.name || !data.slug) { showToast("名称和标识不能为空", "error"); return; }
+    try {
+        const res = await apiCall(API.superadmin + "/tenants/" + id, {
+            method: "PUT", body: JSON.stringify(data),
+        });
+        if (!res) return;
+        if (res.code < 0) { showToast(res.message, "error"); return; }
+        showToast("租户已更新", "success");
+        closeModal();
+        switchPage("superadmin_tenants");
+    } catch (e) { showToast(e.message, "error"); }
+}
+
+async function toggleTenantStatus(id, current) {
+    if (!confirm(`确定${current ? "禁用" : "启用"}该租户吗？`)) return;
+    try {
+        const res = await apiCall(API.superadmin + "/tenants/" + id, {
+            method: "PUT", body: JSON.stringify({ status: !current }),
+        });
+        if (!res) return;
+        if (res.code < 0) { showToast(res.message, "error"); return; }
+        showToast("状态已更新", "success");
+        switchPage("superadmin_tenants");
+    } catch (e) { showToast(e.message, "error"); }
+}
+
+async function deleteTenant(id, name) {
+    if (!confirm(`确定删除租户"${name}"吗？此操作不可恢复，将同时删除该租户下的所有关联数据。`)) return;
+    try {
+        const res = await apiCall(API.superadmin + "/tenants/" + id, {
+            method: "DELETE",
+        });
+        if (!res) return;
+        if (res.code < 0) { showToast(res.message, "error"); return; }
+        showToast("租户已删除", "success");
+        switchPage("superadmin_tenants");
+    } catch (e) { showToast(e.message, "error"); }
+}
+
+async function impersonateTenant(id) {
+    if (!confirm("确定以超级管理员身份模拟进入该租户吗？")) return;
+    try {
+        const res = await apiCall(API.superadmin + "/impersonate/" + id, { method: "POST" });
+        if (!res) return;
+        if (res.code < 0) { showToast(res.message, "error"); return; }
+        localStorage.setItem(TOKEN_KEY, res.data.access_token);
+        localStorage.setItem(USER_KEY, JSON.stringify(res.data));
+        showToast("已模拟进入租户", "success");
+        showApp();
+    } catch (e) { showToast(e.message, "error"); }
+}
+
+async function exitImpersonation() {
+    if (!confirm("确定退出模拟模式吗？")) return;
+    try {
+        const res = await apiCall(API.superadmin + "/impersonate/exit", { method: "POST" });
+        if (!res) return;
+        if (res.code < 0) { showToast(res.message, "error"); return; }
+        localStorage.setItem(TOKEN_KEY, res.data.access_token);
+        localStorage.setItem(USER_KEY, JSON.stringify(res.data));
+        showToast("已退出模拟模式", "success");
+        showApp();
+    } catch (e) { showToast(e.message, "error"); }
+}
+
+// ================== SUPERADMIN AUDIT LOGS ==================
+
+async function renderSuperadminAudit(container) {
+    let page = 1, action = "", actor = "", tenantId = "", dateFrom = "", dateTo = "";
+    const pageSize = 20;
+
+    async function load() {
+        const params = new URLSearchParams({ page, page_size: pageSize });
+        if (action) params.set("action", action);
+        if (actor) params.set("actor", actor);
+        if (tenantId) params.set("tenant_id", tenantId);
+        if (dateFrom) params.set("date_from", dateFrom);
+        if (dateTo) params.set("date_to", dateTo);
+        container.innerHTML = '<div class="loading"></div>';
+        try {
+            const res = await apiCall(API.superadmin + "/audit-logs?" + params);
+            if (!res) return;
+            const d = res.data;
+            container.innerHTML = `
+                <div class="search-bar" id="sa-search-bar">
+                    <input type="text" data-sa-filter="action" placeholder="操作类型" value="${action}">
+                    <input type="text" data-sa-filter="actor" placeholder="操作人" value="${actor}">
+                    <input type="text" data-sa-filter="tenantId" placeholder="租户ID" value="${tenantId}" style="flex:0 1 100px">
+                    <input type="date" data-sa-filter="dateFrom" value="${dateFrom}" style="flex:0 0 auto">
+                    <span style="color:var(--text-secondary)">~</span>
+                    <input type="date" data-sa-filter="dateTo" value="${dateTo}" style="flex:0 0 auto">
+                    <button class="btn btn-primary" data-sa-reset>重置</button>
+                    <button class="btn btn-primary" onclick="exportSuperadminAuditLogs()">导出</button>
+                </div>
+                <div class="card"><div class="table-wrap">
+                <table><thead><tr>
+                    <th>时间</th><th>操作人</th><th>租户</th><th>操作类型</th><th>资源类型</th><th>资源ID</th><th>IP</th><th>详情</th>
+                </tr></thead><tbody>
+                ${d.logs.length ? d.logs.map(log => `
+                    <tr style="cursor:pointer">
+                        <td style="white-space:nowrap">${formatTime(log.created_at)}</td>
+                        <td>${log.actor_name || "-"}</td>
+                        <td>${log.tenant_name || log.tenant_id || "平台"}</td>
+                        <td><code style="background:#f1f5f9;padding:2px 6px;border-radius:3px;font-size:12px">${log.action}</code></td>
+                        <td>${log.resource_type || "-"}</td>
+                        <td>${log.resource_id || "-"}</td>
+                        <td style="font-family:monospace;font-size:12px">${log.ip_address || "-"}</td>
+                        <td><button class="btn btn-sm btn-text" data-sa-detail='${JSON.stringify(log).replace(/'/g, "&#39;")}'>查看</button></td>
+                    </tr>`).join("") : '<tr><td colspan="8"><div class="empty-state">暂无日志</div></td></tr>'}
+                </tbody></table></div>
+                ${renderPagination(d.total, page, pageSize, p => { page = p; load(); })}
+                </div>`;
+
+            const bar = container.querySelector('#sa-search-bar');
+            if (bar) {
+                bar.querySelectorAll('[data-sa-filter]').forEach(el => {
+                    el.addEventListener('change', () => {
+                        const key = el.dataset.saFilter;
+                        if (key === 'action') action = el.value;
+                        else if (key === 'actor') actor = el.value;
+                        else if (key === 'tenantId') tenantId = el.value;
+                        else if (key === 'dateFrom') dateFrom = el.value;
+                        else if (key === 'dateTo') dateTo = el.value;
+                        load();
+                    });
+                });
+                bar.querySelector('[data-sa-reset]').addEventListener('click', () => {
+                    action = ''; actor = ''; tenantId = ''; dateFrom = ''; dateTo = '';
+                    load();
+                });
+            }
+            container.addEventListener('click', function __saClick(e) {
+                const btn = e.target.closest('[data-sa-detail]');
+                if (btn) {
+                    e.stopPropagation();
+                    try {
+                        const log = JSON.parse(btn.dataset.saDetail.replace(/&#39;/g, "'"));
+                        showAuditDetail(log);
+                    } catch(ex) { /* ignore parse errors */ }
+                }
+            });
+        } catch (e) { container.innerHTML = `<div class="empty-state">加载失败: ${e.message}</div>`; }
+    }
+    load();
+}
+
+async function exportSuperadminAuditLogs() {
+    try {
+        const params = new URLSearchParams({ page: 1, page_size: 99999 });
+        const res = await apiCall(API.superadmin + "/audit-logs?" + params);
+        if (!res) return;
+        const logs = res.data.logs;
+        const csv = "\uFEFF时间,操作人,租户,操作类型,资源类型,资源ID,IP,详情\n" +
+            logs.map(log =>
+                `"${formatTime(log.created_at)}","${log.actor_name || ""}","${log.tenant_name || log.tenant_id || "平台"}","${log.action}","${log.resource_type || ""}","${log.resource_id || ""}","${log.ip_address || ""}","${(log.detail ? JSON.stringify(log.detail).replace(/"/g, '""') : "")}"`
+            ).join("\n");
+        const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "全局审计日志_" + new Date().toISOString().slice(0, 10) + ".csv";
+        a.click();
+        URL.revokeObjectURL(url);
+        showToast("导出成功", "success");
+    } catch (e) {
+        showToast("导出失败: " + e.message, "error");
+    }
+}
+
+// ================== SUPERADMIN API STATS ==================
+
+async function renderSuperadminApiStats(container) {
+    container.innerHTML = '<div class="loading"></div>';
+    try {
+        const res = await apiCall(API.superadmin + "/api-stats?days=30");
+        if (!res) return;
+        const d = res.data;
+        let html = `<div class="toolbar"><div></div>
+            <button class="btn btn-primary" onclick="renderSuperadminApiStats(document.getElementById('page-content'))">刷新</button>
+        </div>`;
+
+        if (d.daily_totals && d.daily_totals.length) {
+            html += `<div class="card"><div class="card-title">最近 ${d.period_days} 天平台API调用趋势</div><div class="table-wrap"><table><thead><tr><th>日期</th><th>总调用次数</th></tr></thead><tbody>`;
+            d.daily_totals.forEach(s => {
+                html += `<tr><td>${s.date}</td><td><strong>${s.count}</strong></td></tr>`;
+            });
+            html += `</tbody></table></div></div>`;
+        }
+
+        if (d.app_rankings && d.app_rankings.length) {
+            html += `<div class="card" style="margin-top:16px"><div class="card-title">应用API调用排行</div><div class="table-wrap"><table><thead><tr><th>排名</th><th>应用</th><th>API路径</th><th>调用次数</th></tr></thead><tbody>`;
+            d.app_rankings.forEach((s, i) => {
+                const path = s.api_path.replace("/api/v1/open/", "");
+                html += `<tr><td>${i + 1}</td><td><strong>${s.app_name}</strong></td><td style="font-family:monospace;font-size:12px">${path}</td><td><strong>${s.total_calls}</strong></td></tr>`;
+            });
+            html += `</tbody></table></div></div>`;
+        }
+
+        if (!d.daily_totals || !d.daily_totals.length) {
+            html += `<div class="empty-state">暂无API调用数据（需要应用通过开放API发起请求后自动累积）</div>`;
+        }
+        container.innerHTML = html;
+    } catch (e) { container.innerHTML = `<div class="empty-state">加载失败: ${e.message}</div>`; }
+}
+
+async function renderSuperadminConfig(container) {
+    container.innerHTML = '<div class="loading"></div>';
+    try {
+        const res = await apiCall(API.superadmin + "/platform-config");
+        if (!res) return;
+        const d = res.data;
+        let html = `<div class="toolbar"><div></div>
+            <button class="btn btn-primary" onclick="renderSuperadminConfig(document.getElementById('page-content'))">刷新</button>
+        </div>`;
+        if (d.configs && d.configs.length) {
+            d.configs.forEach(group => {
+                html += `<div class="card" style="margin-top:${d.configs.indexOf(group) > 0 ? '16px' : '0'}">
+                    <div class="card-title">${group.group}</div>
+                    <div class="table-wrap"><table><thead><tr><th style="width:260px">配置项</th><th>当前值</th></tr></thead><tbody>`;
+                group.items.forEach(item => {
+                    const displayVal = item.sensitive ? "***" : (item.value || "未配置");
+                    const valTag = item.sensitive
+                        ? `<code style="background:#f1f5f9;padding:2px 8px;border-radius:3px;color:#94a3b8">***</code>`
+                        : `<code style="background:#f1f5f9;padding:2px 8px;border-radius:3px">${displayVal}</code>`;
+                    html += `<tr><td><strong>${item.key}</strong></td><td>${valTag}</td></tr>`;
+                });
+                html += `</tbody></table></div></div>`;
+            });
+        } else {
+            html += `<div class="empty-state">暂无配置数据</div>`;
+        }
+        container.innerHTML = html;
+    } catch (e) { container.innerHTML = `<div class="empty-state">加载失败: ${e.message}</div>`; }
+}
+
+// ================== Common ==================
+
+let __pgHandler = null;
+
+document.addEventListener('click', function(e) {
+    const btn = e.target.closest('.pagination [data-page]');
+    if (btn && !btn.disabled && __pgHandler) {
+        __pgHandler(parseInt(btn.dataset.page, 10));
+    }
+});
+
+function renderPagination(total, page, pageSize, onChange) {
+    __pgHandler = onChange;
+    const totalPages = Math.ceil(total / pageSize) || 1;
+    if (totalPages <= 1) return "";
+    const start = Math.max(1, page - 2);
+    const end = Math.min(totalPages, page + 2);
+    let html = '<div class="pagination">';
+    html += `<button class="btn btn-sm btn-text" data-page="${page - 1}" ${page <= 1 ? 'disabled style="opacity:0.4"' : ''}>上一页</button>`;
+    for (let i = start; i <= end; i++) {
+        const active = i === page;
+        html += `<button class="btn btn-sm ${active ? 'btn-primary active' : 'btn-text'}" data-page="${i}">${i}</button>`;
+    }
+    html += `<button class="btn btn-sm btn-text" data-page="${page + 1}" ${page >= totalPages ? 'disabled style="opacity:0.4"' : ''}>下一页</button>`;
+    html += `<span class="page-info">共 ${total} 条</span>`;
+    html += "</div>";
+    return html;
+}
+
+function formatTime(ts) {
+    if (!ts) return "-";
+    const d = new Date(ts);
+    const pad = n => n.toString().padStart(2, "0");
+    return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate())
+        + " " + pad(d.getHours()) + ":" + pad(d.getMinutes());
+}
+
+// ================== Init ==================
+
+(function init() {
+    if (getToken()) showApp();
+    else showLogin();
+})();

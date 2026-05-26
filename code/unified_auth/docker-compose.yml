@@ -1,0 +1,38 @@
+version: "3.8"
+
+services:
+  db:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-root123}
+      MYSQL_DATABASE: ${DB_NAME:-unified_auth}
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  web:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY:-change-me-in-production}
+      - DJANGO_DEBUG=False
+      - DB_HOST=db
+      - DB_NAME=${DB_NAME:-unified_auth}
+      - DB_USER=${DB_USER:-root}
+      - DB_PASSWORD=${DB_PASSWORD:-root123}
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - static_data:/app/static
+
+volumes:
+  mysql_data:
+  static_data:
