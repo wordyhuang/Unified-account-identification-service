@@ -6,6 +6,7 @@ from common.response import success, error
 from common.errors import ErrorCode
 from common.utils import create_access_token, generate_refresh_token, is_superadmin_credentials
 from services.sms_service import send_sms, generate_code
+from apps.applications.models import Application
 from .models import Tenant, User, SocialAccount
 from apps.audit.models import AuditLog
 from .serializers import (
@@ -109,7 +110,14 @@ def sms_send(request):
     phone = ser.validated_data["phone"]
     code = generate_code()
 
-    ok, msg = send_sms(phone, code)
+    tenant = None
+    app_key = ser.validated_data.get("app_key")
+    if app_key:
+        app = Application.objects.filter(app_key=app_key, status=True).first()
+        if app:
+            tenant = Tenant.objects.filter(id=app.tenant_id).first()
+
+    ok, msg = send_sms(phone, code, tenant=tenant)
     if not ok:
         return Response(
             error(ErrorCode.SMS_SEND_FAILED, message=msg),
@@ -186,8 +194,30 @@ def social_login(request):
 
     provider = ser.validated_data["provider"]
     code = ser.validated_data["code"]
+    app_key = ser.validated_data.get("app_key")
 
-    open_id = f"mock_{provider}_{code[:8]}"
+    app_wechat_config = {}
+    if app_key and provider in ("wechat_mp", "wechat_web"):
+        app = Application.objects.filter(app_key=app_key, status=True).first()
+        if app:
+            if provider == "wechat_mp":
+                if app.wechat_mp_app_id and app.wechat_mp_app_secret:
+                    app_wechat_config = {
+                        "app_id": app.wechat_mp_app_id,
+                        "app_secret": app.wechat_mp_app_secret,
+                    }
+            elif provider == "wechat_web":
+                if app.wechat_web_app_id and app.wechat_web_app_secret:
+                    app_wechat_config = {
+                        "app_id": app.wechat_web_app_id,
+                        "app_secret": app.wechat_web_app_secret,
+                    }
+
+    if app_wechat_config:
+        open_id, union_id = _exchange_wechat_code(provider, code, app_wechat_config)
+    else:
+        open_id = f"mock_{provider}_{code[:8]}"
+        union_id = None
 
     with transaction.atomic():
         social = SocialAccount.objects.filter(
@@ -212,7 +242,8 @@ def social_login(request):
                 user=user,
                 provider=provider,
                 open_id=open_id,
-                extra_data={"code": code},
+                union_id=union_id,
+                extra_data={"code": code, "app_key": app_key},
             )
 
     user.last_login_at = timezone.now()
@@ -238,6 +269,40 @@ def social_login(request):
         "user_id": user.id,
         "is_new": created,
     }))
+
+
+def _exchange_wechat_code(provider, code, config):
+    """
+    通过微信授权码换取 open_id / union_id
+    支持微信小程序(wechat_mp)和微信网页(wechat_web)
+    使用应用自定义的 AppID/AppSecret
+    """
+    import requests as http_requests
+
+    app_id = config["app_id"]
+    app_secret = config["app_secret"]
+
+    if provider == "wechat_mp":
+        url = (
+            f"https://api.weixin.qq.com/sns/jscode2session"
+            f"?appid={app_id}&secret={app_secret}&js_code={code}&grant_type=authorization_code"
+        )
+    else:
+        url = (
+            f"https://api.weixin.qq.com/sns/oauth2/access_token"
+            f"?appid={app_id}&secret={app_secret}&code={code}&grant_type=authorization_code"
+        )
+
+    try:
+        resp = http_requests.get(url, timeout=10)
+        data = resp.json()
+        open_id = data.get("openid", f"mock_{provider}_{code[:8]}")
+        union_id = data.get("unionid", None)
+        return open_id, union_id
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error("微信登录接口调用失败: %s", str(e))
+        return f"mock_{provider}_{code[:8]}", None
 
 
 @api_view(["POST"])

@@ -34,6 +34,8 @@ urlpatterns = [
     path("departments/<int:dept_id>", views.department_detail_view, name="admin-department-detail"),
     path("audit-logs", views.audit_logs_view, name="admin-audit-logs"),
     path("audit-logs/export", views.audit_logs_export_view, name="admin-audit-logs-export"),
+    path("tenant-sms-config", views.tenant_sms_config_view, name="admin-tenant-sms-config"),
+    path("tenant-sms-config/test", views.tenant_sms_config_test_view, name="admin-tenant-sms-config-test"),
 ]
 
 superadmin_urlpatterns = [

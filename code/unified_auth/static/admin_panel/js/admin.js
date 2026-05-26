@@ -95,6 +95,7 @@ const PAGES = {
     roles: renderRoles,
     departments: renderDepartments,
     audit: renderAudit,
+    sms_config: renderSmsConfig,
     superadmin_dashboard: renderSuperadminDashboard,
     superadmin_tenants: renderSuperadminTenants,
     superadmin_audit: renderSuperadminAudit,
@@ -349,8 +350,8 @@ async function showCreateUserModal() {
     openModal(`
         <div class="modal-header"><h2>新增用户</h2><button class="modal-close" onclick="closeModal()">&times;</button></div>
         <form id="create-user-form" onsubmit="return false">
-            <div class="form-group"><label>用户名 *</label><input id="cu-username" required></div>
-            <div class="form-group"><label>密码 *</label><input type="password" id="cu-password" required minlength="8"></div>
+            <div class="form-group"><label>用户名</label><input id="cu-username" placeholder="留空将自动生成（优先使用手机号）"></div>
+            <div class="form-group"><label>密码</label><input type="password" id="cu-password" placeholder="留空将自动生成随机密码"></div>
             <div class="form-group"><label>用户类型</label>
                 <select id="cu-type"><option value="internal">内部用户</option><option value="external">外部用户</option></select></div>
             <div class="form-group"><label>昵称</label><input id="cu-nickname"></div>
@@ -380,12 +381,14 @@ async function createUser() {
         phone: document.getElementById("cu-phone").value.trim() || null,
         dept_id: deptId ? parseInt(deptId) : null,
     };
-    if (!data.username || !data.password) { showToast("用户名和密码不能为空", "error"); return; }
     try {
         const res = await apiCall(API.admin + "/users", { method: "POST", body: JSON.stringify(data) });
         if (!res) return;
         if (res.code < 0) { showToast(res.message, "error"); return; }
-        showToast("用户创建成功", "success");
+        const msg = res.data._generated_username
+            ? `创建成功！用户名: ${res.data._generated_username}，密码: ${res.data._generated_password}`
+            : "用户创建成功";
+        showToast(msg, "success");
         closeModal();
         switchPage("users");
     } catch (e) { showToast(e.message, "error"); }
@@ -787,6 +790,11 @@ async function showEditAppModal(id) {
                     <textarea id="ea-urls" rows="3" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:var(--radius-sm)">${(a.callback_urls||[]).join("\\n")}</textarea></div>
                 <div class="form-group"><label>权限配置</label>
                     <div id="ea-permissions-section" style="padding:4px 0;min-height:40px"><span style="color:var(--text-light)">加载中...</span></div></div>
+                <div class="panel-section-title">微信登录配置（选填）</div>
+                <div class="form-group"><label>微信小程序 AppID</label><input id="ea-wx-mp-id" value="${a.wechat_mp_app_id||''}" placeholder="微信小程序 AppID"></div>
+                <div class="form-group"><label>微信小程序 AppSecret</label><input type="password" id="ea-wx-mp-secret" value="${a.wechat_mp_app_secret||''}" placeholder="输入新值将更新，留空保持不变"></div>
+                <div class="form-group"><label>微信网页 AppID</label><input id="ea-wx-web-id" value="${a.wechat_web_app_id||''}" placeholder="微信网页 AppID"></div>
+                <div class="form-group"><label>微信网页 AppSecret</label><input type="password" id="ea-wx-web-secret" value="${a.wechat_web_app_secret||''}" placeholder="输入新值将更新，留空保持不变"></div>
                 <div class="modal-footer">
                     <button class="btn btn-text" onclick="closeModal()">取消</button>
                     <button class="btn btn-primary" onclick="editApp(${id})">保存</button>
@@ -807,6 +815,10 @@ async function editApp(id) {
         callback_urls: urls.length ? urls : null,
         default_access_user_types: types.length ? types : null,
         permission_ids: permIds.length ? permIds : null,
+        wechat_mp_app_id: document.getElementById("ea-wx-mp-id").value.trim() || null,
+        wechat_mp_app_secret: document.getElementById("ea-wx-mp-secret").value.trim() || null,
+        wechat_web_app_id: document.getElementById("ea-wx-web-id").value.trim() || null,
+        wechat_web_app_secret: document.getElementById("ea-wx-web-secret").value.trim() || null,
     };
     if (!data.name) { showToast("应用名称不能为空", "error"); return; }
     try {
@@ -1077,11 +1089,11 @@ async function renderDepartments(container) {
                 <div style="padding-left:${depth * 24}px;display:flex;align-items:center;gap:8px;padding-top:6px;padding-bottom:6px;border-bottom:1px solid var(--border-light)">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;color:var(--text-light)"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
                     <span style="flex:1"><strong>${d.name}</strong></span>
-                    <span style="color:var(--text-secondary);font-size:13px">${d.code || "-"}</span>
-                    <span style="color:var(--text-secondary);font-size:13px">${d.user_count !== undefined ? d.user_count + "人" : ""}</span>
-                    <button class="btn btn-sm btn-text" onclick="showDepartmentDialog(${d.id},'${d.name}')">编辑</button>
+                    <span style="background:rgba(26,115,232,0.08);color:var(--primary);padding:0 8px;border-radius:4px;font-size:12px;font-family:monospace">${d.code || "无编码"}</span>
+                    <span style="color:var(--text-secondary);font-size:13px;min-width:40px;text-align:right">${d.user_count !== undefined ? d.user_count + "人" : ""}</span>
+                    <button class="btn btn-sm btn-text" onclick="showDepartmentDialog(${d.id},'${d.name.replace(/'/g, "\\'")}','',\`${(d.code || '').replace(/`/g, '\\`')}\`)">编辑</button>
                     <button class="btn btn-sm btn-text" onclick="showDepartmentDialog(null,'','${d.id}')">+ 子部门</button>
-                    <button class="btn btn-sm btn-text" onclick="deleteDepartment(${d.id},'${d.name}')" style="color:var(--danger)">删除</button>
+                    <button class="btn btn-sm btn-text" onclick="deleteDepartment(${d.id},'${d.name.replace(/'/g, "\\'")}')" style="color:var(--danger)">删除</button>
                 </div>
                 ${d.children && d.children.length ? renderTree(d.children, depth + 1) : ''}
             `).join("");
@@ -1098,7 +1110,7 @@ async function renderDepartments(container) {
     } catch (e) { container.innerHTML = `<div class="empty-state">加载失败: ${e.message}</div>`; }
 }
 
-function showDepartmentDialog(id, name, parentId) {
+function showDepartmentDialog(id, name, parentId, code) {
     const isEdit = id !== null;
     const title = parentId ? "新增子部门" : (isEdit ? "编辑部门" : "新增部门");
     openModal(`
@@ -1106,7 +1118,7 @@ function showDepartmentDialog(id, name, parentId) {
         <form onsubmit="return false">
             ${parentId ? `<div class="form-group"><label>父部门ID</label><input value="${parentId}" disabled style="background:#f1f5f9"></div>` : ''}
             <div class="form-group"><label>部门名称 *</label><input id="dept-name" value="${isEdit ? name : ''}" placeholder="如：技术部"></div>
-            <div class="form-group"><label>部门编码</label><input id="dept-code" value="" placeholder="如：tech（可选）"></div>
+            <div class="form-group"><label>部门编码</label><input id="dept-code" value="${isEdit ? (code || '') : ''}" placeholder="如：tech（可选）"></div>
             <div class="modal-footer">
                 <button class="btn btn-text" onclick="closeModal()">取消</button>
                 <button class="btn btn-primary" onclick="saveDepartment(${isEdit ? id : 'null'}, ${parentId || 'null'})">${isEdit ? "保存" : "创建"}</button>
@@ -1259,6 +1271,151 @@ function showAuditDetail(log) {
             ${log.detail ? `<div><strong>变更详情：</strong><pre style="background:#f1f5f9;padding:12px;border-radius:var(--radius-sm);margin-top:4px;font-size:12px;overflow-x:auto">${JSON.stringify(log.detail, null, 2)}</pre></div>` : ''}
         </div>
         <div class="modal-footer"><button class="btn btn-primary" onclick="closeModal()">关闭</button></div>`);
+}
+
+// ================== SMS CONFIG ==================
+
+async function renderSmsConfig(container) {
+    container.innerHTML = '<div class="loading"></div>';
+    try {
+        const res = await apiCall(API.admin + "/tenant-sms-config");
+        const cfg = res.data || {};
+
+        container.innerHTML = `
+            <div class="page-header"><h1>短信配置</h1></div>
+            <div class="card">
+                <div class="card-title">自定义短信渠道</div>
+                <p style="color:var(--text-secondary);margin-bottom:16px;font-size:14px">配置后，发送短信验证码将优先使用您自定义的短信服务商。留空则使用平台全局配置。</p>
+                <div class="form-group">
+                    <label>短信服务商</label>
+                    <select id="sms-provider" class="form-control">
+                        <option value="">使用平台全局配置</option>
+                        <option value="mock">模拟（开发调试）</option>
+                        <option value="aliyun">阿里云短信</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>AccessKey ID</label>
+                    <input type="text" id="sms-access-key-id" class="form-control" placeholder="阿里云 AccessKey ID">
+                </div>
+                <div class="form-group">
+                    <label>AccessKey Secret</label>
+                    <input type="password" id="sms-access-key-secret" class="form-control" placeholder="输入新值将更新，留空保持不变">
+                </div>
+                <div class="form-group">
+                    <label>短信签名</label>
+                    <input type="text" id="sms-sign-name" class="form-control" placeholder="短信签名（如：XX科技）">
+                </div>
+                <div class="form-group">
+                    <label>短信模板编码</label>
+                    <input type="text" id="sms-template-code" class="form-control" placeholder="模板编码（如：SMS_123456）">
+                </div>
+                <div class="form-actions" style="display:flex;gap:12px;flex-wrap:wrap">
+                    <button class="btn btn-primary" onclick="saveSmsConfig()">保存配置</button>
+                    <button class="btn btn-success" onclick="showSmsTestModal()" style="background:var(--success);color:#fff">发送测试</button>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-title">使用说明</div>
+                <ul style="line-height:2;font-size:14px;color:var(--text-secondary);padding-left:20px">
+                    <li>仅支持 <strong>阿里云短信</strong> 服务商</li>
+                    <li>配置后，调用 <code>POST /api/v1/auth/sms/send</code> 并传入 <code>app_key</code> 参数时，将使用该应用所属租户的短信配置</li>
+                    <li>未传入 <code>app_key</code> 时，使用平台全局配置</li>
+                    <li>AccessKey Secret 显示为 <code>***</code>，输入新值才会更新</li>
+                    <li>点击 <strong>"发送测试"</strong> 将使用当前填写的配置向指定手机号发送测试短信</li>
+                </ul>
+            </div>`;
+
+        if (cfg.sms_provider) document.getElementById("sms-provider").value = cfg.sms_provider;
+        if (cfg.sms_access_key_id) document.getElementById("sms-access-key-id").value = cfg.sms_access_key_id;
+        if (cfg.sms_sign_name) document.getElementById("sms-sign-name").value = cfg.sms_sign_name;
+        if (cfg.sms_template_code) document.getElementById("sms-template-code").value = cfg.sms_template_code;
+
+    } catch (e) {
+        container.innerHTML = `<div class="error-state">加载失败: ${e.message}</div>`;
+    }
+}
+
+async function saveSmsConfig() {
+    const data = {
+        sms_provider: document.getElementById("sms-provider").value || "",
+        sms_access_key_id: document.getElementById("sms-access-key-id").value || "",
+        sms_access_key_secret: document.getElementById("sms-access-key-secret").value || "",
+        sms_sign_name: document.getElementById("sms-sign-name").value || "",
+        sms_template_code: document.getElementById("sms-template-code").value || "",
+    };
+    try {
+        const res = await apiCall(API.admin + "/tenant-sms-config", {
+            method: "PUT",
+            body: JSON.stringify(data),
+        });
+        if (!res || res.code < 0) {
+            showToast(res ? res.message : "保存失败", "error");
+            return;
+        }
+        showToast("短信配置保存成功", "success");
+        renderSmsConfig(document.getElementById("page-content"));
+    } catch (e) {
+        showToast("保存失败: " + e.message, "error");
+    }
+}
+
+function showSmsTestModal() {
+    openModal(`
+        <div class="modal-header"><h2>发送测试短信</h2><button class="modal-close" onclick="closeModal()">&times;</button></div>
+        <form onsubmit="return false">
+            <div class="form-group">
+                <label>手机号码 *</label>
+                <input type="tel" id="test-sms-phone" placeholder="请输入接收测试短信的手机号" required>
+            </div>
+            <div id="test-sms-result" style="display:none;padding:12px;border-radius:var(--radius-sm);margin-bottom:16px;font-size:14px;line-height:1.6"></div>
+            <div class="modal-footer">
+                <button class="btn btn-text" onclick="closeModal()">取消</button>
+                <button class="btn btn-primary" onclick="sendTestSms()" id="test-sms-btn">发送测试</button>
+            </div>
+        </form>`);
+    document.getElementById("test-sms-phone").focus();
+}
+
+async function sendTestSms() {
+    const phone = document.getElementById("test-sms-phone").value.trim();
+    if (!phone) { showToast("请输入手机号码", "error"); return; }
+
+    const btn = document.getElementById("test-sms-btn");
+    btn.disabled = true;
+    btn.textContent = "发送中...";
+
+    const resultEl = document.getElementById("test-sms-result");
+    resultEl.style.display = "none";
+
+    try {
+        const res = await apiCall(API.admin + "/tenant-sms-config/test", {
+            method: "POST",
+            body: JSON.stringify({ phone }),
+        });
+        if (!res) { showToast("请求失败", "error"); return; }
+        if (res.code < 0) {
+            resultEl.style.display = "block";
+            resultEl.style.background = "#fef2f2";
+            resultEl.style.color = "#991b1b";
+            resultEl.innerHTML = `<strong>发送失败</strong><br>${res.message}`;
+            return;
+        }
+        resultEl.style.display = "block";
+        resultEl.style.background = "#f0fdf4";
+        resultEl.style.color = "#065f46";
+        resultEl.innerHTML = `<strong>发送成功</strong><br>测试验证码已发送至 <strong>${res.data.phone}</strong><br>${res.data.message || ""}`;
+        showToast("测试短信发送成功", "success");
+    } catch (e) {
+        resultEl.style.display = "block";
+        resultEl.style.background = "#fef2f2";
+        resultEl.style.color = "#991b1b";
+        resultEl.innerHTML = `发送异常: ${e.message}`;
+        showToast("发送失败: " + e.message, "error");
+    } finally {
+        btn.disabled = false;
+        btn.textContent = "发送测试";
+    }
 }
 
 // ================== SUPERADMIN DASHBOARD ==================

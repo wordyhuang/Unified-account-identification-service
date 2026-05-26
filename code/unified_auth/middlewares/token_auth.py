@@ -21,6 +21,10 @@ class TokenAuthenticationMiddleware(MiddlewareMixin):
             return None
         if request.path.startswith("/admin-panel/"):
             return None
+        if request.path.startswith("/static/"):
+            return None
+        if request.path == "/favicon.ico":
+            return None
         if request.method == "OPTIONS":
             return None
         if request.path in PUBLIC_PATHS:

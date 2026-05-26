@@ -29,6 +29,7 @@ from .serializers import (
     AdminAppPermissionSerializer, AdminCopyRoleSerializer,
     AdminUserImportSerializer, AdminImpersonateSerializer,
     SuperAdminCreateTenantSerializer, SuperAdminUpdateTenantSerializer,
+    AdminTenantSmsConfigSerializer,
 )
 
 
@@ -60,6 +61,10 @@ def _app_serialize(a):
         "callback_urls": a.callback_urls,
         "default_access_user_types": a.default_access_user_types or [],
         "permission_ids": permission_ids,
+        "wechat_mp_app_id": a.wechat_mp_app_id or "",
+        "wechat_mp_app_secret": "***" if a.wechat_mp_app_secret else "",
+        "wechat_web_app_id": a.wechat_web_app_id or "",
+        "wechat_web_app_secret": "***" if a.wechat_web_app_secret else "",
         "status": a.status,
         "created_at": a.created_at.isoformat() if a.created_at else None,
         "updated_at": a.updated_at.isoformat() if a.updated_at else None,
@@ -291,21 +296,36 @@ def users_view(request):
         return Response(error(ErrorCode.PARAM_INVALID, data=ser.errors), status=400)
 
     data = ser.validated_data
-    if User.objects.filter(tenant_id=request.tenant_id, username=data["username"]).exists():
+
+    username = (data.get("username") or "").strip()
+    if not username:
+        if data.get("phone"):
+            username = data["phone"]
+        elif data.get("email"):
+            username = data["email"].split("@")[0]
+        else:
+            username = "user_" + secrets.token_hex(4)
+
+    if User.objects.filter(tenant_id=request.tenant_id, username=username).exists():
         return Response(error(ErrorCode.PARAM_INVALID, message="用户名已存在"), status=400)
+
+    password = data.get("password") or secrets.token_hex(8)
 
     user = User.objects.create(
         tenant_id=request.tenant_id,
         user_type=data["user_type"],
-        username=data["username"],
+        username=username,
         nickname=data.get("nickname"),
         email=data.get("email"),
         phone=data.get("phone"),
         department=data.get("department"),
     )
-    user.set_password(data["password"])
+    user.set_password(password)
     user.save(update_fields=["password"])
-    return Response(success(_user_serialize(user)), status=201)
+    result = _user_serialize(user)
+    result["_generated_username"] = username
+    result["_generated_password"] = password
+    return Response(success(result), status=201)
 
 
 @api_view(["GET", "PUT", "DELETE"])
@@ -517,10 +537,17 @@ def app_detail_view(request, app_id):
     data = ser.validated_data
     permission_ids = data.pop("permission_ids", None)
 
+    update_fields = []
     for field, value in data.items():
-        if value is not None:
-            setattr(app, field, value)
-    app.save(update_fields=data.keys())
+        if value is None:
+            continue
+        if field in ("wechat_mp_app_secret", "wechat_web_app_secret") and value == "***":
+            continue
+        setattr(app, field, value)
+        update_fields.append(field)
+
+    if update_fields:
+        app.save(update_fields=update_fields)
 
     if permission_ids is not None:
         from apps.rbac.models import AppRoleBinding
@@ -601,6 +628,82 @@ def permissions_view(request):
             for p in perms
         ],
     }))
+
+
+@api_view(["GET", "PUT"])
+def tenant_sms_config_view(request):
+    try:
+        tenant = Tenant.objects.get(id=request.tenant_id)
+    except Tenant.DoesNotExist:
+        return Response(error(ErrorCode.PARAM_INVALID, message="租户不存在"), status=404)
+
+    if request.method == "GET":
+        return Response(success({
+            "sms_provider": tenant.sms_provider or "",
+            "sms_access_key_id": tenant.sms_access_key_id or "",
+            "sms_access_key_secret": "***" if tenant.sms_access_key_secret else "",
+            "sms_sign_name": tenant.sms_sign_name or "",
+            "sms_template_code": tenant.sms_template_code or "",
+        }))
+
+    ser = AdminTenantSmsConfigSerializer(data=request.data)
+    if not ser.is_valid():
+        return Response(error(ErrorCode.PARAM_INVALID, data=ser.errors), status=400)
+
+    data = ser.validated_data
+    for field in ["sms_provider", "sms_access_key_id", "sms_sign_name", "sms_template_code"]:
+        if field in data:
+            setattr(tenant, field, data[field] or None)
+
+    if "sms_access_key_secret" in data and data["sms_access_key_secret"] and data["sms_access_key_secret"] != "***":
+        tenant.sms_access_key_secret = data["sms_access_key_secret"]
+
+    tenant.save(update_fields=[
+        "sms_provider", "sms_access_key_id", "sms_access_key_secret",
+        "sms_sign_name", "sms_template_code",
+    ])
+
+    AuditLog.objects.create(
+        tenant_id=request.tenant_id,
+        actor_id=request.user_id,
+        actor_name=request.user.username,
+        action="admin.tenant.sms_config.update",
+        resource_type="tenant",
+        resource_id=tenant.id,
+        detail={"sms_provider": tenant.sms_provider},
+    )
+    return Response(success({"sms_provider": tenant.sms_provider or ""}))
+
+
+@api_view(["POST"])
+def tenant_sms_config_test_view(request):
+    try:
+        tenant = Tenant.objects.get(id=request.tenant_id)
+    except Tenant.DoesNotExist:
+        return Response(error(ErrorCode.PARAM_INVALID, message="租户不存在"), status=404)
+
+    phone = request.data.get("phone", "").strip()
+    if not phone:
+        return Response(error(ErrorCode.PARAM_INVALID, message="手机号不能为空"), status=400)
+
+    from services.sms_service import generate_code, send_sms
+    code = generate_code()
+    ok, msg = send_sms(phone, code, tenant=tenant)
+
+    AuditLog.objects.create(
+        tenant_id=request.tenant_id,
+        actor_id=request.user_id,
+        actor_name=request.user.username,
+        action="admin.tenant.sms_config.test",
+        resource_type="tenant",
+        resource_id=tenant.id,
+        detail={"phone": phone, "success": ok, "message": msg},
+    )
+
+    if ok:
+        return Response(success({"phone": phone, "message": msg}))
+    else:
+        return Response(error(ErrorCode.SMS_SEND_FAILED, message=msg), status=500)
 
 
 @api_view(["GET", "POST"])
@@ -1075,6 +1178,7 @@ def superadmin_impersonate_exit(request):
 def _department_serialize(d):
     return {
         "id": d.id, "tenant_id": d.tenant_id, "name": d.name,
+        "code": d.code,
         "parent_id": d.parent_id, "sort_order": d.sort_order,
         "created_at": d.created_at.isoformat() if d.created_at else None,
     }
@@ -1106,6 +1210,7 @@ def departments_view(request):
     dept = Department.objects.create(
         tenant_id=request.tenant_id,
         name=data["name"],
+        code=data.get("code") or None,
         parent=parent,
         sort_order=data.get("sort_order", 0),
     )
@@ -1136,6 +1241,8 @@ def department_detail_view(request, dept_id):
     data = ser.validated_data
     if "name" in data and data["name"]:
         dept.name = data["name"]
+    if "code" in data:
+        dept.code = data["code"] or None
     if "sort_order" in data:
         dept.sort_order = data["sort_order"]
     if "parent_id" in data:

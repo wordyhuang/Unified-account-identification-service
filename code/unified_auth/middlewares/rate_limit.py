@@ -11,6 +11,10 @@ class RateLimitMiddleware(MiddlewareMixin):
     def process_request(self, request):
         if request.path.startswith("/admin/"):
             return None
+        if request.path.startswith("/static/"):
+            return None
+        if request.path == "/favicon.ico":
+            return None
         key = self._get_key(request)
         now = time.time()
         window = 60

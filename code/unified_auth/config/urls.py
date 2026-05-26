@@ -1,6 +1,7 @@
 from django.contrib import admin
 from django.urls import path, include
 from django.shortcuts import render
+from django.http import HttpResponseRedirect
 from apps.admin_panel import views as admin_views
 
 
@@ -8,7 +9,12 @@ def admin_panel_view(request):
     return render(request, "admin_panel/index.html")
 
 
+def favicon_view(request):
+    return HttpResponseRedirect("/static/admin_panel/favicon.svg")
+
+
 urlpatterns = [
+    path('favicon.ico', favicon_view),
     path('admin/', admin.site.urls),
     path('admin-panel/', admin_panel_view, name="admin-panel"),
     path('api/v1/auth/', include('apps.accounts.urls')),

@@ -18,8 +18,8 @@ class SuperAdminUpdateTenantSerializer(serializers.Serializer):
 
 
 class AdminCreateUserSerializer(serializers.Serializer):
-    username = serializers.CharField(max_length=64)
-    password = serializers.CharField(max_length=256, min_length=8)
+    username = serializers.CharField(max_length=64, required=False, allow_blank=True)
+    password = serializers.CharField(max_length=256, min_length=8, required=False, allow_blank=True)
     user_type = serializers.ChoiceField(choices=["internal", "external"])
     nickname = serializers.CharField(max_length=128, required=False, allow_null=True)
     email = serializers.EmailField(max_length=128, required=False, allow_null=True)
@@ -61,6 +61,20 @@ class AdminUpdateAppSerializer(serializers.Serializer):
         required=False, allow_null=True,
     )
     permission_ids = serializers.ListField(child=serializers.IntegerField(), required=False, allow_null=True)
+    wechat_mp_app_id = serializers.CharField(max_length=64, required=False, allow_null=True)
+    wechat_mp_app_secret = serializers.CharField(max_length=256, required=False, allow_null=True)
+    wechat_web_app_id = serializers.CharField(max_length=64, required=False, allow_null=True)
+    wechat_web_app_secret = serializers.CharField(max_length=256, required=False, allow_null=True)
+
+
+class AdminTenantSmsConfigSerializer(serializers.Serializer):
+    sms_provider = serializers.ChoiceField(
+        choices=["", "mock", "aliyun"], required=False, allow_null=True, default=""
+    )
+    sms_access_key_id = serializers.CharField(max_length=256, required=False, allow_null=True)
+    sms_access_key_secret = serializers.CharField(max_length=512, required=False, allow_null=True)
+    sms_sign_name = serializers.CharField(max_length=64, required=False, allow_null=True)
+    sms_template_code = serializers.CharField(max_length=64, required=False, allow_null=True)
 
 
 class AdminAppStatusSerializer(serializers.Serializer):
@@ -89,12 +103,14 @@ class AdminBatchUserDeleteSerializer(serializers.Serializer):
 
 class AdminDepartmentSerializer(serializers.Serializer):
     name = serializers.CharField(max_length=128)
+    code = serializers.CharField(max_length=64, required=False, allow_null=True, allow_blank=True)
     parent_id = serializers.IntegerField(required=False, allow_null=True)
     sort_order = serializers.IntegerField(required=False, default=0)
 
 
 class AdminDepartmentUpdateSerializer(serializers.Serializer):
     name = serializers.CharField(max_length=128, required=False)
+    code = serializers.CharField(max_length=64, required=False, allow_null=True, allow_blank=True)
     parent_id = serializers.IntegerField(required=False, allow_null=True)
     sort_order = serializers.IntegerField(required=False)
 

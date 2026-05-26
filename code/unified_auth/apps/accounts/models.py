@@ -7,6 +7,14 @@ class Tenant(models.Model):
     name = models.CharField(max_length=128, verbose_name="企业名称")
     slug = models.SlugField(max_length=64, unique=True, verbose_name="唯一标识")
     status = models.BooleanField(default=True, verbose_name="状态")
+
+    # 自定义短信渠道配置
+    sms_provider = models.CharField(max_length=32, null=True, blank=True, verbose_name="短信服务商")
+    sms_access_key_id = models.CharField(max_length=256, null=True, blank=True, verbose_name="短信AccessKey")
+    sms_access_key_secret = models.CharField(max_length=512, null=True, blank=True, verbose_name="短信AccessSecret")
+    sms_sign_name = models.CharField(max_length=64, null=True, blank=True, verbose_name="短信签名")
+    sms_template_code = models.CharField(max_length=64, null=True, blank=True, verbose_name="短信模板编码")
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -21,6 +29,7 @@ class Tenant(models.Model):
 class Department(models.Model):
     tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE, verbose_name="所属企业")
     name = models.CharField(max_length=128, verbose_name="部门名称")
+    code = models.CharField(max_length=64, null=True, blank=True, verbose_name="部门编码")
     parent = models.ForeignKey(
         "self", on_delete=models.CASCADE, null=True, blank=True,
         related_name="children", verbose_name="上级部门",

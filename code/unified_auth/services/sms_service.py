@@ -11,40 +11,55 @@ def generate_code(length=6):
     return "".join(str(random.randint(0, 9)) for _ in range(length))
 
 
-def send_sms(phone, code):
+def send_sms(phone, code, tenant=None):
     """
     发送短信验证码
-    
+    优先使用租户自定义的短信配置，未配置则降级到全局环境变量
+
     Args:
         phone: 手机号码
         code: 验证码
-    
+        tenant: 租户对象（可选），用于使用租户自定义的短信渠道
+
     Returns:
         (success: bool, message: str)
     """
-    provider = os.getenv("SMS_PROVIDER", "").lower()
+    provider = None
+    access_key_id = None
+    access_key_secret = None
+    sign_name = None
+    template_code = None
+
+    if tenant and tenant.sms_provider:
+        provider = tenant.sms_provider.lower()
+        access_key_id = tenant.sms_access_key_id
+        access_key_secret = tenant.sms_access_key_secret
+        sign_name = tenant.sms_sign_name
+        template_code = tenant.sms_template_code
+        logger.info("使用租户短信配置: %s", tenant.name)
+    else:
+        provider = os.getenv("SMS_PROVIDER", "").lower()
+        access_key_id = os.getenv("SMS_ACCESS_KEY_ID")
+        access_key_secret = os.getenv("SMS_ACCESS_KEY_SECRET")
+        sign_name = os.getenv("SMS_SIGN_NAME")
+        template_code = os.getenv("SMS_TEMPLATE_CODE")
 
     if not provider or provider == "mock":
         logger.info("[DEV] SMS code for %s: %s", phone, code)
         return True, "开发模式（模拟发送）"
 
     if provider == "aliyun":
-        return _send_aliyun(phone, code)
+        return _send_aliyun(phone, code, access_key_id, access_key_secret, sign_name, template_code)
 
     logger.warning("未知短信服务商: %s，使用模拟模式", provider)
     logger.info("[DEV] SMS code for %s: %s", phone, code)
     return True, "未知服务商，已降级为模拟发送"
 
 
-def _send_aliyun(phone, code):
+def _send_aliyun(phone, code, access_key_id, access_key_secret, sign_name, template_code):
     """通过阿里云短信服务发送验证码"""
-    access_key_id = os.getenv("SMS_ACCESS_KEY_ID")
-    access_key_secret = os.getenv("SMS_ACCESS_KEY_SECRET")
-    sign_name = os.getenv("SMS_SIGN_NAME")
-    template_code = os.getenv("SMS_TEMPLATE_CODE")
-
     if not all([access_key_id, access_key_secret, sign_name, template_code]):
-        logger.error("阿里云短信配置不完整，请检查环境变量")
+        logger.error("阿里云短信配置不完整")
         print(f"[DEV] SMS code for {phone}: {code} (aliyun config incomplete)")
         return False, "短信配置不完整"
 

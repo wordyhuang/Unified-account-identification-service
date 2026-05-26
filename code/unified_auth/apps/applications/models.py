@@ -13,6 +13,13 @@ class Application(models.Model):
         verbose_name="默认允许访问的用户类型",
         help_text='例如: ["internal", "external"]',
     )
+
+    # 微信登录配置
+    wechat_mp_app_id = models.CharField(max_length=64, null=True, blank=True, verbose_name="微信小程序AppID")
+    wechat_mp_app_secret = models.CharField(max_length=256, null=True, blank=True, verbose_name="微信小程序AppSecret")
+    wechat_web_app_id = models.CharField(max_length=64, null=True, blank=True, verbose_name="微信网页AppID")
+    wechat_web_app_secret = models.CharField(max_length=256, null=True, blank=True, verbose_name="微信网页AppSecret")
+
     status = models.BooleanField(default=True, verbose_name="状态")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

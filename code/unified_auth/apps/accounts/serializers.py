@@ -9,6 +9,7 @@ class LoginSerializer(serializers.Serializer):
 
 class SmsSendSerializer(serializers.Serializer):
     phone = serializers.CharField(max_length=20)
+    app_key = serializers.CharField(max_length=64, required=False, allow_null=True)
 
 
 class SmsLoginSerializer(serializers.Serializer):
@@ -21,6 +22,7 @@ class SocialLoginSerializer(serializers.Serializer):
         choices=["wechat_mp", "wechat_web", "dingtalk", "feishu"]
     )
     code = serializers.CharField(max_length=512)
+    app_key = serializers.CharField(max_length=64, required=False, allow_null=True)
 
 
 class RefreshSerializer(serializers.Serializer):
