@@ -322,6 +322,7 @@ def users_view(request):
         email=data.get("email"),
         phone=data.get("phone"),
         department=data.get("department"),
+        is_staff=data.get("is_staff", False),
     )
     user.set_password(password)
     user.save(update_fields=["password"])

@@ -26,6 +26,7 @@ class AdminCreateUserSerializer(serializers.Serializer):
     phone = serializers.CharField(max_length=20, required=False, allow_null=True)
     department = serializers.CharField(max_length=128, required=False, allow_null=True)
     dept_id = serializers.IntegerField(required=False, allow_null=True)
+    is_staff = serializers.BooleanField(required=False, default=False)
 
 
 class AdminUpdateUserSerializer(serializers.Serializer):
@@ -34,6 +35,7 @@ class AdminUpdateUserSerializer(serializers.Serializer):
     phone = serializers.CharField(max_length=20, required=False, allow_null=True)
     department = serializers.CharField(max_length=128, required=False, allow_null=True)
     dept_id = serializers.IntegerField(required=False, allow_null=True)
+    is_staff = serializers.BooleanField(required=False, allow_null=True)
 
 
 class AdminUserStatusSerializer(serializers.Serializer):

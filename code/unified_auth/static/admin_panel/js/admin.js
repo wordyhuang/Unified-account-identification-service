@@ -370,6 +370,13 @@ async function showCreateUserModal() {
                     ${buildDeptOptions(depts)}
                 </select>
             </div>
+            <div class="form-group" style="flex-direction:row;align-items:center;gap:10px;padding-top:4px">
+                <label style="margin-bottom:0;cursor:pointer">
+                    <input type="checkbox" id="cu-is-staff" style="width:auto;margin-right:6px">
+                    租户管理员
+                </label>
+                <span style="font-size:12px;color:var(--text-light)">勾选后该用户可以登录管理后台</span>
+            </div>
             <div class="modal-footer">
                 <button class="btn btn-text" onclick="closeModal()">取消</button>
                 <button class="btn btn-primary" onclick="createUser()">确认创建</button>
@@ -387,6 +394,7 @@ async function createUser() {
         email: document.getElementById("cu-email").value.trim() || null,
         phone: document.getElementById("cu-phone").value.trim() || null,
         dept_id: deptId ? parseInt(deptId) : null,
+        is_staff: document.getElementById("cu-is-staff").checked,
     };
     try {
         const res = await apiCall(API.admin + "/users", { method: "POST", body: JSON.stringify(data) });
@@ -443,6 +451,13 @@ async function showEditUserModal(id) {
                             </label>`).join("") : '<span style="color:var(--text-light)">暂无角色</span>'}
                     </div>
                 </div>
+                <div class="form-group" style="flex-direction:row;align-items:center;gap:10px;padding-top:4px">
+                    <label style="margin-bottom:0;cursor:pointer">
+                        <input type="checkbox" id="eu-is-staff" style="width:auto;margin-right:6px" ${u.is_staff ? 'checked' : ''}>
+                        租户管理员
+                    </label>
+                    <span style="font-size:12px;color:var(--text-light)">勾选后该用户可以登录管理后台</span>
+                </div>
                 <div class="modal-footer">
                     <button class="btn btn-text" onclick="closeModal()">取消</button>
                     <button class="btn btn-primary" onclick="editUser(${id})">保存</button>
@@ -458,6 +473,7 @@ async function editUser(id) {
         email: document.getElementById("eu-email").value.trim() || null,
         phone: document.getElementById("eu-phone").value.trim() || null,
         dept_id: deptId ? parseInt(deptId) : null,
+        is_staff: document.getElementById("eu-is-staff").checked,
     };
     try {
         const res = await apiCall(API.admin + "/users/" + id, { method: "PUT", body: JSON.stringify(data) });
@@ -1868,12 +1884,10 @@ async function __reportTenantLoad() {
         const d = res.data;
         const pageSize = 20;
         let html = `
-            <div class="toolbar" style="flex-wrap:wrap;gap:8px">
-                <div class="search-bar" style="flex:1;min-width:200px">
-                    <input type="text" id="rt-search" placeholder="搜索租户名称/标识" value="${__rtSearch}" onkeydown="if(event.key==='Enter'){__rtSearch=this.value;__reportTenantLoad()}">
-                </div>
-                <input type="date" id="rt-date-from" value="${__rtDateFrom}" onchange="__rtDateFrom=this.value" style="padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px">
-                <input type="date" id="rt-date-to" value="${__rtDateTo}" onchange="__rtDateTo=this.value" style="padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px">
+            <div class="toolbar" style="flex-wrap:wrap;gap:8px;align-items:center">
+                <input type="text" id="rt-search" placeholder="搜索租户名称/标识" value="${__rtSearch}" onkeydown="if(event.key==='Enter'){__rtSearch=this.value;__reportTenantLoad()}" style="padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px;flex:1;min-width:200px">
+                <input type="date" id="rt-date-from" value="${__rtDateFrom}" onchange="__rtDateFrom=this.value" style="padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px;height:38px">
+                <input type="date" id="rt-date-to" value="${__rtDateTo}" onchange="__rtDateTo=this.value" style="padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px;height:38px">
                 <button class="btn btn-primary" onclick="__rtSearch=document.getElementById('rt-search').value;__rtDateFrom=document.getElementById('rt-date-from').value;__rtDateTo=document.getElementById('rt-date-to').value;__rtPage=1;__reportTenantLoad()" style="height:38px">查询</button>
             </div>`;
 
@@ -1951,13 +1965,11 @@ async function __reportAppLoad() {
         const d = res.data;
         const pageSize = 20;
         let html = `
-            <div class="toolbar" style="flex-wrap:wrap;gap:8px">
-                <div class="search-bar" style="flex:1;min-width:200px">
-                    <input type="text" id="ra-search" placeholder="搜索应用名称/AppKey" value="${__raSearch}" onkeydown="if(event.key==='Enter'){__raSearch=this.value;__reportAppLoad()}">
-                </div>
-                <input type="number" id="ra-tenant-id" placeholder="租户ID（可选）" value="${__raTenantId}" style="padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px;width:120px">
-                <input type="date" id="ra-date-from" value="${__raDateFrom}" onchange="__raDateFrom=this.value" style="padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px">
-                <input type="date" id="ra-date-to" value="${__raDateTo}" onchange="__raDateTo=this.value" style="padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px">
+            <div class="toolbar" style="flex-wrap:wrap;gap:8px;align-items:center">
+                <input type="text" id="ra-search" placeholder="搜索应用名称/AppKey" value="${__raSearch}" onkeydown="if(event.key==='Enter'){__raSearch=this.value;__reportAppLoad()}" style="padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px;flex:1;min-width:200px">
+                <input type="number" id="ra-tenant-id" placeholder="租户ID（可选）" value="${__raTenantId}" style="padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px;width:120px;height:38px">
+                <input type="date" id="ra-date-from" value="${__raDateFrom}" onchange="__raDateFrom=this.value" style="padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px;height:38px">
+                <input type="date" id="ra-date-to" value="${__raDateTo}" onchange="__raDateTo=this.value" style="padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px;height:38px">
                 <button class="btn btn-primary" onclick="__raSearch=document.getElementById('ra-search').value;__raTenantId=document.getElementById('ra-tenant-id').value;__raDateFrom=document.getElementById('ra-date-from').value;__raDateTo=document.getElementById('ra-date-to').value;__raPage=1;__reportAppLoad()" style="height:38px">查询</button>
             </div>`;
 
@@ -2031,16 +2043,16 @@ async function __reportEndpointLoad() {
         const d = res.data;
         const pageSize = 50;
         let html = `
-            <div class="toolbar" style="flex-wrap:wrap;gap:8px">
-                <select id="re-stat-type" onchange="__reStatType=this.value" style="padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px">
+            <div class="toolbar" style="flex-wrap:wrap;gap:8px;align-items:center">
+                <select id="re-stat-type" onchange="__reStatType=this.value" style="padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px;height:38px">
                     <option value="all" ${__reStatType === "all" ? "selected" : ""}>全部接口</option>
                     <option value="app" ${__reStatType === "app" ? "selected" : ""}>应用接口(OpenAPI)</option>
                     <option value="tenant" ${__reStatType === "tenant" ? "selected" : ""}>租户接口(管理端)</option>
                 </select>
-                <input type="number" id="re-tenant-id" placeholder="租户ID筛选" value="${__reTenantId}" style="padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px;width:120px">
-                <input type="number" id="re-app-id" placeholder="应用ID筛选" value="${__reAppId}" style="padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px;width:120px">
-                <input type="date" id="re-date-from" value="${__reDateFrom}" style="padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px">
-                <input type="date" id="re-date-to" value="${__reDateTo}" style="padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px">
+                <input type="number" id="re-tenant-id" placeholder="租户ID筛选" value="${__reTenantId}" style="padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px;width:120px;height:38px">
+                <input type="number" id="re-app-id" placeholder="应用ID筛选" value="${__reAppId}" style="padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px;width:120px;height:38px">
+                <input type="date" id="re-date-from" value="${__reDateFrom}" style="padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px;height:38px">
+                <input type="date" id="re-date-to" value="${__reDateTo}" style="padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px;height:38px">
                 <button class="btn btn-primary" onclick="__reStatType=document.getElementById('re-stat-type').value;__reTenantId=document.getElementById('re-tenant-id').value;__reAppId=document.getElementById('re-app-id').value;__reDateFrom=document.getElementById('re-date-from').value;__reDateTo=document.getElementById('re-date-to').value;__rePage=1;__reportEndpointLoad()" style="height:38px">查询</button>
             </div>`;
         if (d.items && d.items.length) {
