@@ -254,12 +254,12 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 
 **Token有效期**:
 
-| Token类型 | 有效期 | 说明 |
-|-----------|--------|------|
-| **Access Token** | **120分钟 (2小时)** | JWT访问令牌，用于API调用 |
-| **Refresh Token** | **24小时** | 刷新令牌，用于获取新的Access Token，一次性使用 |
+| Token类型           | 有效期             | 说明                            |
+| ----------------- | --------------- | ----------------------------- |
+| **Access Token**  | **120分钟 (2小时)** | JWT访问令牌，用于API调用               |
+| **Refresh Token** | **24小时**        | 刷新令牌，用于获取新的Access Token，一次性使用 |
 
-> **注意**: 建议在access_token到期前5-10分钟主动刷新，避免请求失败
+> **注意**: 建议在access\_token到期前5-10分钟主动刷新，避免请求失败
 
 ***
 
@@ -530,9 +530,9 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 
 **请求参数**:
 
-| 参数 | 位置 | 必填 | 说明 |
-| --- | --- | --- | --- |
-| `user_token` | query/body | ✅ | 用户的JWT AccessToken，最大512字符 |
+| 参数           | 位置         | 必填 | 说明                         |
+| ------------ | ---------- | -- | -------------------------- |
+| `user_token` | query/body | ✅  | 用户的JWT AccessToken，最大512字符 |
 
 **成功响应** (200):
 
@@ -661,11 +661,11 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 
 **请求头**:
 
-| 头名称 | 必填 | 说明 |
-| --- | --- | --- |
-| `X-App-Key` | ✅ | 应用密钥，管理后台获取 |
-| `X-Timestamp` | ✅ | Unix时间戳（秒），与服务器时差不超过5分钟 |
-| `X-Signature` | ✅ | HMAC-SHA256签名（同其他开放API签名规则） |
+| 头名称           | 必填 | 说明                          |
+| ------------- | -- | --------------------------- |
+| `X-App-Key`   | ✅  | 应用密钥，管理后台获取                 |
+| `X-Timestamp` | ✅  | Unix时间戳（秒），与服务器时差不超过5分钟     |
+| `X-Signature` | ✅  | HMAC-SHA256签名（同其他开放API签名规则） |
 
 **成功响应** (200):
 
@@ -878,12 +878,12 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 }
 ```
 
-| 返回字段            | 类型     | 说明                    |
-| --------------- | ------ | --------------------- |
-| `access_token`  | string | JWT Token，有效期120分钟 |
+| 返回字段            | 类型     | 说明                                    |
+| --------------- | ------ | ------------------------------------- |
+| `access_token`  | string | JWT Token，有效期120分钟                    |
 | `refresh_token` | string | 刷新令牌，用于获取新的Access Token，有效期24小时，一次性使用 |
-| `user_id`       | int    | 用户ID                  |
-| `is_new`        | bool   | 是否为新注册用户              |
+| `user_id`       | int    | 用户ID                                  |
+| `is_new`        | bool   | 是否为新注册用户                              |
 
 **失败响应** (400):
 
@@ -1184,27 +1184,27 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 
 ## 错误码速查
 
-| 错误码    | 含义       | HTTP状态码 | 处理建议                    |
-| ------ | -------- | ------- | ----------------------- |
-| 0      | 成功       | 200/201 | -                       |
-| -10001 | Token已过期 | 401     | 使用refresh\_token刷新或重新登录 |
-| -10002 | Token无效  | 401     | 重新登录获取新Token            |
-| -10003 | 签名无效     | 401     | 检查签名算法和app\_secret      |
-| -10101 | 用户不存在    | 404     | 确认用户ID或用户名是否正确          |
-| -10102 | 用户已禁用    | 403     | 联系管理员启用账户               |
-| -10103 | 用户访问被拒绝  | 403     | 检查用户应用访问权限              |
-| -10201 | 权限不足     | 403     | 确认用户是否有相应权限             |
-| -10202 | 无接口调用权限  | 403     | 确认应用是否绑定了该接口权限          |
-| -10301 | 短信验证码错误  | 400     | 检查验证码是否正确               |
-| -10302 | 短信验证码已过期 | 400     | 重新获取验证码                 |
-| -10303 | 短信发送失败   | 500     | 稍后重试，检查短信服务配置           |
-| -10401 | 限流超限     | 429     | 稍后重试或联系管理员调整限流配置        |
-| -10501 | AppKey无效 | 401     | 确认X-App-Key是否正确         |
-| -10502 | 应用已禁用    | 403     | 联系管理员启用应用               |
-| -10601 | 缺少必要参数   | 400     | 检查请求参数是否完整              |
-| -10602 | 参数格式错误   | 400     | 检查请求参数是否正确              |
-| -10801 | 微信未配置    | 400     | 联系管理员配置微信 AppID/AppSecret |
-| -10802 | 微信API调用失败 | 400     | 检查微信授权码是否正确或稍后重试      |
+| 错误码    | 含义        | HTTP状态码 | 处理建议                      |
+| ------ | --------- | ------- | ------------------------- |
+| 0      | 成功        | 200/201 | -                         |
+| -10001 | Token已过期  | 401     | 使用refresh\_token刷新或重新登录   |
+| -10002 | Token无效   | 401     | 重新登录获取新Token              |
+| -10003 | 签名无效      | 401     | 检查签名算法和app\_secret        |
+| -10101 | 用户不存在     | 404     | 确认用户ID或用户名是否正确            |
+| -10102 | 用户已禁用     | 403     | 联系管理员启用账户                 |
+| -10103 | 用户访问被拒绝   | 403     | 检查用户应用访问权限                |
+| -10201 | 权限不足      | 403     | 确认用户是否有相应权限               |
+| -10202 | 无接口调用权限   | 403     | 确认应用是否绑定了该接口权限            |
+| -10301 | 短信验证码错误   | 400     | 检查验证码是否正确                 |
+| -10302 | 短信验证码已过期  | 400     | 重新获取验证码                   |
+| -10303 | 短信发送失败    | 500     | 稍后重试，检查短信服务配置             |
+| -10401 | 限流超限      | 429     | 稍后重试或联系管理员调整限流配置          |
+| -10501 | AppKey无效  | 401     | 确认X-App-Key是否正确           |
+| -10502 | 应用已禁用     | 403     | 联系管理员启用应用                 |
+| -10601 | 缺少必要参数    | 400     | 检查请求参数是否完整                |
+| -10602 | 参数格式错误    | 400     | 检查请求参数是否正确                |
+| -10801 | 微信未配置     | 400     | 联系管理员配置微信 AppID/AppSecret |
+| -10802 | 微信API调用失败 | 400     | 检查微信授权码是否正确或稍后重试          |
 
 ***
 
@@ -1301,7 +1301,7 @@ verifyToken('user_jwt_token').then(console.log);
 
 ### 1. Token管理
 
-- 将access_token存储在安全的地方（如HttpOnly Cookie）
+- 将access\_token存储在安全的地方（如HttpOnly Cookie）
 - **Access Token有效期为120分钟（2小时）**，建议在到期前5-10分钟主动刷新
 - **Refresh Token有效期为24小时**，一次性使用，用于获取新的Access Token
 - 定期刷新Token避免用户重新登录
@@ -1341,18 +1341,18 @@ verifyToken('user_jwt_token').then(console.log);
 > 以下为系统预置的 API 权限，通过管理命令 `python manage.py init_data` 初始化。
 > 应用开通时需在管理后台绑定接口权限，未绑定的接口调用会返回 `-10202` 错误。
 
-| 权限编码 | 权限名称 | 说明 | 对应接口 |
-|---------|---------|------|---------|
-| `token:verify` | 验证Token | 验证用户身份Token的有效性 | `POST /api/v1/open/verify_token` |
-| `user:read` | 读取用户 | 查询和获取用户的基本信息 | `GET /api/v1/open/users` |
-| `user:create` | 创建用户 | 在指定租户下创建新的用户账号 | `POST /api/v1/open/users` |
-| `user:update` | 修改用户 | 更新现有用户的信息 | `PUT /api/v1/open/users/:id` |
-| `user:status` | 修改用户状态 | 启用/禁用用户账号 | `PATCH /api/v1/open/users/:id/status` |
-| `permission:check` | 校验权限 | 校验用户是否拥有指定权限 | `POST /api/v1/open/check_permission` |
-| `user:profile:read` | 读取用户资料 | 通过用户Token读取用户的完整资料信息 | `GET /api/v1/open/user/profile/by_token` |
-| `user:profile:update` | 修改用户资料 | 通过用户Token更新用户的个人资料信息 | `PUT /api/v1/open/user/profile/by_token` |
-| `wechat:access_token` | 获取微信AccessToken | 获取微信小程序接口调用凭证 | `GET /api/v1/open/wechat/access_token` |
-| `wechat:phone` | 获取微信用户手机号 | 通过微信小程序临时code获取手机号 | `POST /api/v1/open/wechat/get_phone_number` |
+| 权限编码                  | 权限名称            | 说明                   | 对应接口                                        |
+| --------------------- | --------------- | -------------------- | ------------------------------------------- |
+| `token:verify`        | 验证Token         | 验证用户身份Token的有效性      | `POST /api/v1/open/verify_token`            |
+| `user:read`           | 读取用户            | 查询和获取用户的基本信息         | `GET /api/v1/open/users`                    |
+| `user:create`         | 创建用户            | 在指定租户下创建新的用户账号       | `POST /api/v1/open/users`                   |
+| `user:update`         | 修改用户            | 更新现有用户的信息            | `PUT /api/v1/open/users/:id`                |
+| `user:status`         | 修改用户状态          | 启用/禁用用户账号            | `PATCH /api/v1/open/users/:id/status`       |
+| `permission:check`    | 校验权限            | 校验用户是否拥有指定权限         | `POST /api/v1/open/check_permission`        |
+| `user:profile:read`   | 读取用户资料          | 通过用户Token读取用户的完整资料信息 | `GET /api/v1/open/user/profile/by_token`    |
+| `user:profile:update` | 修改用户资料          | 通过用户Token更新用户的个人资料信息 | `PUT /api/v1/open/user/profile/by_token`    |
+| `wechat:access_token` | 获取微信AccessToken | 获取微信小程序接口调用凭证        | `GET /api/v1/open/wechat/access_token`      |
+| `wechat:phone`        | 获取微信用户手机号       | 通过微信小程序临时code获取手机号   | `POST /api/v1/open/wechat/get_phone_number` |
 
 **权限说明**:
 
@@ -1380,7 +1380,7 @@ verifyToken('user_jwt_token').then(console.log);
 | 钉钉       | `dingtalk`   | 钉钉登录     |
 | 飞书       | `feishu`     | 飞书登录     |
 
----
+***
 
 ## 附录：数据模型
 
@@ -1407,131 +1407,131 @@ verifyToken('user_jwt_token').then(console.log);
 
 #### 租户表 (tenant)
 
-| 字段 | 类型 | 说明 | API中对应 |
-|------|------|------|-----------|
-| `id` | int | 主键ID | `tenant_id` |
-| `uuid` | string | UUID | - |
-| `name` | string | 企业名称 | - |
-| `slug` | string | 唯一标识 | - |
-| `status` | bool | 启用状态 | - |
-| `sms_provider` | string | 短信服务商 | - |
+| 字段             | 类型     | 说明    | API中对应      |
+| -------------- | ------ | ----- | ----------- |
+| `id`           | int    | 主键ID  | `tenant_id` |
+| `uuid`         | string | UUID  | -           |
+| `name`         | string | 企业名称  | -           |
+| `slug`         | string | 唯一标识  | -           |
+| `status`       | bool   | 启用状态  | -           |
+| `sms_provider` | string | 短信服务商 | -           |
 
 > 每个租户独立管理自己的用户、应用和角色，数据隔离。
 
 #### 用户表 (user)
 
-| 字段 | 类型 | 说明 | API中对应 |
-|------|------|------|-----------|
-| `id` | int | 主键ID | `user_id` |
-| `uuid` | string | UUID（不可变） | `uuid` |
-| `tenant_id` | int | 所属租户 | `tenant_id` |
-| `user_type` | string | internal/external | `user_type` |
-| `username` | string | 用户名（唯一） | `username` |
-| `email` | string | 邮箱 | `email` |
-| `phone` | string | 手机号 | `phone` |
-| `nickname` | string | 昵称 | `nickname` |
-| `avatar` | string | 头像URL | `avatar` |
-| `department` | string | 部门名称 | `department` |
-| `dept_id` | int | 关联部门ID | - |
-| `status` | int | 1=正常, 0=禁用 | `status` |
-| `last_login_at` | datetime | 最后登录时间 | `last_login_at` |
-| `is_superuser` | bool | 是否超级管理员 | `is_superuser` |
-| `is_staff` | bool | 是否后台管理员 | `is_staff` |
-| `created_at` | datetime | 创建时间 | `created_at` |
+| 字段              | 类型       | 说明                | API中对应          |
+| --------------- | -------- | ----------------- | --------------- |
+| `id`            | int      | 主键ID              | `user_id`       |
+| `uuid`          | string   | UUID（不可变）         | `uuid`          |
+| `tenant_id`     | int      | 所属租户              | `tenant_id`     |
+| `user_type`     | string   | internal/external | `user_type`     |
+| `username`      | string   | 用户名（唯一）           | `username`      |
+| `email`         | string   | 邮箱                | `email`         |
+| `phone`         | string   | 手机号               | `phone`         |
+| `nickname`      | string   | 昵称                | `nickname`      |
+| `avatar`        | string   | 头像URL             | `avatar`        |
+| `department`    | string   | 部门名称              | `department`    |
+| `dept_id`       | int      | 关联部门ID            | -               |
+| `status`        | int      | 1=正常, 0=禁用        | `status`        |
+| `last_login_at` | datetime | 最后登录时间            | `last_login_at` |
+| `is_superuser`  | bool     | 是否超级管理员           | `is_superuser`  |
+| `is_staff`      | bool     | 是否后台管理员           | `is_staff`      |
+| `created_at`    | datetime | 创建时间              | `created_at`    |
 
-#### 用户资料表 (user_profile)
+#### 用户资料表 (user\_profile)
 
-| 字段 | 类型 | 说明 | API中对应 |
-|------|------|------|-----------|
-| `id` | int | 主键ID | `profile_id` |
-| `user_id` | int | 关联用户 | - |
-| `real_name` | string | 真实姓名 | `real_name` |
-| `gender` | string | male/female/other | `gender` |
-| `birthday` | date | 出生日期 | `birthday` |
-| `id_card` | string | 身份证号 | `id_card` |
-| `job_title` | string | 职位 | `job_title` |
-| `employee_id` | string | 员工编号 | `employee_id` |
-| `hire_date` | date | 入职日期 | `hire_date` |
-| `work_email` | string | 工作邮箱 | `work_email` |
-| `emergency_contact` | string | 紧急联系人 | `emergency_contact` |
-| `tags` | json | 标签数组 | `tags` |
-| `extra_data` | json | 扩展数据 | `extra_data` |
+| 字段                  | 类型     | 说明                | API中对应              |
+| ------------------- | ------ | ----------------- | ------------------- |
+| `id`                | int    | 主键ID              | `profile_id`        |
+| `user_id`           | int    | 关联用户              | -                   |
+| `real_name`         | string | 真实姓名              | `real_name`         |
+| `gender`            | string | male/female/other | `gender`            |
+| `birthday`          | date   | 出生日期              | `birthday`          |
+| `id_card`           | string | 身份证号              | `id_card`           |
+| `job_title`         | string | 职位                | `job_title`         |
+| `employee_id`       | string | 员工编号              | `employee_id`       |
+| `hire_date`         | date   | 入职日期              | `hire_date`         |
+| `work_email`        | string | 工作邮箱              | `work_email`        |
+| `emergency_contact` | string | 紧急联系人             | `emergency_contact` |
+| `tags`              | json   | 标签数组              | `tags`              |
+| `extra_data`        | json   | 扩展数据              | `extra_data`        |
 
 #### 应用表 (application)
 
-| 字段 | 类型 | 说明 | API中对应 |
-|------|------|------|-----------|
-| `id` | int | 主键ID | `app_id` |
-| `uuid` | string | UUID | - |
-| `tenant_id` | int | 所属租户 | - |
-| `name` | string | 应用名称 | - |
-| `app_key` | string | 应用Key（唯一） | `X-App-Key` |
-| `app_secret_hash` | string | AppSecret的SHA256 | 签名验证 |
-| `callback_urls` | json | 回调地址白名单 | - |
-| `status` | bool | 启用状态 | - |
+| 字段                | 类型     | 说明               | API中对应      |
+| ----------------- | ------ | ---------------- | ----------- |
+| `id`              | int    | 主键ID             | `app_id`    |
+| `uuid`            | string | UUID             | -           |
+| `tenant_id`       | int    | 所属租户             | -           |
+| `name`            | string | 应用名称             | -           |
+| `app_key`         | string | 应用Key（唯一）        | `X-App-Key` |
+| `app_secret_hash` | string | AppSecret的SHA256 | 签名验证        |
+| `callback_urls`   | json   | 回调地址白名单          | -           |
+| `status`          | bool   | 启用状态             | -           |
 
-#### 授权码表 (auth_code)
+#### 授权码表 (auth\_code)
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `code` | string | 授权码 |
-| `app_id` | int | 所属应用 |
-| `user_id` | int | 授权用户 |
-| `redirect_uri` | string | 回调地址 |
-| `state` | string | CSRF状态码 |
-| `expires_at` | datetime | 过期时间（5分钟） |
-| `is_used` | bool | 是否已使用 |
+| 字段             | 类型       | 说明        |
+| -------------- | -------- | --------- |
+| `code`         | string   | 授权码       |
+| `app_id`       | int      | 所属应用      |
+| `user_id`      | int      | 授权用户      |
+| `redirect_uri` | string   | 回调地址      |
+| `state`        | string   | CSRF状态码   |
+| `expires_at`   | datetime | 过期时间（5分钟） |
+| `is_used`      | bool     | 是否已使用     |
 
 #### 角色表 (role)
 
-| 字段 | 类型 | 说明 | API中对应 |
-|------|------|------|-----------|
-| `id` | int | 主键ID | - |
-| `tenant_id` | int | 所属租户 | - |
-| `name` | string | 角色名称 | - |
-| `code` | string | 角色编码 | `role_codes` |
+| 字段          | 类型     | 说明   | API中对应       |
+| ----------- | ------ | ---- | ------------ |
+| `id`        | int    | 主键ID | -            |
+| `tenant_id` | int    | 所属租户 | -            |
+| `name`      | string | 角色名称 | -            |
+| `code`      | string | 角色编码 | `role_codes` |
 
-#### 权限表 (api_permission)
+#### 权限表 (api\_permission)
 
-| 字段 | 类型 | 说明 | API中对应 |
-|------|------|------|-----------|
-| `id` | int | 主键ID | - |
-| `code` | string | 权限编码 | `permission_code` |
-| `method` | string | HTTP方法 | - |
-| `path` | string | API路径 | - |
-| `category` | string | 分类 | - |
+| 字段         | 类型     | 说明     | API中对应            |
+| ---------- | ------ | ------ | ----------------- |
+| `id`       | int    | 主键ID   | -                 |
+| `code`     | string | 权限编码   | `permission_code` |
+| `method`   | string | HTTP方法 | -                 |
+| `path`     | string | API路径  | -                 |
+| `category` | string | 分类     | -                 |
 
-#### 用户-角色关联表 (user_role)
+#### 用户-角色关联表 (user\_role)
 
-| 字段 | 说明 |
-|------|------|
+| 字段        | 说明   |
+| --------- | ---- |
 | `user_id` | 用户ID |
 | `role_id` | 角色ID |
 
 > 通过此关联实现用户权限控制，一个用户可以拥有多个角色。
 
-#### 应用-权限绑定表 (app_role_binding)
+#### 应用-权限绑定表 (app\_role\_binding)
 
-| 字段 | 说明 |
-|------|------|
-| `app_id` | 应用ID |
+| 字段              | 说明   |
+| --------------- | ---- |
+| `app_id`        | 应用ID |
 | `permission_id` | 权限ID |
 
 > 控制应用可以调用的API范围，未绑定的接口禁止调用。
 
-#### 审计日志表 (audit_log)
+#### 审计日志表 (audit\_log)
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `id` | int | 主键ID |
-| `tenant_id` | int | 所属租户 |
-| `actor_name` | string | 操作人 |
-| `action` | string | 操作类型（如 login, user.create） |
-| `resource_type` | string | 资源类型 |
-| `resource_id` | int | 资源ID |
-| `detail` | json | 操作详情 |
-| `ip_address` | string | 来源IP |
-| `created_at` | datetime | 操作时间 |
+| 字段              | 类型       | 说明                         |
+| --------------- | -------- | -------------------------- |
+| `id`            | int      | 主键ID                       |
+| `tenant_id`     | int      | 所属租户                       |
+| `actor_name`    | string   | 操作人                        |
+| `action`        | string   | 操作类型（如 login, user.create） |
+| `resource_type` | string   | 资源类型                       |
+| `resource_id`   | int      | 资源ID                       |
+| `detail`        | json     | 操作详情                       |
+| `ip_address`    | string   | 来源IP                       |
+| `created_at`    | datetime | 操作时间                       |
 
 ### API字段与数据库字段映射关系
 
