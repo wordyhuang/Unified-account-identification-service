@@ -203,6 +203,8 @@ def permissions():
         ("user:update", "修改用户", "PUT", "/api/v1/open/users/:id", "user"),
         ("user:status", "修改用户状态", "PATCH", "/api/v1/open/users/:id/status", "user"),
         ("permission:check", "校验权限", "POST", "/api/v1/open/check_permission", "permission"),
+        ("user:profile:read", "读取用户资料", "GET", "/api/v1/open/user/profile/by_token", "user"),
+        ("user:profile:update", "修改用户资料", "PUT", "/api/v1/open/user/profile/by_token", "user"),
     ]
     for code, name, method, path, cat in perm_data:
         p, _ = ApiPermission.objects.get_or_create(

@@ -90,11 +90,15 @@ cd php/
 
 # 编辑 openapi_client.php 中的 $appKey 和 $appSecret
 
-# 运行示例
+# 运行 OpenAPI 调用示例
 php openapi_client.php
+
+# 运行微信扫码登录示例
+php -S localhost:8080 -t ./
+# 然后浏览器访问 http://localhost:8080/php/wechat_login.php
 ```
 
-**使用方式：**
+**OpenAPI 基础使用方式：**
 
 ```php
 require_once 'openapi_client.php';
@@ -110,6 +114,33 @@ $result = $client->verifyToken('用户JWT_TOKEN');
 
 // 查询用户列表
 $users = $client->listUsers();
+```
+
+**微信扫码登录示例：**
+
+微信扫码登录（`wechat_web`）的完整示例文件：[php/wechat_login.php](file:///e:/framework/Unified%20account%20identification%20service/code/client_demo/php/wechat_login.php)
+
+该文件演示了完整的 OAuth2 授权码流程：
+
+1. 用户点击"微信登录"，跳转到微信授权页面
+2. 用户使用微信扫码授权
+3. 微信回调携带 `code` 跳回本页面
+4. 调用 `socialLogin('wechat_web', $code, $appKey)` 完成登录
+5. 使用返回的 `access_token` 获取用户信息
+
+**前置条件（使用微信登录前需完成）：**
+
+1. 在 [微信开放平台](https://open.weixin.qq.com) 注册网页应用，获取 AppID
+2. 在微信开放平台配置授权回调域名（指向你的服务器）
+3. 在"统一账号识别管理平台"的应用配置中，填写微信网页应用的 AppID 和 AppSecret
+4. 编辑 `wechat_login.php`，填入你的 `WECHAT_APP_ID` 和 `CALLBACK_URL`
+
+```php
+// wechat_login.php 配置区示例
+define('APP_KEY', '你的APP_KEY');
+define('APP_SECRET', '你的APP_SECRET');
+define('WECHAT_APP_ID', 'wx1234567890abcdef');   // 微信开放平台 AppID
+define('CALLBACK_URL', 'http://your-domain.com/php/wechat_login.php');  // 回调地址
 ```
 
 ## 获取 AppKey 和 AppSecret

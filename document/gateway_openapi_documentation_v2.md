@@ -8,6 +8,159 @@
 
 ***
 
+## 整体流程架构
+
+### 1. 应用注册与配置流程
+
+```
+应用方                      管理后台                      认证服务
+ ├─ 创建应用─────────────────>│
+ │                           │ 生成 app_key 和 app_secret
+ │                           ├─ 配置回调地址白名单
+ │                           ├─ 分配权限范围
+ │<─────────────────────────┤
+ │  获取凭证                 │
+ │
+ │  保存 app_key 和 app_secret
+ └─ (妥善保管)
+```
+
+### 2. 用户登录与认证流程
+
+#### 密码登录流程
+
+```
+用户         应用方                    认证服务
+ ├─ 输入账号密码──>│
+ │                ├─ 验证账号密码──>│
+ │                │                │ 验证通过
+ │                │<───────────────┤
+ │                │  返回Token对
+ │<───────────────┤
+ │ 存储Token      │
+ │
+ ├─ 使用Token────>│
+ │                ├─ 校验Token───>│
+ │                │                │ 通过
+ │                │<───────────────┤
+ │                │  返回用户信息
+ │<───────────────┤
+```
+
+#### 短信验证码登录流程
+
+```
+用户         应用方                    认证服务
+ ├─ 输入手机号────>│
+ │                ├─ 发送验证码───>│
+ │                │                │ 生成验证码（5分钟有效）
+ │                │                │ 发送短信
+ │                │<──发送成功─────┤
+ │
+ ├─ 输入验证码────>│
+ │                ├─ 验证验证码──>│
+ │                │                │ 验证通过
+ │                │                │ 用户不存在则自动创建
+ │                │<───────────────┤
+ │                │  返回Token对
+ │<───────────────┤
+```
+
+#### 社交登录流程
+
+```
+用户         应用方                    认证服务                   第三方平台
+ ├─ 选择社交登录──>│
+ │                ├─ 请求授权URL──>│
+ │                │                │ 生成授权链接
+ │                │<──授权URL──────┤
+ │
+ ├─ 在第三方平台─>│
+ │ 完成授权
+ │                ├─ 使用授权码───>│
+ │                │                │ 换取用户信息────────>│
+ │                │                │<──用户信息──────────┤
+ │                │                │ 用户不存在则自动创建
+ │                │<──Token对──────┤
+ │<──登录成功───┤
+```
+
+#### OAuth2授权流程（第三方应用）
+
+```
+用户           第三方应用                     认证服务
+ ├─ 点击登录───>│
+ │              ├─ 重定向到授权页──>│
+ │              │                  │
+ │              │<──显示授权页──────┤
+ │              │
+ ├─ 同意授权────>│
+ │              ├─ 获取授权码─────>│
+ │              │                  │ 生成授权码（5分钟有效期）
+ │              │<──授权码─────────┤
+ │              │
+ │              ├─ 换取Token──────>│
+ │              │                  │ 验证授权码
+ │              │                  │ 生成Access Token（2小时）
+ │              │                  │ 和Refresh Token（24小时）
+ │              │<──Token对────────┤
+ │              │
+ │<──登录成功───┤
+```
+
+#### Token刷新流程
+
+```
+用户         应用方                    认证服务
+ │
+ │  (Access Token即将过期)
+ │
+ ├─ 主动刷新─────>│
+ │  携带refresh_token
+ │                ├─ 验证refresh_token─>│
+ │                │                     │ 检查有效性
+ │                │                     │ 生成新的Access Token
+ │                │                     │ 可选：生成新的Refresh Token
+ │                │<────────────────────┤
+ │                │  返回新的Token对
+ │<───────────────┤
+ │  更新本地Token存储
+ │
+ ├─ 继续使用新Token─>│
+```
+
+### 3. 开放API调用流程
+
+```
+应用方                        认证服务
+ │
+ ├─ 准备请求参数
+ │
+ ├─ 生成签名─────────────┐
+ │                      │
+ │  签名步骤:           │
+ │  1. app_secret做SHA256哈希
+ │  2. 签名 = HMAC-SHA256(哈希值, "{}" + timestamp)
+ │
+ ├─ 发送请求────────────>│
+ │  请求头:
+ │  - X-App-Key: 应用Key
+ │  - X-Timestamp: Unix时间戳
+ │  - X-Signature: 签名
+ │
+ │                      ├─ 验证应用Key
+ │                      ├─ 验证时间戳（时差≤5分钟）
+ │                      ├─ 验证签名
+ │                      │
+ │                      ├─ 执行业务逻辑
+ │
+ │<──响应数据───────────┤
+ │
+ └─ 处理响应
+```
+
+***
+
 ## 快速开始
 
 ### 第一步：获取应用凭证
@@ -99,6 +252,15 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 2. 使用access\_token访问其他接口
 3. Token过期时调用 `/api/v1/auth/refresh` 刷新
 
+**Token有效期**:
+
+| Token类型 | 有效期 | 说明 |
+|-----------|--------|------|
+| **Access Token** | **120分钟 (2小时)** | JWT访问令牌，用于API调用 |
+| **Refresh Token** | **24小时** | 刷新令牌，用于获取新的Access Token，一次性使用 |
+
+> **注意**: 建议在access_token到期前5-10分钟主动刷新，避免请求失败
+
 ***
 
 ## 开放API接口列表
@@ -140,9 +302,9 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 
 **请求参数**:
 
-| 参数 | 必填 | 说明 |
-| -- | -- | -- |
-| 无 | - | 返回当前租户下所有用户（不分页） |
+| 参数 | 必填 | 说明               |
+| -- | -- | ---------------- |
+| 无  | -  | 返回当前租户下所有用户（不分页） |
 
 **成功响应** (200):
 
@@ -154,6 +316,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
         "users": [
             {
                 "id": 1,
+                "uuid": "a1b2c3d4-...",
                 "username": "zhangsan",
                 "user_type": "internal",
                 "email": "zhangsan@example.com",
@@ -202,6 +365,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
     "message": "success",
     "data": {
         "id": 101,
+        "uuid": "a1b2c3d4-...",
         "username": "newuser",
         "user_type": "internal",
         "email": null,
@@ -221,7 +385,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 
 ```json
 {
-    "code": -10101,
+    "code": -10602,
     "message": "用户名已存在"
 }
 ```
@@ -246,6 +410,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
     "message": "success",
     "data": {
         "id": 1,
+        "uuid": "a1b2c3d4-...",
         "username": "zhangsan",
         "user_type": "internal",
         "email": "zhangsan@example.com",
@@ -281,6 +446,8 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 }
 ```
 
+> **手机号唯一性**: 同租户内手机号不可重复。如果将手机号修改为其他用户已使用的号码，将返回 `-10602` 错误（"手机号已被占用"）。不同租户间允许手机号重复。
+
 **成功响应** (200):
 
 ```json
@@ -315,6 +482,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
     "message": "success",
     "data": {
         "user_id": 1,
+        "user_uuid": "a1b2c3d4-...",
         "status": 1
     }
 }
@@ -343,8 +511,208 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
     "message": "success",
     "data": {
         "user_id": 1,
+        "user_uuid": "a1b2c3d4-...",
         "permission_code": "user.view",
         "has_permission": true
+    }
+}
+```
+
+### 通过Token获取用户资料
+
+**接口地址**: `GET /api/v1/open/user/profile/by_token`
+
+**功能描述**: 通过用户的JWT AccessToken获取其完整资料信息。Token可在 query string 或 request body 中传递。
+
+**认证方式**: AppKey + Signature（应用级认证）
+
+**权限码**: `user:profile:read`
+
+**请求参数**:
+
+| 参数 | 位置 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `user_token` | query/body | ✅ | 用户的JWT AccessToken，最大512字符 |
+
+**成功响应** (200):
+
+```json
+{
+    "code": 0,
+    "message": "success",
+    "data": {
+        "user_id": 1,
+        "username": "zhangsan",
+        "nickname": "张三",
+        "avatar": null,
+        "real_name": "张三",
+        "gender": "male",
+        "birthday": "1990-01-01",
+        "id_card": "110101199001011234",
+        "nationality": "中国",
+        "address": "北京市朝阳区",
+        "zip_code": "100000",
+        "emergency_contact": "李四",
+        "emergency_phone": "13800138001",
+        "job_title": "高级工程师",
+        "employee_id": "EMP001",
+        "hire_date": "2020-06-01",
+        "work_email": "zhangsan@company.com",
+        "work_phone": "010-88886666",
+        "wechat": "zhangsan_wx",
+        "qq": "12345678",
+        "weibo": "zhangsan_wb",
+        "bio": "个人简介内容",
+        "interests": "编程、阅读、运动",
+        "tags": ["技术", "管理"],
+        "extra_data": {"source": "invite"}
+    }
+}
+```
+
+**失败响应** (401):
+
+```json
+{
+    "code": -10002,
+    "message": "Token无效"
+}
+```
+
+### 通过Token修改用户资料
+
+**接口地址**: `PUT /api/v1/open/user/profile/by_token`
+
+**功能描述**: 通过用户的JWT AccessToken更新其个人资料。仅更新请求中携带的字段，未提供的字段保持不变。
+
+**认证方式**: AppKey + Signature（应用级认证）
+
+**权限码**: `user:profile:update`
+
+**请求体**:
+
+```json
+{
+    "user_token": "string (必填，用户的JWT AccessToken，最大512字符)",
+    "avatar": "string (选填，头像URL)",
+    "real_name": "string (选填，真实姓名)",
+    "gender": "string (选填，male/female/other)",
+    "birthday": "string (选填，日期，如 1990-01-01)",
+    "id_card": "string (选填，身份证号)",
+    "nationality": "string (选填，国籍)",
+    "address": "string (选填，联系地址)",
+    "zip_code": "string (选填，邮政编码)",
+    "emergency_contact": "string (选填，紧急联系人)",
+    "emergency_phone": "string (选填，紧急联系电话)",
+    "job_title": "string (选填，职位)",
+    "employee_id": "string (选填，员工编号)",
+    "hire_date": "string (选填，入职日期)",
+    "work_email": "string (选填，工作邮箱)",
+    "work_phone": "string (选填，工作电话)",
+    "wechat": "string (选填，微信号)",
+    "qq": "string (选填，QQ号)",
+    "weibo": "string (选填，微博账号)",
+    "bio": "string (选填，个人简介)",
+    "interests": "string (选填，兴趣爱好)",
+    "tags": "array (选填，标签数组)",
+    "extra_data": "object (选填，扩展数据)"
+}
+```
+
+**成功响应** (200):
+
+```json
+{
+    "code": 0,
+    "message": "success",
+    "data": {
+        "profile_id": 1
+    }
+}
+```
+
+**失败响应** (400):
+
+```json
+{
+    "code": -10602,
+    "message": "参数格式错误",
+    "data": {
+        "user_token": ["该字段是必填项。"]
+    }
+}
+```
+
+***
+
+## 微信小程序辅助接口
+
+小程序可通过以下接口完成在服务端的辅助操作。所有接口使用 **应用级认证（AppKey + 签名）**，需要在管理后台为应用授予对应的权限。
+
+### 获取微信 AccessToken
+
+**接口地址**: `GET /api/v1/open/wechat/access_token`
+
+**功能描述**: 获取微信小程序的接口调用凭证 `access_token`。系统按 `AppID` 自动缓存（缓存7000秒，微信官方有效期7200秒），缓存有效期内直接返回缓存值，不重复请求微信接口。
+
+**认证方式**: AppKey + Signature（应用级认证）
+
+**权限码**: `wechat:access_token`
+
+**请求头**:
+
+| 头名称 | 必填 | 说明 |
+| --- | --- | --- |
+| `X-App-Key` | ✅ | 应用密钥，管理后台获取 |
+| `X-Timestamp` | ✅ | Unix时间戳（秒），与服务器时差不超过5分钟 |
+| `X-Signature` | ✅ | HMAC-SHA256签名（同其他开放API签名规则） |
+
+**成功响应** (200):
+
+```json
+{
+    "code": 0,
+    "message": "success",
+    "data": {
+        "access_token": "wx_access_token_string",
+        "source": "cache",
+        "app_id": "wx1234567890abcdef"
+    }
+}
+```
+
+首次获取时 `source` 值为 `wechat`，后续缓存命中时为 `cache`。
+
+### 获取微信用户手机号
+
+**接口地址**: `POST /api/v1/open/wechat/get_phone_number`
+
+**功能描述**: 通过微信小程序 `getPhoneNumber` 接口返回的临时 `code`，获取用户绑定的真实手机号码。
+
+**认证方式**: AppKey + Signature（应用级认证）
+
+**权限码**: `wechat:phone`
+
+**请求头**: 同开放API标准签名认证。
+
+**请求体**:
+
+```json
+{
+    "code": "string (必填，微信小程序getPhoneNumber接口返回的临时code)"
+}
+```
+
+**成功响应** (200):
+
+```json
+{
+    "code": 0,
+    "message": "success",
+    "data": {
+        "phone_number": "8613800138000",
+        "country_code": "86",
+        "pure_phone_number": "13800138000"
     }
 }
 ```
@@ -408,7 +776,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 
 ```json
 {
-    "code": -10101,
+    "code": -10602,
     "message": "密码错误"
 }
 ```
@@ -433,7 +801,8 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 
 ```json
 {
-    "phone": "string (必填，最大20字符，中国大陆手机号)"
+    "phone": "string (必填，最大20字符，中国大陆手机号)",
+    "app_key": "string (选填，应用Key，用于按应用获取租户短信配置)"
 }
 ```
 
@@ -511,8 +880,8 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 
 | 返回字段            | 类型     | 说明                    |
 | --------------- | ------ | --------------------- |
-| `access_token`  | string | JWT Token，有效期默认30分钟   |
-| `refresh_token` | string | 刷新Token，有效期24小时，一次性使用 |
+| `access_token`  | string | JWT Token，有效期120分钟 |
+| `refresh_token` | string | 刷新令牌，用于获取新的Access Token，有效期24小时，一次性使用 |
 | `user_id`       | int    | 用户ID                  |
 | `is_new`        | bool   | 是否为新注册用户              |
 
@@ -543,7 +912,8 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 ```json
 {
     "provider": "string (必填，支持: wechat_mp/wechat_web/dingtalk/feishu)",
-    "code": "string (必填，最大512字符，第三方授权码)"
+    "code": "string (必填，最大512字符，第三方授权码)",
+    "app_key": "string (选填，应用Key，微信登录时用于获取对应的微信配置)"
 }
 ```
 
@@ -614,6 +984,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
     "message": "success",
     "data": {
         "id": 1,
+        "uuid": "a1b2c3d4-...",
         "username": "admin",
         "user_type": "internal",
         "email": "admin@example.com",
@@ -647,6 +1018,8 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
     "avatar": "string (选填，URL格式，最大512字符)"
 }
 ```
+
+> **手机号唯一性**: 同租户内手机号不可重复。如果将手机号修改为其他用户已使用的号码，将返回 `-10602` 错误（"手机号已被占用"）。不同租户间允许手机号重复。
 
 **成功响应** (200):
 
@@ -691,8 +1064,101 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 
 ```json
 {
-    "code": -10101,
+    "code": -10602,
     "message": "原密码错误"
+}
+```
+
+### 获取用户资料
+
+**接口地址**: `GET /api/v1/auth/profile`
+
+**功能描述**: 获取当前登录用户的详细资料（扩展信息）
+
+**认证方式**: Bearer Token
+
+**成功响应** (200):
+
+```json
+{
+    "code": 0,
+    "message": "success",
+    "data": {
+        "id": 1,
+        "avatar": "https://example.com/avatar.png",
+        "real_name": "张三",
+        "gender": "male",
+        "birthday": "1990-01-01",
+        "id_card": "110101199001011234",
+        "nationality": "中国",
+        "address": "北京市朝阳区",
+        "zip_code": "100000",
+        "emergency_contact": "李四",
+        "emergency_phone": "13800138001",
+        "job_title": "高级工程师",
+        "employee_id": "EMP001",
+        "hire_date": "2020-06-01",
+        "work_email": "zhangsan@company.com",
+        "work_phone": "010-88886666",
+        "wechat": "zhangsan_wx",
+        "qq": "12345678",
+        "weibo": "zhangsan_wb",
+        "bio": "个人简介内容",
+        "interests": "编程、阅读、运动",
+        "tags": ["技术", "管理"],
+        "extra_data": {"source": "invite"},
+        "created_at": "2024-01-01T10:00:00",
+        "updated_at": "2024-01-15T09:00:00"
+    }
+}
+```
+
+### 更新用户资料
+
+**接口地址**: `PUT /api/v1/auth/profile/update`
+
+**功能描述**: 更新当前登录用户的详细资料
+
+**认证方式**: Bearer Token
+
+**请求体**:
+
+```json
+{
+    "avatar": "string (选填，头像URL)",
+    "real_name": "string (选填，真实姓名)",
+    "gender": "string (选填，male/female/other)",
+    "birthday": "string (选填，日期，如 1990-01-01)",
+    "id_card": "string (选填，身份证号)",
+    "nationality": "string (选填，国籍)",
+    "address": "string (选填，联系地址)",
+    "zip_code": "string (选填，邮政编码)",
+    "emergency_contact": "string (选填，紧急联系人)",
+    "emergency_phone": "string (选填，紧急联系电话)",
+    "job_title": "string (选填，职位)",
+    "employee_id": "string (选填，员工编号)",
+    "hire_date": "string (选填，入职日期)",
+    "work_email": "string (选填，工作邮箱)",
+    "work_phone": "string (选填，工作电话)",
+    "wechat": "string (选填，微信号)",
+    "qq": "string (选填，QQ号)",
+    "weibo": "string (选填，微博账号)",
+    "bio": "string (选填，个人简介)",
+    "interests": "string (选填，兴趣爱好)",
+    "tags": "array (选填，标签数组)",
+    "extra_data": "object (选填，扩展数据)"
+}
+```
+
+**成功响应** (200):
+
+```json
+{
+    "code": 0,
+    "message": "success",
+    "data": {
+        "profile_id": 1
+    }
 }
 ```
 
@@ -737,6 +1203,8 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 | -10502 | 应用已禁用    | 403     | 联系管理员启用应用               |
 | -10601 | 缺少必要参数   | 400     | 检查请求参数是否完整              |
 | -10602 | 参数格式错误   | 400     | 检查请求参数是否正确              |
+| -10801 | 微信未配置    | 400     | 联系管理员配置微信 AppID/AppSecret |
+| -10802 | 微信API调用失败 | 400     | 检查微信授权码是否正确或稍后重试      |
 
 ***
 
@@ -833,8 +1301,9 @@ verifyToken('user_jwt_token').then(console.log);
 
 ### 1. Token管理
 
-- 将access\_token存储在安全的地方（如HttpOnly Cookie）
-- 设置合理的Token过期时间
+- 将access_token存储在安全的地方（如HttpOnly Cookie）
+- **Access Token有效期为120分钟（2小时）**，建议在到期前5-10分钟主动刷新
+- **Refresh Token有效期为24小时**，一次性使用，用于获取新的Access Token
 - 定期刷新Token避免用户重新登录
 
 ### 2. 签名安全
@@ -869,15 +1338,27 @@ verifyToken('user_jwt_token').then(console.log);
 
 ## 附录：权限编码列表
 
+> 以下为系统预置的 API 权限，通过管理命令 `python manage.py init_data` 初始化。
+> 应用开通时需在管理后台绑定接口权限，未绑定的接口调用会返回 `-10202` 错误。
+
 | 权限编码 | 权限名称 | 说明 | 对应接口 |
-| -------- | ------- | ---- | ------- |
-| `user:read` | 用户查看 | 查看用户列表和详情 | `GET /api/v1/open/users` |
-| `user:create` | 用户创建 | 创建新用户 | `POST /api/v1/open/users` |
-| `user:update` | 用户修改 | 修改用户信息 | `PUT /api/v1/open/users/{id}` |
-| `user:delete` | 用户删除 | 删除用户 | - |
-| `user:status` | 用户状态 | 启用/禁用用户 | `PATCH /api/v1/open/users/{id}/status` |
-| `token:verify` | Token验证 | 验证用户Token | `POST /api/v1/open/verify_token` |
-| `permission:check` | 权限校验 | 检查用户权限 | `POST /api/v1/open/check_permission` |
+|---------|---------|------|---------|
+| `token:verify` | 验证Token | 验证用户身份Token的有效性 | `POST /api/v1/open/verify_token` |
+| `user:read` | 读取用户 | 查询和获取用户的基本信息 | `GET /api/v1/open/users` |
+| `user:create` | 创建用户 | 在指定租户下创建新的用户账号 | `POST /api/v1/open/users` |
+| `user:update` | 修改用户 | 更新现有用户的信息 | `PUT /api/v1/open/users/:id` |
+| `user:status` | 修改用户状态 | 启用/禁用用户账号 | `PATCH /api/v1/open/users/:id/status` |
+| `permission:check` | 校验权限 | 校验用户是否拥有指定权限 | `POST /api/v1/open/check_permission` |
+| `user:profile:read` | 读取用户资料 | 通过用户Token读取用户的完整资料信息 | `GET /api/v1/open/user/profile/by_token` |
+| `user:profile:update` | 修改用户资料 | 通过用户Token更新用户的个人资料信息 | `PUT /api/v1/open/user/profile/by_token` |
+| `wechat:access_token` | 获取微信AccessToken | 获取微信小程序接口调用凭证 | `GET /api/v1/open/wechat/access_token` |
+| `wechat:phone` | 获取微信用户手机号 | 通过微信小程序临时code获取手机号 | `POST /api/v1/open/wechat/get_phone_number` |
+
+**权限说明**:
+
+- 应用默认只能调用已绑定的权限接口，通过管理后台「应用管理 → 权限配置」绑定
+- 管理员角色（code=admin）自动拥有全部权限
+- 自定义角色可在管理后台「角色管理」中创建并分配权限
 
 ***
 
@@ -898,4 +1379,175 @@ verifyToken('user_jwt_token').then(console.log);
 | 微信网页     | `wechat_web` | 微信网页授权登录 |
 | 钉钉       | `dingtalk`   | 钉钉登录     |
 | 飞书       | `feishu`     | 飞书登录     |
+
+---
+
+## 附录：数据模型
+
+### 核心实体关系
+
+```
+租户(Tenant) ─── 部门(Department)
+    │                  │
+    ├── 应用(Application) ─── 回调地址白名单
+    │      │
+    │      ├── 应用权限绑定(AppRoleBinding)
+    │      └── 调用统计(AppApiCallStat)
+    │
+    └── 用户(User) ─── 社交账号(SocialAccount)
+           │              (微信/钉钉/飞书)
+           ├── 用户资料(UserProfile)
+           ├── 角色(Role) ←── 权限(ApiPermission)
+           │      │
+           │      └── 用户角色(UserRole)
+           └── 审计日志(AuditLog)
+```
+
+### 表结构说明
+
+#### 租户表 (tenant)
+
+| 字段 | 类型 | 说明 | API中对应 |
+|------|------|------|-----------|
+| `id` | int | 主键ID | `tenant_id` |
+| `uuid` | string | UUID | - |
+| `name` | string | 企业名称 | - |
+| `slug` | string | 唯一标识 | - |
+| `status` | bool | 启用状态 | - |
+| `sms_provider` | string | 短信服务商 | - |
+
+> 每个租户独立管理自己的用户、应用和角色，数据隔离。
+
+#### 用户表 (user)
+
+| 字段 | 类型 | 说明 | API中对应 |
+|------|------|------|-----------|
+| `id` | int | 主键ID | `user_id` |
+| `uuid` | string | UUID（不可变） | `uuid` |
+| `tenant_id` | int | 所属租户 | `tenant_id` |
+| `user_type` | string | internal/external | `user_type` |
+| `username` | string | 用户名（唯一） | `username` |
+| `email` | string | 邮箱 | `email` |
+| `phone` | string | 手机号 | `phone` |
+| `nickname` | string | 昵称 | `nickname` |
+| `avatar` | string | 头像URL | `avatar` |
+| `department` | string | 部门名称 | `department` |
+| `dept_id` | int | 关联部门ID | - |
+| `status` | int | 1=正常, 0=禁用 | `status` |
+| `last_login_at` | datetime | 最后登录时间 | `last_login_at` |
+| `is_superuser` | bool | 是否超级管理员 | `is_superuser` |
+| `is_staff` | bool | 是否后台管理员 | `is_staff` |
+| `created_at` | datetime | 创建时间 | `created_at` |
+
+#### 用户资料表 (user_profile)
+
+| 字段 | 类型 | 说明 | API中对应 |
+|------|------|------|-----------|
+| `id` | int | 主键ID | `profile_id` |
+| `user_id` | int | 关联用户 | - |
+| `real_name` | string | 真实姓名 | `real_name` |
+| `gender` | string | male/female/other | `gender` |
+| `birthday` | date | 出生日期 | `birthday` |
+| `id_card` | string | 身份证号 | `id_card` |
+| `job_title` | string | 职位 | `job_title` |
+| `employee_id` | string | 员工编号 | `employee_id` |
+| `hire_date` | date | 入职日期 | `hire_date` |
+| `work_email` | string | 工作邮箱 | `work_email` |
+| `emergency_contact` | string | 紧急联系人 | `emergency_contact` |
+| `tags` | json | 标签数组 | `tags` |
+| `extra_data` | json | 扩展数据 | `extra_data` |
+
+#### 应用表 (application)
+
+| 字段 | 类型 | 说明 | API中对应 |
+|------|------|------|-----------|
+| `id` | int | 主键ID | `app_id` |
+| `uuid` | string | UUID | - |
+| `tenant_id` | int | 所属租户 | - |
+| `name` | string | 应用名称 | - |
+| `app_key` | string | 应用Key（唯一） | `X-App-Key` |
+| `app_secret_hash` | string | AppSecret的SHA256 | 签名验证 |
+| `callback_urls` | json | 回调地址白名单 | - |
+| `status` | bool | 启用状态 | - |
+
+#### 授权码表 (auth_code)
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `code` | string | 授权码 |
+| `app_id` | int | 所属应用 |
+| `user_id` | int | 授权用户 |
+| `redirect_uri` | string | 回调地址 |
+| `state` | string | CSRF状态码 |
+| `expires_at` | datetime | 过期时间（5分钟） |
+| `is_used` | bool | 是否已使用 |
+
+#### 角色表 (role)
+
+| 字段 | 类型 | 说明 | API中对应 |
+|------|------|------|-----------|
+| `id` | int | 主键ID | - |
+| `tenant_id` | int | 所属租户 | - |
+| `name` | string | 角色名称 | - |
+| `code` | string | 角色编码 | `role_codes` |
+
+#### 权限表 (api_permission)
+
+| 字段 | 类型 | 说明 | API中对应 |
+|------|------|------|-----------|
+| `id` | int | 主键ID | - |
+| `code` | string | 权限编码 | `permission_code` |
+| `method` | string | HTTP方法 | - |
+| `path` | string | API路径 | - |
+| `category` | string | 分类 | - |
+
+#### 用户-角色关联表 (user_role)
+
+| 字段 | 说明 |
+|------|------|
+| `user_id` | 用户ID |
+| `role_id` | 角色ID |
+
+> 通过此关联实现用户权限控制，一个用户可以拥有多个角色。
+
+#### 应用-权限绑定表 (app_role_binding)
+
+| 字段 | 说明 |
+|------|------|
+| `app_id` | 应用ID |
+| `permission_id` | 权限ID |
+
+> 控制应用可以调用的API范围，未绑定的接口禁止调用。
+
+#### 审计日志表 (audit_log)
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `id` | int | 主键ID |
+| `tenant_id` | int | 所属租户 |
+| `actor_name` | string | 操作人 |
+| `action` | string | 操作类型（如 login, user.create） |
+| `resource_type` | string | 资源类型 |
+| `resource_id` | int | 资源ID |
+| `detail` | json | 操作详情 |
+| `ip_address` | string | 来源IP |
+| `created_at` | datetime | 操作时间 |
+
+### API字段与数据库字段映射关系
+
+```
+API响应字段        数据库表.字段
+─────────────────────────────────
+user_id        →    user.id
+uuid           →    user.uuid
+tenant_id      →    user.tenant_id / application.tenant_id
+username       →    user.username
+user_type      →    user.user_type
+status         →    user.status
+profile_id     →    user_profile.id
+role_codes     →    role.code
+permission_code →   api_permission.code
+app_id         →    application.id
+app_key        →    application.app_key
+```
 

@@ -563,6 +563,8 @@ python manage.py test
 | GET   | `/userinfo`          | 获取当前用户信息 | Access Token  |
 | PUT   | `/userinfo`          | 修改用户信息   | Access Token  |
 | PATCH | `/userinfo/password` | 修改密码     | Access Token  |
+| GET   | `/profile`           | 获取用户资料   | Access Token  |
+| PUT   | `/profile/update`    | 更新用户资料   | Access Token  |
 
 ### 5.2 开放 API `/api/v1/open/`
 
@@ -576,7 +578,11 @@ python manage.py test
 | POST  | `/users`             | 创建用户       | `user:create`      |
 | PUT   | `/users/<id>`        | 修改用户信息     | `user:update`      |
 | PATCH | `/users/<id>/status` | 启用/禁用用户    | `user:update`      |
-| POST  | `/check_permission`  | 检查用户权限     | `permission:check` |
+| POST  | `/check_permission`  | 检查用户权限      | `permission:check` |
+| GET   | `/user/profile/by_token` | 通过Token获取用户资料 | `user:profile:read` |
+| PUT   | `/user/profile/by_token` | 通过Token修改用户资料 | `user:profile:update` |
+| GET   | `/wechat/access_token` | 获取微信AccessToken（自动缓存） | `wechat:access_token` |
+| POST  | `/wechat/get_phone_number` | 获取微信用户手机号 | `wechat:phone` |
 
 > 开放 API 通过中间件自动实现租户数据隔离，每个应用只能操作所属租户的数据。
 
@@ -598,6 +604,7 @@ python manage.py test
 | PATCH          | `/users/<id>/status`                   | 用户状态切换     |
 | POST           | `/users/<id>/reset-password`           | 重置密码       |
 | GET/PUT        | `/users/<id>/roles`                    | 用户角色管理     |
+| GET/PUT        | `/users/<id>/profile`                  | 用户资料管理     |
 | GET/POST       | `/applications`                        | 应用列表/创建    |
 | GET/PUT        | `/applications/<id>`                   | 应用详情/编辑    |
 | PATCH          | `/applications/<id>/status`            | 应用状态切换     |

@@ -34,3 +34,41 @@ class StatusUpdateSerializer(serializers.Serializer):
 class CheckPermissionSerializer(serializers.Serializer):
     user_id = serializers.IntegerField()
     permission_code = serializers.CharField(max_length=64)
+
+
+class WeChatPhoneSerializer(serializers.Serializer):
+    code = serializers.CharField(max_length=512, help_text="微信小程序getPhoneNumber接口返回的code")
+
+
+class WeChatTokenSerializer(serializers.Serializer):
+    app_id = serializers.CharField(max_length=64, required=False, allow_null=True, help_text="微信小程序AppID，不传则使用应用配置的默认AppID")
+
+
+class ProfileByTokenSerializer(serializers.Serializer):
+    user_token = serializers.CharField(max_length=512, help_text="用户的JWT AccessToken")
+
+
+class UpdateProfileByTokenSerializer(serializers.Serializer):
+    user_token = serializers.CharField(max_length=512, help_text="用户的JWT AccessToken")
+    avatar = serializers.URLField(max_length=512, required=False, allow_null=True)
+    real_name = serializers.CharField(max_length=64, required=False, allow_null=True)
+    gender = serializers.ChoiceField(choices=["male", "female", "other"], required=False, allow_null=True)
+    birthday = serializers.DateField(required=False, allow_null=True)
+    id_card = serializers.CharField(max_length=32, required=False, allow_null=True)
+    nationality = serializers.CharField(max_length=64, required=False, allow_null=True)
+    address = serializers.CharField(max_length=512, required=False, allow_null=True)
+    zip_code = serializers.CharField(max_length=20, required=False, allow_null=True)
+    emergency_contact = serializers.CharField(max_length=64, required=False, allow_null=True)
+    emergency_phone = serializers.CharField(max_length=20, required=False, allow_null=True)
+    job_title = serializers.CharField(max_length=128, required=False, allow_null=True)
+    employee_id = serializers.CharField(max_length=64, required=False, allow_null=True)
+    hire_date = serializers.DateField(required=False, allow_null=True)
+    work_email = serializers.EmailField(max_length=128, required=False, allow_null=True)
+    work_phone = serializers.CharField(max_length=32, required=False, allow_null=True)
+    wechat = serializers.CharField(max_length=64, required=False, allow_null=True)
+    qq = serializers.CharField(max_length=32, required=False, allow_null=True)
+    weibo = serializers.CharField(max_length=128, required=False, allow_null=True)
+    bio = serializers.CharField(max_length=2000, required=False, allow_null=True)
+    interests = serializers.CharField(max_length=512, required=False, allow_null=True)
+    tags = serializers.JSONField(required=False, allow_null=True)
+    extra_data = serializers.JSONField(required=False, allow_null=True)

@@ -24,6 +24,9 @@ class ErrorCode:
     PARAM_MISSING = -10601
     PARAM_INVALID = -10602
 
+    WECHAT_NOT_CONFIGURED = -10801
+    WECHAT_API_ERROR = -10802
+
 
 ERROR_MESSAGES = {
     ErrorCode.SUCCESS: "success",
@@ -43,4 +46,6 @@ ERROR_MESSAGES = {
     ErrorCode.APP_DISABLED: "应用已被禁用",
     ErrorCode.PARAM_MISSING: "缺少必要参数",
     ErrorCode.PARAM_INVALID: "参数格式错误",
+    ErrorCode.WECHAT_NOT_CONFIGURED: "微信应用未配置，请联系管理员",
+    ErrorCode.WECHAT_API_ERROR: "微信API调用失败",
 }

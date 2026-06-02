@@ -2,6 +2,9 @@ import json
 import time
 import pytest
 from django.core.cache import cache
+from django.test.utils import override_settings
+from apps.accounts.models import User
+from common.utils import create_access_token
 
 
 pytestmark = pytest.mark.django_db
@@ -144,6 +147,7 @@ class TestSmsLogin:
 class TestSocialLogin:
     """TC-AUTH-012~013: 社交登录"""
 
+    @override_settings(MOCK_ENABLED=True)
     def test_social_login_success(self, api_client, tenant_default):
         """TC-AUTH-012: 社交登录 — 成功"""
         resp = api_client.post(
@@ -285,6 +289,41 @@ class TestUpdateUserInfo:
         assert staff_user.nickname == "新昵称"
         assert staff_user.email == "new@test.com"
 
+    def test_update_userinfo_phone_duplicate(self, api_client, staff_user, tenant_default):
+        """TC-AUTH-022: 修改用户信息 — 手机号本租户内重复"""
+        other = User.objects.create_user(
+            tenant=tenant_default, username="other_user",
+            password="test1234", phone="13800138000", user_type="internal",
+        )
+        token = create_access_token({
+            "user_id": staff_user.id,
+            "tenant_id": staff_user.tenant_id,
+            "user_type": staff_user.user_type,
+        })
+        headers = {"HTTP_AUTHORIZATION": f"Bearer {token}"}
+        resp = api_client.put(
+            "/api/v1/auth/userinfo",
+            {"phone": "13800138000"},
+            content_type="application/json",
+            **headers,
+        )
+        data = json.loads(resp.content)
+        assert data["code"] < 0
+        assert "已被占用" in data["message"]
+
+    def test_update_userinfo_phone_same_user(self, api_client, staff_user, staff_auth_headers):
+        """TC-AUTH-023: 修改用户信息 — 手机号与自己相同（不报错）"""
+        staff_user.phone = "13800138000"
+        staff_user.save()
+        resp = api_client.put(
+            "/api/v1/auth/userinfo",
+            {"phone": "13800138000"},
+            content_type="application/json",
+            **staff_auth_headers,
+        )
+        data = json.loads(resp.content)
+        assert data["code"] == 0
+
 
 class TestChangePassword:
     """TC-AUTH-022~024: 修改密码"""
@@ -319,6 +358,71 @@ class TestChangePassword:
         resp = api_client.patch(
             "/api/v1/auth/userinfo/password",
             {"old_password": "test1234", "new_password": "123"},
+            content_type="application/json",
+            **staff_auth_headers,
+        )
+        data = json.loads(resp.content)
+        assert data["code"] < 0
+
+
+class TestProfile:
+    """TC-AUTH-025~027: 用户资料"""
+
+    def test_get_profile_success(self, api_client, staff_user, staff_auth_headers):
+        """TC-AUTH-025: 获取用户资料 — 成功"""
+        resp = api_client.get("/api/v1/auth/profile", **staff_auth_headers)
+        data = json.loads(resp.content)
+        assert data["code"] == 0
+        assert "id" in data["data"]
+        assert "real_name" in data["data"]
+        assert "gender" in data["data"]
+        assert "bio" in data["data"]
+
+    def test_get_profile_no_token(self, api_client):
+        """TC-AUTH-026: 获取用户资料 — 无 Token"""
+        resp = api_client.get("/api/v1/auth/profile")
+        assert resp.status_code == 401
+
+    def test_update_profile_success(self, api_client, staff_user, staff_auth_headers):
+        """TC-AUTH-027: 更新用户资料 — 成功"""
+        resp = api_client.put(
+            "/api/v1/auth/profile/update",
+            {"real_name": "张三", "gender": "male", "bio": "测试个人简介"},
+            content_type="application/json",
+            **staff_auth_headers,
+        )
+        data = json.loads(resp.content)
+        assert data["code"] == 0
+        assert data["data"]["profile_id"] > 0
+
+        # 验证数据已持久化
+        resp2 = api_client.get("/api/v1/auth/profile", **staff_auth_headers)
+        data2 = json.loads(resp2.content)
+        assert data2["data"]["real_name"] == "张三"
+        assert data2["data"]["gender"] == "male"
+        assert data2["data"]["bio"] == "测试个人简介"
+
+    def test_update_profile_partial(self, api_client, staff_user, staff_auth_headers):
+        """TC-AUTH-028: 更新用户资料 — 部分字段"""
+        resp = api_client.put(
+            "/api/v1/auth/profile/update",
+            {"job_title": "高级工程师", "employee_id": "EMP001"},
+            content_type="application/json",
+            **staff_auth_headers,
+        )
+        data = json.loads(resp.content)
+        assert data["code"] == 0
+
+        resp2 = api_client.get("/api/v1/auth/profile", **staff_auth_headers)
+        data2 = json.loads(resp2.content)
+        assert data2["data"]["job_title"] == "高级工程师"
+        assert data2["data"]["employee_id"] == "EMP001"
+
+    def test_update_profile_invalid_gender(self, api_client, staff_auth_headers):
+        """TC-AUTH-029: 更新用户资料 — 无效性别值"""
+        resp = api_client.put(
+            "/api/v1/auth/profile/update",
+            {"gender": "unknown"},
             content_type="application/json",
             **staff_auth_headers,
         )

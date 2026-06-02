@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.utils import timezone
 from django.db import transaction
 from rest_framework.decorators import api_view
@@ -7,12 +8,13 @@ from common.errors import ErrorCode
 from common.utils import create_access_token, generate_refresh_token, is_superadmin_credentials
 from services.sms_service import send_sms, generate_code
 from apps.applications.models import Application
-from .models import Tenant, User, SocialAccount
+from .models import Tenant, User, SocialAccount, UserProfile
 from apps.audit.models import AuditLog
 from .serializers import (
     LoginSerializer, SmsSendSerializer, SmsLoginSerializer,
     SocialLoginSerializer, RefreshSerializer, UserInfoSerializer,
     UpdateUserInfoSerializer, ChangePasswordSerializer,
+    UserProfileSerializer, UpdateUserProfileSerializer,
 )
 
 
@@ -197,27 +199,45 @@ def social_login(request):
     app_key = ser.validated_data.get("app_key")
 
     app_wechat_config = {}
-    if app_key and provider in ("wechat_mp", "wechat_web"):
-        app = Application.objects.filter(app_key=app_key, status=True).first()
-        if app:
+    mock_mode = False
+    if provider in ("wechat_mp", "wechat_web"):
+        if not app_key:
+            if not getattr(settings, 'MOCK_ENABLED', False):
+                return Response(error(ErrorCode.WECHAT_NOT_CONFIGURED), status=400)
+            mock_mode = True
+        else:
+            app = Application.objects.filter(app_key=app_key, status=True).first()
+            if not app:
+                return Response(error(ErrorCode.APP_KEY_INVALID), status=400)
             if provider == "wechat_mp":
                 if app.wechat_mp_app_id and app.wechat_mp_app_secret:
                     app_wechat_config = {
                         "app_id": app.wechat_mp_app_id,
                         "app_secret": app.wechat_mp_app_secret,
                     }
+                elif not getattr(settings, 'MOCK_ENABLED', False):
+                    return Response(error(ErrorCode.WECHAT_NOT_CONFIGURED), status=400)
+                else:
+                    mock_mode = True
             elif provider == "wechat_web":
                 if app.wechat_web_app_id and app.wechat_web_app_secret:
                     app_wechat_config = {
                         "app_id": app.wechat_web_app_id,
                         "app_secret": app.wechat_web_app_secret,
                     }
+                elif not getattr(settings, 'MOCK_ENABLED', False):
+                    return Response(error(ErrorCode.WECHAT_NOT_CONFIGURED), status=400)
+                else:
+                    mock_mode = True
 
-    if app_wechat_config:
-        open_id, union_id = _exchange_wechat_code(provider, code, app_wechat_config)
-    else:
+    if mock_mode:
         open_id = f"mock_{provider}_{code[:8]}"
         union_id = None
+    elif app_wechat_config:
+        try:
+            open_id, union_id = _exchange_wechat_code(provider, code, app_wechat_config)
+        except ValueError as e:
+            return Response(error(ErrorCode.WECHAT_API_ERROR, data={"detail": str(e)}), status=400)
 
     with transaction.atomic():
         social = SocialAccount.objects.filter(
@@ -296,13 +316,27 @@ def _exchange_wechat_code(provider, code, config):
     try:
         resp = http_requests.get(url, timeout=10)
         data = resp.json()
-        open_id = data.get("openid", f"mock_{provider}_{code[:8]}")
-        union_id = data.get("unionid", None)
+        if "errcode" in data and data["errcode"] != 0:
+            errcode = data["errcode"]
+            errmsg = data.get("errmsg", "微信API返回错误")
+            import logging
+            logging.getLogger(__name__).error(
+                "微信登录API错误: errcode=%s, errmsg=%s", errcode, errmsg
+            )
+            if errcode in (40029, 40125):
+                raise ValueError(f"无效的微信授权码: {errmsg}")
+            raise ValueError(f"微信API返回错误: {errmsg}")
+        open_id = data.get("openid")
+        if not open_id:
+            raise ValueError("微信API响应中未找到openid")
+        union_id = data.get("unionid")
         return open_id, union_id
+    except ValueError:
+        raise
     except Exception as e:
         import logging
         logging.getLogger(__name__).error("微信登录接口调用失败: %s", str(e))
-        return f"mock_{provider}_{code[:8]}", None
+        raise ValueError(f"微信登录接口调用失败: {str(e)}")
 
 
 @api_view(["POST"])
@@ -363,6 +397,14 @@ def userinfo(request):
     if not ser.is_valid():
         return Response(error(ErrorCode.PARAM_INVALID, data=ser.errors), status=400)
 
+    phone = ser.validated_data.get("phone")
+    if phone is not None:
+        if User.objects.filter(
+            tenant_id=request.user.tenant_id,
+            phone=phone,
+        ).exclude(id=request.user.id).exists():
+            return Response(error(ErrorCode.PARAM_INVALID, message="手机号已被占用"), status=400)
+
     for field, value in ser.validated_data.items():
         setattr(request.user, field, value)
     request.user.save(update_fields=ser.validated_data.keys())
@@ -382,3 +424,25 @@ def change_password(request):
     request.user.set_password(ser.validated_data["new_password"])
     request.user.save(update_fields=["password"])
     return Response(success())
+
+
+@api_view(["GET"])
+def profile(request):
+    profile, created = UserProfile.objects.get_or_create(user=request.user)
+    ser = UserProfileSerializer(profile)
+    return Response(success(ser.data))
+
+
+@api_view(["PUT"])
+def update_profile(request):
+    profile, created = UserProfile.objects.get_or_create(user=request.user)
+    
+    ser = UpdateUserProfileSerializer(data=request.data)
+    if not ser.is_valid():
+        return Response(error(ErrorCode.PARAM_INVALID, data=ser.errors), status=400)
+
+    for field, value in ser.validated_data.items():
+        setattr(profile, field, value)
+    profile.save(update_fields=ser.validated_data.keys())
+
+    return Response(success({"profile_id": profile.id}))

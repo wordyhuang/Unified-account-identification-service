@@ -14,7 +14,7 @@ from rest_framework.response import Response
 from common.response import success, error
 from common.errors import ErrorCode
 from common.utils import create_access_token, generate_refresh_token
-from apps.accounts.models import Tenant, User, Department
+from apps.accounts.models import Tenant, User, Department, UserProfile
 from apps.applications.models import Application
 from apps.rbac.models import Role, ApiPermission, RolePermission, AppRoleBinding
 from apps.audit.models import AuditLog
@@ -36,6 +36,19 @@ from .serializers import (
 def _user_serialize(u):
     role_ids = list(u.roles.values_list("id", flat=True))
     role_names = list(u.roles.values_list("name", flat=True))
+    
+    profile = {}
+    try:
+        p = u.profile
+        profile = {
+            "real_name": p.real_name, "gender": p.gender,
+            "birthday": p.birthday.isoformat() if p.birthday else None,
+            "job_title": p.job_title, "employee_id": p.employee_id,
+            "work_email": p.work_email, "work_phone": p.work_phone,
+        }
+    except UserProfile.DoesNotExist:
+        pass
+    
     return {
         "id": u.id, "uuid": str(u.uuid), "username": u.username,
         "user_type": u.user_type,
@@ -49,6 +62,7 @@ def _user_serialize(u):
         "role_names": role_names,
         "last_login_at": u.last_login_at.isoformat() if u.last_login_at else None,
         "created_at": u.created_at.isoformat() if u.created_at else None,
+        "profile": profile,
     }
 
 
@@ -274,6 +288,7 @@ def users_view(request):
     if request.method == "GET":
         search = request.GET.get("search", "").strip()
         status_filter = request.GET.get("status", "")
+        is_staff_filter = request.GET.get("is_staff", "")
         page = int(request.GET.get("page", 1))
         page_size = int(request.GET.get("page_size", 20))
 
@@ -284,6 +299,10 @@ def users_view(request):
             ) | qs.filter(phone__icontains=search) | qs.filter(email__icontains=search)
         if status_filter in ("0", "1"):
             qs = qs.filter(status=int(status_filter))
+        if is_staff_filter == "1":
+            qs = qs.filter(is_staff=True)
+        elif is_staff_filter == "0":
+            qs = qs.filter(is_staff=False)
 
         total = qs.count()
         users = qs.order_by("-created_at")[(page - 1) * page_size:page * page_size]
@@ -414,6 +433,77 @@ def user_roles_view(request, user_id):
             "role_ids": [r.id for r in user.roles.all()],
             "roles": [{"id": r.id, "name": r.name, "code": r.code} for r in user.roles.all()],
         }))
+
+
+@api_view(["GET", "PUT"])
+def user_profile_view(request, user_id):
+    try:
+        user = User.objects.get(id=user_id, tenant_id=request.tenant_id)
+    except User.DoesNotExist:
+        return Response(error(ErrorCode.USER_NOT_FOUND), status=404)
+
+    profile, created = UserProfile.objects.get_or_create(user=user)
+
+    if request.method == "GET":
+        return Response(success({
+            "id": profile.id,
+            "avatar": profile.avatar,
+            "real_name": profile.real_name,
+            "gender": profile.gender,
+            "birthday": profile.birthday.isoformat() if profile.birthday else None,
+            "id_card": profile.id_card,
+            "nationality": profile.nationality,
+            "address": profile.address,
+            "zip_code": profile.zip_code,
+            "emergency_contact": profile.emergency_contact,
+            "emergency_phone": profile.emergency_phone,
+            "job_title": profile.job_title,
+            "employee_id": profile.employee_id,
+            "hire_date": profile.hire_date.isoformat() if profile.hire_date else None,
+            "work_email": profile.work_email,
+            "work_phone": profile.work_phone,
+            "wechat": profile.wechat,
+            "qq": profile.qq,
+            "weibo": profile.weibo,
+            "bio": profile.bio,
+            "interests": profile.interests,
+            "tags": profile.tags,
+            "extra_data": profile.extra_data,
+            "created_at": profile.created_at.isoformat() if profile.created_at else None,
+            "updated_at": profile.updated_at.isoformat() if profile.updated_at else None,
+        }))
+
+    if request.method == "PUT":
+        data = request.data
+        fields = [
+            "avatar", "real_name", "gender", "birthday", "id_card", "nationality",
+            "address", "zip_code", "emergency_contact", "emergency_phone",
+            "job_title", "employee_id", "hire_date", "work_email", "work_phone",
+            "wechat", "qq", "weibo", "bio", "interests", "tags", "extra_data",
+        ]
+        update_fields = []
+        for field in fields:
+            if field in data:
+                value = data[field]
+                if field in ("birthday", "hire_date") and value:
+                    from django.utils.dateparse import parse_date
+                    value = parse_date(value)
+                setattr(profile, field, value)
+                update_fields.append(field)
+        
+        if update_fields:
+            profile.save(update_fields=update_fields)
+            AuditLog.objects.create(
+                tenant_id=request.tenant_id,
+                actor_id=request.user_id,
+                actor_name=request.user.username,
+                action="admin.user.profile.update",
+                resource_type="user",
+                resource_id=user_id,
+                detail={k: v for k, v in data.items() if k in update_fields},
+            )
+        
+        return Response(success({"profile_id": profile.id}))
 
 
 @api_view(["PATCH"])

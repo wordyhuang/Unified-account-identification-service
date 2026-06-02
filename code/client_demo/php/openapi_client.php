@@ -233,13 +233,18 @@ class OpenAPIClient
      *
      * @param string $provider 第三方平台（wechat_mp/wechat_web/dingtalk/feishu）
      * @param string $code 第三方授权码
+     * @param string|null $appKey 应用 AppKey，用于查找对应的微信配置（微信登录时必填）
      */
-    public function socialLogin($provider, $code)
+    public function socialLogin($provider, $code, $appKey = null)
     {
-        return $this->request('POST', '/api/v1/auth/social/login', [
+        $body = [
             'provider' => $provider,
             'code' => $code,
-        ]);
+        ];
+        if ($appKey !== null) {
+            $body['app_key'] = $appKey;
+        }
+        return $this->request('POST', '/api/v1/auth/social/login', $body);
     }
 
     /**
@@ -376,6 +381,14 @@ class OpenAPIClient
 
 // 命令行示例:
 //   php openapi_client.php
+
+// 仅在直接执行本文件时运行 demo 代码，被其他文件 require 时不执行
+$isDirectExecution = (php_sapi_name() === 'cli' && (!isset($_SERVER['SCRIPT_FILENAME']) || realpath($_SERVER['SCRIPT_FILENAME']) === realpath(__FILE__)))
+    || (php_sapi_name() !== 'cli' && basename($_SERVER['SCRIPT_FILENAME'] ?? '') === basename(__FILE__));
+
+if (!$isDirectExecution) {
+    return;
+}
 
 $appKey    = 'efc44f100f59fa0e08c1986715f587df';
 $appSecret = 'ef276bb188138dcf6eaa3e958d82cbb91bd15f494df4b9ef3a5dffcc590c97c4';

@@ -146,3 +146,59 @@ class SocialAccount(models.Model):
 
     def __str__(self):
         return f"{self.get_provider_display()}:{self.open_id}"
+
+
+class UserProfile(models.Model):
+    GENDER_CHOICES = (
+        ("male", "男"),
+        ("female", "女"),
+        ("other", "其他"),
+    )
+
+    user = models.OneToOneField(
+        User, on_delete=models.CASCADE, related_name="profile", verbose_name="关联用户"
+    )
+
+    # 基本信息
+    avatar = models.URLField(max_length=512, null=True, blank=True, verbose_name="头像")
+    real_name = models.CharField(max_length=64, null=True, blank=True, verbose_name="真实姓名")
+    gender = models.CharField(
+        max_length=10, choices=GENDER_CHOICES, null=True, blank=True, verbose_name="性别"
+    )
+    birthday = models.DateField(null=True, blank=True, verbose_name="出生日期")
+    id_card = models.CharField(max_length=32, null=True, blank=True, verbose_name="身份证号")
+    nationality = models.CharField(max_length=64, null=True, blank=True, verbose_name="国籍")
+
+    # 联系信息
+    address = models.CharField(max_length=512, null=True, blank=True, verbose_name="联系地址")
+    zip_code = models.CharField(max_length=20, null=True, blank=True, verbose_name="邮政编码")
+    emergency_contact = models.CharField(max_length=64, null=True, blank=True, verbose_name="紧急联系人")
+    emergency_phone = models.CharField(max_length=20, null=True, blank=True, verbose_name="紧急联系电话")
+
+    # 工作信息
+    job_title = models.CharField(max_length=128, null=True, blank=True, verbose_name="职位")
+    employee_id = models.CharField(max_length=64, null=True, blank=True, verbose_name="员工编号")
+    hire_date = models.DateField(null=True, blank=True, verbose_name="入职日期")
+    work_email = models.EmailField(max_length=128, null=True, blank=True, verbose_name="工作邮箱")
+    work_phone = models.CharField(max_length=32, null=True, blank=True, verbose_name="工作电话")
+
+    # 社交信息
+    wechat = models.CharField(max_length=64, null=True, blank=True, verbose_name="微信号")
+    qq = models.CharField(max_length=32, null=True, blank=True, verbose_name="QQ号")
+    weibo = models.CharField(max_length=128, null=True, blank=True, verbose_name="微博账号")
+
+    # 扩展信息
+    bio = models.TextField(null=True, blank=True, verbose_name="个人简介")
+    interests = models.CharField(max_length=512, null=True, blank=True, verbose_name="兴趣爱好")
+    tags = CompatibleJSONField(null=True, blank=True, verbose_name="标签")
+    extra_data = CompatibleJSONField(null=True, blank=True, verbose_name="扩展数据")
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "user_profile"
+        verbose_name = "用户资料"
+
+    def __str__(self):
+        return f"Profile of {self.user.username}"

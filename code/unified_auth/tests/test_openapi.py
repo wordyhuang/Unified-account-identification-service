@@ -3,6 +3,7 @@ import time
 import hmac
 import hashlib
 import pytest
+from apps.accounts.models import User
 
 
 pytestmark = pytest.mark.django_db
@@ -134,6 +135,37 @@ class TestOpenUsers:
         staff_user.refresh_from_db()
         assert staff_user.nickname == "open_updated"
 
+    def test_update_user_phone_duplicate(self, api_client, staff_user, app_with_all_perms,
+                                           app_headers, tenant_default):
+        """TC-OPEN-012: 修改用户 — 手机号本租户内重复"""
+        User.objects.create_user(
+            tenant=tenant_default, username="other_user",
+            password="test1234", phone="13900139000", user_type="internal",
+        )
+        resp = api_client.put(
+            f"/api/v1/open/users/{staff_user.id}",
+            {"phone": "13900139000"},
+            content_type="application/json",
+            **app_headers,
+        )
+        data = json.loads(resp.content)
+        assert data["code"] < 0
+        assert "已被占用" in data["message"]
+
+    def test_update_user_phone_cross_tenant(self, api_client, staff_user, app_with_all_perms,
+                                              app_headers, tenant_b, user_b):
+        """TC-OPEN-013: 修改用户 — 不同租户手机号重复（允许）"""
+        user_b.phone = "13900139000"
+        user_b.save()
+        resp = api_client.put(
+            f"/api/v1/open/users/{staff_user.id}",
+            {"phone": "13900139000"},
+            content_type="application/json",
+            **app_headers,
+        )
+        data = json.loads(resp.content)
+        assert data["code"] == 0
+
     def test_toggle_user_status(self, api_client, staff_user, app_with_all_perms, app_headers):
         """TC-OPEN-012: 启用/禁用用户"""
         resp = api_client.patch(
@@ -245,3 +277,193 @@ class TestOpenApiAuth:
         """TC-OPEN-019: 开放 API — 无接口权限（应用未绑定权限码）"""
         resp = api_client.get("/api/v1/open/users", **app_headers)
         assert resp.status_code == 403
+
+
+class TestWechatApi:
+    """TC-OPEN-020~023: 微信开放 API"""
+
+    def test_get_access_token_not_configured(self, api_client, app_with_all_perms, app_headers):
+        """TC-OPEN-020: 获取微信AccessToken — 未配置微信"""
+        resp = api_client.get("/api/v1/open/wechat/access_token", **app_headers)
+        data = json.loads(resp.content)
+        assert data["code"] < 0
+
+    def test_get_access_token_no_permission(self, api_client, app, app_headers):
+        """TC-OPEN-021: 获取微信AccessToken — 无权限"""
+        resp = api_client.get("/api/v1/open/wechat/access_token", **app_headers)
+        assert resp.status_code == 403
+
+    def test_get_phone_number_not_configured(self, api_client, app_with_all_perms, app_headers):
+        """TC-OPEN-022: 获取微信用户手机号 — 未配置微信"""
+        resp = api_client.post(
+            "/api/v1/open/wechat/get_phone_number",
+            {"code": "mock_code"},
+            content_type="application/json",
+            **app_headers,
+        )
+        data = json.loads(resp.content)
+        assert data["code"] < 0
+
+    def test_get_phone_number_missing_code(self, api_client, app_with_all_perms, app_headers):
+        """TC-OPEN-023: 获取微信用户手机号 — 缺少参数"""
+        resp = api_client.post(
+            "/api/v1/open/wechat/get_phone_number",
+            {},
+            content_type="application/json",
+            **app_headers,
+        )
+        data = json.loads(resp.content)
+        assert data["code"] < 0
+
+
+class TestUserProfileByToken:
+    """TC-OPEN-024~032: 通过用户Token获取/修改用户资料"""
+
+    def test_get_profile_success(self, api_client, app_with_all_perms, app_headers, staff_user):
+        """TC-OPEN-024: 获取用户资料 — 成功"""
+        from common.utils import create_access_token
+        token = create_access_token({
+            "user_id": staff_user.id,
+            "tenant_id": staff_user.tenant_id,
+            "user_type": staff_user.user_type,
+        })
+        resp = api_client.get(
+            "/api/v1/open/user/profile/by_token",
+            {"user_token": token},
+            **app_headers,
+        )
+        data = json.loads(resp.content)
+        assert data["code"] == 0
+        assert data["data"]["user_id"] == staff_user.id
+        assert data["data"]["username"] == "staff_user"
+
+    def test_get_profile_invalid_token(self, api_client, app_with_all_perms, app_headers):
+        """TC-OPEN-025: 获取用户资料 — 无效Token"""
+        resp = api_client.get(
+            "/api/v1/open/user/profile/by_token",
+            {"user_token": "invalid.jwt.token"},
+            **app_headers,
+        )
+        data = json.loads(resp.content)
+        assert data["code"] < 0
+        assert resp.status_code == 401
+
+    def test_get_profile_disabled_user(self, api_client, app_with_all_perms, app_headers, disabled_user):
+        """TC-OPEN-026: 获取用户资料 — 用户已禁用"""
+        from common.utils import create_access_token
+        token = create_access_token({
+            "user_id": disabled_user.id,
+            "tenant_id": disabled_user.tenant_id,
+            "user_type": disabled_user.user_type,
+        })
+        resp = api_client.get(
+            "/api/v1/open/user/profile/by_token",
+            {"user_token": token},
+            **app_headers,
+        )
+        data = json.loads(resp.content)
+        assert data["code"] < 0
+        assert resp.status_code == 404
+
+    def test_get_profile_missing_auth(self, api_client, staff_user):
+        """TC-OPEN-027: 获取用户资料 — 缺少认证头"""
+        from common.utils import create_access_token
+        token = create_access_token({
+            "user_id": staff_user.id,
+            "tenant_id": staff_user.tenant_id,
+            "user_type": staff_user.user_type,
+        })
+        resp = api_client.get(
+            "/api/v1/open/user/profile/by_token",
+            {"user_token": token},
+        )
+        assert resp.status_code == 401
+
+    def test_get_profile_no_permission(self, api_client, app, app_headers, staff_user):
+        """TC-OPEN-028: 获取用户资料 — 应用无权限"""
+        from common.utils import create_access_token
+        token = create_access_token({
+            "user_id": staff_user.id,
+            "tenant_id": staff_user.tenant_id,
+            "user_type": staff_user.user_type,
+        })
+        resp = api_client.get(
+            "/api/v1/open/user/profile/by_token",
+            {"user_token": token},
+            **app_headers,
+        )
+        assert resp.status_code == 403
+
+    def test_update_profile_success(self, api_client, app_with_all_perms, app_headers, staff_user):
+        """TC-OPEN-029: 修改用户资料 — 成功"""
+        from common.utils import create_access_token
+        token = create_access_token({
+            "user_id": staff_user.id,
+            "tenant_id": staff_user.tenant_id,
+            "user_type": staff_user.user_type,
+        })
+        resp = api_client.put(
+            "/api/v1/open/user/profile/by_token",
+            {"user_token": token, "real_name": "张三", "gender": "male", "bio": "测试简介"},
+            content_type="application/json",
+            **app_headers,
+        )
+        data = json.loads(resp.content)
+        assert data["code"] == 0
+        assert data["data"]["profile_id"] > 0
+
+        # Verify the update persisted
+        from apps.accounts.models import UserProfile
+        profile = UserProfile.objects.get(user=staff_user)
+        assert profile.real_name == "张三"
+        assert profile.gender == "male"
+        assert profile.bio == "测试简介"
+
+    def test_update_profile_partial(self, api_client, app_with_all_perms, app_headers, staff_user):
+        """TC-OPEN-030: 修改用户资料 — 只更新单个字段"""
+        from common.utils import create_access_token
+        from apps.accounts.models import UserProfile
+        UserProfile.objects.create(user=staff_user, real_name="旧名字", bio="旧简介")
+
+        token = create_access_token({
+            "user_id": staff_user.id,
+            "tenant_id": staff_user.tenant_id,
+            "user_type": staff_user.user_type,
+        })
+        resp = api_client.put(
+            "/api/v1/open/user/profile/by_token",
+            {"user_token": token, "real_name": "新名字"},
+            content_type="application/json",
+            **app_headers,
+        )
+        data = json.loads(resp.content)
+        assert data["code"] == 0
+
+        profile = UserProfile.objects.get(user=staff_user)
+        assert profile.real_name == "新名字"
+        # Unchanged field should remain
+        assert profile.bio == "旧简介"
+
+    def test_update_profile_invalid_token(self, api_client, app_with_all_perms, app_headers):
+        """TC-OPEN-031: 修改用户资料 — 无效Token"""
+        resp = api_client.put(
+            "/api/v1/open/user/profile/by_token",
+            {"user_token": "invalid.jwt.token", "real_name": "测试"},
+            content_type="application/json",
+            **app_headers,
+        )
+        data = json.loads(resp.content)
+        assert data["code"] < 0
+        assert resp.status_code == 401
+
+    def test_update_profile_missing_token(self, api_client, app_with_all_perms, app_headers):
+        """TC-OPEN-032: 修改用户资料 — 缺少Token参数"""
+        resp = api_client.put(
+            "/api/v1/open/user/profile/by_token",
+            {"real_name": "测试"},
+            content_type="application/json",
+            **app_headers,
+        )
+        data = json.loads(resp.content)
+        assert data["code"] < 0
+        assert resp.status_code == 400

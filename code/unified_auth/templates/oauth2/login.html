@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html>
+<head><title>统一账号登录</title></head>
+<body style="font-family: sans-serif; max-width: 400px; margin: 80px auto;">
+  <h2>统一账号登录</h2>
+  {% if error %}<p style="color:red">{{ error }}</p>{% endif %}
+  <form method="post">
+    {% csrf_token %}
+    <input type="hidden" name="next" value="{{ next }}">
+    <p><input name="username" placeholder="用户名" style="width:100%;padding:8px"></p>
+    <p><input name="password" type="password" placeholder="密码" style="width:100%;padding:8px"></p>
+    <p><button type="submit" style="width:100%;padding:10px;background:#007bff;color:white;border:none">登录</button></p>
+  </form>
+</body>
+</html>

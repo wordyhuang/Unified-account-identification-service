@@ -36,6 +36,8 @@ class TokenAuthenticationMiddleware(MiddlewareMixin):
             return None
         if request.path.startswith("/api/v1/admin/"):
             return None
+        if request.path.startswith("/oauth/"):
+            return None
 
         auth_header = request.headers.get("Authorization", "")
         if not auth_header.startswith("Bearer "):

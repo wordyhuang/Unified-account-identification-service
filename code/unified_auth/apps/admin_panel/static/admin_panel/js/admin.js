@@ -48,7 +48,7 @@ async function handleLogin() {
         });
         if (res.code < 0) { errEl.textContent = res.message; return; }
         const d = res.data;
-        const isAdmin = d.is_superuser || d.is_superadmin;
+        const isAdmin = d.is_superuser || d.is_superadmin || d.is_staff;
         if (!isAdmin) { errEl.textContent = "仅管理员可登录管理后台"; return; }
         localStorage.setItem(TOKEN_KEY, d.access_token);
         localStorage.setItem(USER_KEY, JSON.stringify(d));
@@ -277,14 +277,16 @@ function formatAction(action) {
 
 // ================== USERS ==================
 
+let page = 1, search = "", status = "", isStaff = "";
+
 async function renderUsers(container) {
-    let page = 1, search = "", status = "";
     const pageSize = 20;
 
     async function load() {
         const params = new URLSearchParams({ page, page_size: pageSize });
         if (search) params.set("search", search);
         if (status) params.set("status", status);
+        if (isStaff) params.set("is_staff", isStaff);
         container.innerHTML = '<div class="loading"></div>';
         try {
             const res = await apiCall(API.admin + "/users?" + params);
@@ -299,7 +301,12 @@ async function renderUsers(container) {
                             <option value="1" ${status==='1'?'selected':''}>正常</option>
                             <option value="0" ${status==='0'?'selected':''}>禁用</option>
                         </select>
-                        <button class="btn btn-primary" onclick="document.getElementById('user-search').value='';search='';status='';renderUsers(document.getElementById('page-content'))">重置</button>
+                        <select id="user-staff-filter" onchange="isStaff=this.value;renderUsers(document.getElementById('page-content'))" style="min-width:100px">
+                            <option value="">全部用户</option>
+                            <option value="1" ${isStaff==='1'?'selected':''}>租户管理员</option>
+                            <option value="0" ${isStaff==='0'?'selected':''}>普通用户</option>
+                        </select>
+                        <button class="btn btn-primary" onclick="document.getElementById('user-search').value='';search='';status='';isStaff='';renderUsers(document.getElementById('page-content'))">重置</button>
                     </div>
                     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
                         <button class="btn btn-sm btn-primary" onclick="batchAction('enable')">批量启用</button>
@@ -325,11 +332,12 @@ async function renderUsers(container) {
                         <td>${u.email || "-"}</td>
                         <td><span class="badge badge-info">${u.user_type === "internal" ? "内部" : "外部"}</span></td>
                         <td>${u.department || "-"}</td>
-                        <td>${(u.role_names || []).length ? u.role_names.map(r => `<span class="perm-tag">${r}</span>`).join("") : '<span style="color:var(--text-light)">-</span>'}</td>
+                        <td>${u.is_staff ? '<span class="badge badge-active" style="margin-right:4px">租户管理员</span> ' : ''}${(u.role_names || []).length ? u.role_names.map(r => `<span class="perm-tag">${r}</span>`).join("") : u.is_staff ? '' : '<span style="color:var(--text-light)">-</span>'}</td>
                         <td><span class="badge ${u.status ? 'badge-active' : 'badge-disabled'}">${u.status ? "正常" : "禁用"}</span></td>
                         <td>${formatTime(u.created_at)}</td>
                         <td style="white-space:nowrap">
                             <button class="btn btn-sm btn-text" onclick="showEditUserModal(${u.id})">编辑</button>
+                            <button class="btn btn-sm btn-text" onclick="showUserProfileModal(${u.id})">资料</button>
                             <button class="btn btn-sm btn-text" onclick="toggleUserStatus(${u.id},${u.status})">${u.status ? "禁用" : "启用"}</button>
                             <button class="btn btn-sm btn-text" onclick="showResetPasswordModal(${u.id},'${u.username}')">重置密码</button>
                             ${u.status ? `<button class="btn btn-sm btn-text" onclick="deleteUser(${u.id})" style="color:var(--danger)">删除</button>` : ''}
@@ -489,6 +497,97 @@ async function editUser(id) {
         }
 
         showToast("用户信息已更新", "success");
+        closeModal();
+        switchPage("users");
+    } catch (e) { showToast("保存失败: " + e.message, "error"); }
+}
+
+async function showUserProfileModal(userId) {
+    try {
+        const res = await apiCall(API.admin + "/users/" + userId + "/profile");
+        if (!res) return;
+        const p = res.data;
+        
+        openModal(`
+            <div class="modal-header"><h2>用户资料 #${userId}</h2><button class="modal-close" onclick="closeModal()">&times;</button></div>
+            <form id="edit-profile-form" onsubmit="return false" style="max-height:60vh;overflow-y:auto">
+                <div class="form-group"><label>头像 URL</label><input id="up-avatar" value="${p.avatar || ""}" placeholder="头像图片URL"></div>
+                <div class="form-group"><label>真实姓名</label><input id="up-real-name" value="${p.real_name || ""}"></div>
+                <div class="form-group"><label>性别</label>
+                    <select id="up-gender">
+                        <option value="">请选择</option>
+                        <option value="male" ${p.gender === 'male' ? 'selected' : ''}>男</option>
+                        <option value="female" ${p.gender === 'female' ? 'selected' : ''}>女</option>
+                        <option value="other" ${p.gender === 'other' ? 'selected' : ''}>其他</option>
+                    </select>
+                </div>
+                <div class="form-group"><label>出生日期</label><input type="date" id="up-birthday" value="${p.birthday || ""}"></div>
+                <div class="form-group"><label>身份证号</label><input id="up-id-card" value="${p.id_card || ""}"></div>
+                <div class="form-group"><label>国籍</label><input id="up-nationality" value="${p.nationality || ""}"></div>
+                <div class="form-group"><label>联系地址</label><input id="up-address" value="${p.address || ""}"></div>
+                <div class="form-group"><label>邮政编码</label><input id="up-zip-code" value="${p.zip_code || ""}"></div>
+                <div class="form-group"><label>紧急联系人</label><input id="up-emergency-contact" value="${p.emergency_contact || ""}"></div>
+                <div class="form-group"><label>紧急联系电话</label><input id="up-emergency-phone" value="${p.emergency_phone || ""}"></div>
+                <div class="form-group"><label>职位</label><input id="up-job-title" value="${p.job_title || ""}"></div>
+                <div class="form-group"><label>员工编号</label><input id="up-employee-id" value="${p.employee_id || ""}"></div>
+                <div class="form-group"><label>入职日期</label><input type="date" id="up-hire-date" value="${p.hire_date || ""}"></div>
+                <div class="form-group"><label>工作邮箱</label><input type="email" id="up-work-email" value="${p.work_email || ""}"></div>
+                <div class="form-group"><label>工作电话</label><input id="up-work-phone" value="${p.work_phone || ""}"></div>
+                <div class="form-group"><label>微信号</label><input id="up-wechat" value="${p.wechat || ""}"></div>
+                <div class="form-group"><label>QQ号</label><input id="up-qq" value="${p.qq || ""}"></div>
+                <div class="form-group"><label>微博账号</label><input id="up-weibo" value="${p.weibo || ""}"></div>
+                <div class="form-group"><label>个人简介</label><textarea id="up-bio" rows="3" placeholder="个人简介">${p.bio || ""}</textarea></div>
+                <div class="form-group"><label>兴趣爱好</label><input id="up-interests" value="${p.interests || ""}"></div>
+                <div class="form-group"><label>标签 (JSON)</label><input id="up-tags" value="${typeof p.tags === 'string' ? p.tags : JSON.stringify(p.tags || {})}" placeholder='["标签1", "标签2"]'></div>
+                <div class="form-group"><label>扩展数据 (JSON)</label><textarea id="up-extra-data" rows="3" placeholder='{"key": "value"}'>${typeof p.extra_data === 'string' ? p.extra_data : JSON.stringify(p.extra_data || {})}</textarea></div>
+                <div class="modal-footer">
+                    <button class="btn btn-text" onclick="closeModal()">取消</button>
+                    <button class="btn btn-primary" onclick="saveUserProfile(${userId})">保存</button>
+                </div>
+            </form>`);
+    } catch (e) { showToast(e.message, "error"); }
+}
+
+async function saveUserProfile(userId) {
+    try {
+        const parseJson = (val) => {
+            if (!val) return null;
+            try { return JSON.parse(val); }
+            catch { return val; }
+        };
+        
+        const data = {
+            avatar: document.getElementById("up-avatar").value.trim() || null,
+            real_name: document.getElementById("up-real-name").value.trim() || null,
+            gender: document.getElementById("up-gender").value || null,
+            birthday: document.getElementById("up-birthday").value || null,
+            id_card: document.getElementById("up-id-card").value.trim() || null,
+            nationality: document.getElementById("up-nationality").value.trim() || null,
+            address: document.getElementById("up-address").value.trim() || null,
+            zip_code: document.getElementById("up-zip-code").value.trim() || null,
+            emergency_contact: document.getElementById("up-emergency-contact").value.trim() || null,
+            emergency_phone: document.getElementById("up-emergency-phone").value.trim() || null,
+            job_title: document.getElementById("up-job-title").value.trim() || null,
+            employee_id: document.getElementById("up-employee-id").value.trim() || null,
+            hire_date: document.getElementById("up-hire-date").value || null,
+            work_email: document.getElementById("up-work-email").value.trim() || null,
+            work_phone: document.getElementById("up-work-phone").value.trim() || null,
+            wechat: document.getElementById("up-wechat").value.trim() || null,
+            qq: document.getElementById("up-qq").value.trim() || null,
+            weibo: document.getElementById("up-weibo").value.trim() || null,
+            bio: document.getElementById("up-bio").value.trim() || null,
+            interests: document.getElementById("up-interests").value.trim() || null,
+            tags: parseJson(document.getElementById("up-tags").value),
+            extra_data: parseJson(document.getElementById("up-extra-data").value),
+        };
+        
+        const res = await apiCall(API.admin + "/users/" + userId + "/profile", {
+            method: "PUT", body: JSON.stringify(data),
+        });
+        if (!res) return;
+        if (res.code < 0) { showToast(res.message, "error"); return; }
+        
+        showToast("资料已更新", "success");
         closeModal();
         switchPage("users");
     } catch (e) { showToast("保存失败: " + e.message, "error"); }

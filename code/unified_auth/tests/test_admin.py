@@ -45,6 +45,23 @@ class TestAdminUsers:
         assert "total" in data["data"]
         assert data["data"]["page"] == 1
 
+    def test_user_list_filter_staff(self, api_client, staff_auth_headers, staff_user, normal_user, external_user):
+        """TC-ADMIN-004: 用户列表 — 筛选租户管理员"""
+        resp = api_client.get("/api/v1/admin/users?page=1&page_size=20&is_staff=1", **staff_auth_headers)
+        data = json.loads(resp.content)
+        assert data["code"] == 0
+        assert data["data"]["total"] == 1
+        assert data["data"]["users"][0]["is_staff"] is True
+
+    def test_user_list_filter_regular(self, api_client, staff_auth_headers, staff_user, normal_user, external_user):
+        """TC-ADMIN-004B: 用户列表 — 筛选普通用户"""
+        resp = api_client.get("/api/v1/admin/users?page=1&page_size=20&is_staff=0", **staff_auth_headers)
+        data = json.loads(resp.content)
+        assert data["code"] == 0
+        assert data["data"]["total"] == 2
+        for u in data["data"]["users"]:
+            assert u["is_staff"] is False
+
     def test_create_user_success(self, api_client, staff_auth_headers):
         """TC-ADMIN-005: 创建用户 — 成功"""
         resp = api_client.post(

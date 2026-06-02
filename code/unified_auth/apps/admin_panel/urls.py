@@ -16,6 +16,7 @@ urlpatterns = [
     path("users/<int:user_id>/status", views.user_status_view, name="admin-user-status"),
     path("users/<int:user_id>/reset-password", views.user_reset_password_view, name="admin-user-reset-password"),
     path("users/<int:user_id>/roles", views.user_roles_view, name="admin-user-roles"),
+    path("users/<int:user_id>/profile", views.user_profile_view, name="admin-user-profile"),
     path("users/batch-status", views.user_batch_status_view, name="admin-user-batch-status"),
     path("users/batch-delete", views.user_batch_delete_view, name="admin-user-batch-delete"),
     path("users/export", views.users_export_view, name="admin-users-export"),
