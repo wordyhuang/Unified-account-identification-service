@@ -110,6 +110,42 @@ def sms_send(request):
         return Response(error(ErrorCode.PARAM_INVALID, data=ser.errors), status=400)
 
     phone = ser.validated_data["phone"]
+    ip = request.META.get('REMOTE_ADDR', '')
+
+    from django.core.cache import cache
+
+    # ---- 同一手机号冷却期检查（默认60秒内不可重复发送） ----
+    phone_cooldown_key = f"sms:rate:phone:{phone}"
+    if cache.get(phone_cooldown_key):
+        return Response(
+            error(ErrorCode.RATE_LIMIT_EXCEEDED, message="短信发送太频繁，请稍后再试"),
+            status=429,
+        )
+
+    # ---- 同一手机号每日上限检查 ----
+    phone_daily_key = f"sms:daily:phone:{phone}:{timezone.now().strftime('%Y%m%d')}"
+    phone_daily_count = cache.get(phone_daily_key) or 0
+    daily_limit = getattr(settings, 'SMS_PHONE_DAILY_LIMIT', 5)
+    if phone_daily_count >= daily_limit:
+        return Response(
+            error(ErrorCode.RATE_LIMIT_EXCEEDED, message="该手机号今日短信发送次数已达上限"),
+            status=429,
+        )
+
+    # ---- 同一IP短信专用限频 ----
+    ip_rate_key = f"sms:rate:ip:{ip}"
+    ip_max_per_minute = getattr(settings, 'SMS_IP_RATE_PER_MINUTE', 10)
+
+    # 用列表结构 + TTL 实现滑动窗口
+    ip_records = cache.get(ip_rate_key) or []
+    now = timezone.now().timestamp()
+    ip_records = [t for t in ip_records if now - t < 60]
+    if len(ip_records) >= ip_max_per_minute:
+        return Response(
+            error(ErrorCode.RATE_LIMIT_EXCEEDED, message="IP请求太频繁，请稍后再试"),
+            status=429,
+        )
+
     code = generate_code()
 
     tenant = None
@@ -126,7 +162,13 @@ def sms_send(request):
             status=500,
         )
 
-    from django.core.cache import cache
+    # 发送成功后才更新限频计数器
+    cooldown_sec = getattr(settings, 'SMS_PHONE_COOLDOWN_SECONDS', 60)
+    cache.set(phone_cooldown_key, 1, timeout=cooldown_sec)
+    cache.set(phone_daily_key, phone_daily_count + 1, timeout=86400)
+    ip_records.append(now)
+    cache.set(ip_rate_key, ip_records, timeout=60)
+
     cache.set(f"sms:{phone}", code, timeout=300)
 
     return Response(success({"phone": phone}))

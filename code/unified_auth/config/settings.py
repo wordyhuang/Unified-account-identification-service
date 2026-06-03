@@ -128,6 +128,17 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 USE_TZ = False
 
-JWT_SECRET_KEY = os.getenv('JWT_SECRET_KEY', SECRET_KEY)
 JWT_ACCESS_TOKEN_EXPIRE_MINUTES = 120
 JWT_REFRESH_TOKEN_EXPIRE_DAYS = 30
+
+JWT_SECRET_KEY = os.getenv('JWT_SECRET_KEY')
+if not JWT_SECRET_KEY:
+    if not DEBUG:
+        raise ValueError("JWT_SECRET_KEY environment variable must be set in production")
+    import secrets
+    JWT_SECRET_KEY = secrets.token_urlsafe(64)
+
+# ==================== 短信限频策略 ====================
+SMS_PHONE_COOLDOWN_SECONDS = int(os.getenv('SMS_PHONE_COOLDOWN_SECONDS', '60'))
+SMS_PHONE_DAILY_LIMIT = int(os.getenv('SMS_PHONE_DAILY_LIMIT', '5'))
+SMS_IP_RATE_PER_MINUTE = int(os.getenv('SMS_IP_RATE_PER_MINUTE', '10'))

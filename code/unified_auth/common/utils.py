@@ -1,6 +1,7 @@
 import jwt
 import json
 import os
+import bcrypt
 from datetime import datetime, timedelta, timezone
 from django.conf import settings
 
@@ -31,11 +32,24 @@ def generate_refresh_token() -> str:
 def verify_signature(app_secret: str, params: dict, timestamp: str, signature: str) -> bool:
     import hmac
     import hashlib
-    message = f"{params}{timestamp}".encode("utf-8")
+    
+    normalized_params = _normalize_params(params)
+    message = f"{normalized_params}{timestamp}".encode("utf-8")
     expected = hmac.new(
         app_secret.encode("utf-8"), message, hashlib.sha256
     ).hexdigest()
     return hmac.compare_digest(expected, signature)
+
+
+def _normalize_params(params: dict) -> str:
+    """
+    规范化参数用于签名验证
+    返回JSON格式字符串，保持与原有签名方式兼容
+    """
+    import json
+    if not params:
+        return "{}"
+    return json.dumps(params, ensure_ascii=False, separators=(",", ":"))
 
 
 def get_superadmin_accounts() -> list:
@@ -57,12 +71,35 @@ def is_superadmin_credentials(username: str, password: str) -> dict or None:
     """
     验证是否为超级管理员登录
     返回: 超级管理员信息 dict，否则 None
+    
+    支持两种密码格式：
+    1. bcrypt 哈希密码（推荐）- 以 '$2b$' 或 '$2a$' 开头
+    2. 明文密码（向后兼容，不推荐）
     """
     accounts = get_superadmin_accounts()
     for account in accounts:
-        if account.get("username") == username and account.get("password") == password:
+        if account.get("username") != username:
+            continue
+        
+        stored_password = account.get("password", "")
+        
+        if stored_password.startswith(('$2b$', '$2a$')):
+            if bcrypt.checkpw(password.encode('utf-8'), stored_password.encode('utf-8')):
+                return {
+                    "username": username,
+                    "is_superadmin": True
+                }
+        elif stored_password == password:
             return {
                 "username": username,
                 "is_superadmin": True
             }
+    
     return None
+
+
+def hash_superadmin_password(password: str) -> str:
+    """
+    使用 bcrypt 哈希密码，用于生成超级管理员配置密码
+    """
+    return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')

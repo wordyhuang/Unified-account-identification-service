@@ -818,6 +818,29 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 }
 ```
 
+**失败响应** (429):
+
+```json
+{
+    "code": -10401,
+    "message": "短信发送太频繁，请稍后再试"
+}
+```
+
+```json
+{
+    "code": -10401,
+    "message": "该手机号今日短信发送次数已达上限"
+}
+```
+
+```json
+{
+    "code": -10401,
+    "message": "IP请求太频繁，请稍后再试"
+}
+```
+
 **失败响应** (500):
 
 ```json
@@ -832,6 +855,13 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 > - 验证码由系统随机生成，通过阿里云短信服务发送
 > - 若阿里云发送失败（如触发频率限制），接口返回500，服务端会打印验证码到控制台供开发调试
 > - 短信服务配置通过环境变量控制（见 `.env` 文件）
+>
+> **频率限制**：
+>
+> - **同一手机号冷却期**：每次发送成功后60秒内不可再次发送（可通过环境变量 `SMS_PHONE_COOLDOWN_SECONDS` 调整）
+> - **同一手机号每日上限**：每个手机号每天最多发送5条验证码（可通过环境变量 `SMS_PHONE_DAILY_LIMIT` 调整）
+> - **同一IP限频**：每个IP每分钟最多发送10条验证码（可通过环境变量 `SMS_IP_RATE_PER_MINUTE` 调整）
+> - 超出以上任一限制均返回 HTTP 429 状态码，错误码 `-10401`（`RATE_LIMIT_EXCEEDED`）
 
 ### 短信登录
 

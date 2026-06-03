@@ -20,6 +20,33 @@ from .serializers import (
 logger = logging.getLogger(__name__)
 
 
+def _mask_sensitive_data(field_name, value):
+    """
+    脱敏处理敏感数据
+    """
+    if not value:
+        return value
+    
+    if field_name == "id_card":
+        if len(value) >= 18:
+            return value[:3] + "*" * 11 + value[-4:]
+        return "****"
+    elif field_name in ("phone", "work_phone", "emergency_phone"):
+        if len(value) >= 11:
+            return value[:3] + "*" * 4 + value[-4:]
+        return "****"
+    elif field_name in ("email", "work_email"):
+        if "@" in value:
+            parts = value.split("@")
+            if len(parts[0]) >= 2:
+                return parts[0][:2] + "*" * (len(parts[0]) - 2) + "@" + parts[1]
+        return "****"
+    elif field_name == "address":
+        if len(value) > 10:
+            return value[:10] + "..."
+    return value
+
+
 @api_view(["POST"])
 def verify_token(request):
     ser = VerifyTokenSerializer(data=request.data)
@@ -247,22 +274,28 @@ def user_profile_by_token(request):
 
     if request.method == "GET":
         from datetime import date as date_type
-        return Response(success({
+        profile_data = {
             "user_id": user.id, "username": user.username, "nickname": user.nickname,
             "avatar": profile.avatar, "real_name": profile.real_name,
             "gender": profile.gender,
             "birthday": profile.birthday.isoformat() if profile.birthday else None,
-            "id_card": profile.id_card, "nationality": profile.nationality,
-            "address": profile.address, "zip_code": profile.zip_code,
+            "id_card": _mask_sensitive_data("id_card", profile.id_card),
+            "nationality": profile.nationality,
+            "address": _mask_sensitive_data("address", profile.address),
+            "zip_code": profile.zip_code,
             "emergency_contact": profile.emergency_contact,
-            "emergency_phone": profile.emergency_phone,
+            "emergency_phone": _mask_sensitive_data("emergency_phone", profile.emergency_phone),
             "job_title": profile.job_title, "employee_id": profile.employee_id,
             "hire_date": profile.hire_date.isoformat() if profile.hire_date else None,
-            "work_email": profile.work_email, "work_phone": profile.work_phone,
-            "wechat": profile.wechat, "qq": profile.qq, "weibo": profile.weibo,
+            "work_email": _mask_sensitive_data("work_email", profile.work_email),
+            "work_phone": _mask_sensitive_data("work_phone", profile.work_phone),
+            "wechat": _mask_sensitive_data("wechat", profile.wechat),
+            "qq": _mask_sensitive_data("qq", profile.qq),
+            "weibo": _mask_sensitive_data("weibo", profile.weibo),
             "bio": profile.bio, "interests": profile.interests,
             "tags": profile.tags, "extra_data": profile.extra_data,
-        }))
+        }
+        return Response(success(profile_data))
 
     data = ser.validated_data
     fields = [

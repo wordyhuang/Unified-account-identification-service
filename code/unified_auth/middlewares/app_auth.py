@@ -38,7 +38,22 @@ class AppAuthenticationMiddleware(MiddlewareMixin):
         except Application.DoesNotExist:
             return JsonResponse(api_response(ErrorCode.APP_KEY_INVALID), status=401)
 
-        if not verify_signature(app.app_secret_hash, {}, timestamp, signature):
+        request_params = {}
+        if request.method in ("POST", "PUT", "PATCH"):
+            try:
+                request_params = request.data.copy() if hasattr(request, 'data') else {}
+            except Exception:
+                pass
+        
+        query_params = request.GET.dict()
+        if query_params:
+            request_params.update(query_params)
+
+        if verify_signature(app.app_secret_hash, request_params, timestamp, signature):
+            pass
+        elif verify_signature(app.app_secret_hash, {}, timestamp, signature):
+            pass
+        else:
             return JsonResponse(api_response(ErrorCode.SIGNATURE_INVALID), status=401)
 
         request.app = app
