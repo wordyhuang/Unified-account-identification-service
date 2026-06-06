@@ -522,3 +522,276 @@ class TestAdminApiAuth:
         """TC-ADMIN-043: 管理 API — 普通用户访问（需 is_staff）"""
         resp = api_client.get("/api/v1/admin/stats", **normal_auth_headers)
         assert resp.status_code == 403
+
+
+class TestAdminTags:
+    """TC-ADMIN-044~053: 用户标签管理"""
+
+    # ==================== Tags CRUD ====================
+
+    def test_tag_list_empty(self, api_client, staff_auth_headers):
+        """TC-ADMIN-044: 标签列表 — 空列表"""
+        resp = api_client.get("/api/v1/admin/tags", **staff_auth_headers)
+        data = json.loads(resp.content)
+        assert data["code"] == 0
+        assert data["data"]["tags"] == []
+
+    def test_create_tag_success(self, api_client, staff_auth_headers):
+        """TC-ADMIN-045: 创建标签 — 成功"""
+        resp = api_client.post(
+            "/api/v1/admin/tags/create",
+            {"name": "VIP用户", "color": "#f5222d", "description": "付费用户"},
+            content_type="application/json",
+            **staff_auth_headers,
+        )
+        data = json.loads(resp.content)
+        assert resp.status_code == 201
+        assert data["data"]["name"] == "VIP用户"
+        assert data["data"]["color"] == "#f5222d"
+        assert data["data"]["description"] == "付费用户"
+
+    def test_create_tag_empty_name(self, api_client, staff_auth_headers):
+        """TC-ADMIN-045B: 创建标签 — 名称为空"""
+        resp = api_client.post(
+            "/api/v1/admin/tags/create",
+            {"name": "", "color": "#1890ff"},
+            content_type="application/json",
+            **staff_auth_headers,
+        )
+        assert resp.status_code == 400
+
+    def test_create_tag_duplicate_name(self, api_client, staff_auth_headers, staff_user):
+        """TC-ADMIN-045C: 创建标签 — 名称重复"""
+        from apps.tags.models import UserTag
+        UserTag.objects.create(tenant_id=staff_user.tenant_id, name="VIP用户", color="#f5222d")
+
+        resp = api_client.post(
+            "/api/v1/admin/tags/create",
+            {"name": "VIP用户"},
+            content_type="application/json",
+            **staff_auth_headers,
+        )
+        data = json.loads(resp.content)
+        assert data["code"] < 0
+
+    def test_tag_list_with_tags(self, api_client, staff_auth_headers, staff_user):
+        """TC-ADMIN-046: 标签列表 — 有数据"""
+        from apps.tags.models import UserTag
+        tag1 = UserTag.objects.create(tenant_id=staff_user.tenant_id, name="VIP用户", color="#f5222d", sort_order=1)
+        tag2 = UserTag.objects.create(tenant_id=staff_user.tenant_id, name="测试用户", color="#1890ff", sort_order=2)
+
+        resp = api_client.get("/api/v1/admin/tags", **staff_auth_headers)
+        data = json.loads(resp.content)
+        assert data["code"] == 0
+        assert len(data["data"]["tags"]) >= 2
+        names = [t["name"] for t in data["data"]["tags"]]
+        assert "VIP用户" in names
+        assert "测试用户" in names
+
+    def test_update_tag_success(self, api_client, staff_auth_headers, staff_user):
+        """TC-ADMIN-047: 编辑标签 — 成功"""
+        from apps.tags.models import UserTag
+        tag = UserTag.objects.create(tenant_id=staff_user.tenant_id, name="旧名称", color="#1890ff")
+
+        resp = api_client.put(
+            f"/api/v1/admin/tags/{tag.id}",
+            {"name": "新名称", "color": "#52c41a", "description": "更新描述"},
+            content_type="application/json",
+            **staff_auth_headers,
+        )
+        data = json.loads(resp.content)
+        assert data["code"] == 0
+        assert data["data"]["name"] == "新名称"
+        assert data["data"]["color"] == "#52c41a"
+
+    def test_update_tag_not_found(self, api_client, staff_auth_headers):
+        """TC-ADMIN-047B: 编辑标签 — 标签不存在"""
+        resp = api_client.put(
+            "/api/v1/admin/tags/99999",
+            {"name": "不存在"},
+            content_type="application/json",
+            **staff_auth_headers,
+        )
+        assert resp.status_code == 404
+
+    def test_delete_tag_success(self, api_client, staff_auth_headers, staff_user):
+        """TC-ADMIN-048: 删除标签 — 成功"""
+        from apps.tags.models import UserTag
+        tag = UserTag.objects.create(tenant_id=staff_user.tenant_id, name="待删除标签", color="#faad14")
+
+        resp = api_client.delete(
+            f"/api/v1/admin/tags/{tag.id}/delete",
+            **staff_auth_headers,
+        )
+        data = json.loads(resp.content)
+        assert data["code"] == 0
+
+        # 确认已删除
+        assert not UserTag.objects.filter(id=tag.id).exists()
+
+    def test_delete_tag_not_found(self, api_client, staff_auth_headers):
+        """TC-ADMIN-048B: 删除标签 — 标签不存在"""
+        resp = api_client.delete(
+            "/api/v1/admin/tags/99999/delete",
+            **staff_auth_headers,
+        )
+        assert resp.status_code == 404
+
+    # ==================== User-Tag Binding ====================
+
+    def test_user_tags_empty(self, api_client, staff_auth_headers, staff_user):
+        """TC-ADMIN-049: 用户标签 — 空列表"""
+        resp = api_client.get(f"/api/v1/admin/users/{staff_user.id}/tags", **staff_auth_headers)
+        data = json.loads(resp.content)
+        assert data["code"] == 0
+        assert data["data"]["tags"] == []
+
+    def test_user_tags_bind_success(self, api_client, staff_auth_headers, staff_user):
+        """TC-ADMIN-050: 绑定用户标签 — 成功"""
+        from apps.tags.models import UserTag
+        tag = UserTag.objects.create(tenant_id=staff_user.tenant_id, name="VIP用户", color="#f5222d")
+
+        resp = api_client.post(
+            f"/api/v1/admin/users/{staff_user.id}/tags/bind",
+            {"tag_ids": [tag.id]},
+            content_type="application/json",
+            **staff_auth_headers,
+        )
+        data = json.loads(resp.content)
+        assert data["code"] == 0
+        assert data["data"]["count"] == 1
+
+        # 验证绑定关系
+        tag_resp = api_client.get(
+            f"/api/v1/admin/users/{staff_user.id}/tags",
+            **staff_auth_headers,
+        )
+        tag_data = json.loads(tag_resp.content)
+        assert len(tag_data["data"]["tags"]) == 1
+        assert tag_data["data"]["tags"][0]["name"] == "VIP用户"
+
+    def test_user_tags_bind_invalid_ids(self, api_client, staff_auth_headers, staff_user):
+        """TC-ADMIN-050B: 绑定用户标签 — tag_ids 不是数组"""
+        resp = api_client.post(
+            f"/api/v1/admin/users/{staff_user.id}/tags/bind",
+            {"tag_ids": "not_a_list"},
+            content_type="application/json",
+            **staff_auth_headers,
+        )
+        assert resp.status_code == 400
+
+    def test_user_tags_bind_duplicate(self, api_client, staff_auth_headers, staff_user):
+        """TC-ADMIN-050C: 绑定用户标签 — 重复绑定（幂等）"""
+        from apps.tags.models import UserTag, UserTagBinding
+        tag = UserTag.objects.create(tenant_id=staff_user.tenant_id, name="幂等标签", color="#1890ff")
+        UserTagBinding.objects.create(user=staff_user, tag=tag)
+
+        resp = api_client.post(
+            f"/api/v1/admin/users/{staff_user.id}/tags/bind",
+            {"tag_ids": [tag.id]},
+            content_type="application/json",
+            **staff_auth_headers,
+        )
+        data = json.loads(resp.content)
+        assert data["code"] == 0
+        assert data["data"]["count"] == 0  # 重复绑定不新增
+
+    def test_user_tags_unbind_success(self, api_client, staff_auth_headers, staff_user):
+        """TC-ADMIN-051: 解绑用户标签 — 成功"""
+        from apps.tags.models import UserTag, UserTagBinding
+        tag = UserTag.objects.create(tenant_id=staff_user.tenant_id, name="解绑标签", color="#faad14")
+        UserTagBinding.objects.create(user=staff_user, tag=tag)
+
+        resp = api_client.delete(
+            f"/api/v1/admin/users/{staff_user.id}/tags/unbind",
+            {"tag_ids": [tag.id]},
+            content_type="application/json",
+            **staff_auth_headers,
+        )
+        data = json.loads(resp.content)
+        assert data["code"] == 0
+        assert data["data"]["deleted_count"] == 1
+
+        # 验证已解绑
+        tag_resp = api_client.get(
+            f"/api/v1/admin/users/{staff_user.id}/tags",
+            **staff_auth_headers,
+        )
+        tag_data = json.loads(tag_resp.content)
+        assert len(tag_data["data"]["tags"]) == 0
+
+    def test_user_tags_unbind_invalid_ids(self, api_client, staff_auth_headers, staff_user):
+        """TC-ADMIN-051B: 解绑用户标签 — tag_ids 不是数组"""
+        resp = api_client.delete(
+            f"/api/v1/admin/users/{staff_user.id}/tags/unbind",
+            {"tag_ids": "not_a_list"},
+            content_type="application/json",
+            **staff_auth_headers,
+        )
+        assert resp.status_code == 400
+
+    # ==================== Tag display in user detail ====================
+
+    def test_tags_in_user_detail(self, api_client, staff_auth_headers, staff_user):
+        """TC-ADMIN-052: 用户详情中显示标签"""
+        from apps.tags.models import UserTag, UserTagBinding
+        tag = UserTag.objects.create(tenant_id=staff_user.tenant_id, name="VIP用户", color="#f5222d")
+        UserTagBinding.objects.create(user=staff_user, tag=tag)
+
+        resp = api_client.get(f"/api/v1/admin/users/{staff_user.id}", **staff_auth_headers)
+        data = json.loads(resp.content)
+        assert data["code"] == 0
+        assert len(data["data"]["tags"]) > 0
+        assert data["data"]["tags"][0]["name"] == "VIP用户"
+
+    def test_tags_in_user_list(self, api_client, staff_auth_headers, staff_user):
+        """TC-ADMIN-052B: 用户列表中显示标签"""
+        from apps.tags.models import UserTag, UserTagBinding
+        tag = UserTag.objects.create(tenant_id=staff_user.tenant_id, name="VIP用户", color="#f5222d")
+        UserTagBinding.objects.create(user=staff_user, tag=tag)
+
+        resp = api_client.get("/api/v1/admin/users", **staff_auth_headers)
+        data = json.loads(resp.content)
+        assert data["code"] == 0
+        user = next((u for u in data["data"]["users"] if u["id"] == staff_user.id), None)
+        assert user is not None
+        assert len(user["tags"]) > 0
+        assert user["tags"][0]["name"] == "VIP用户"
+
+    # ==================== Tenant isolation ====================
+
+    def test_tag_tenant_isolation(self, api_client, staff_auth_headers, staff_user, tenant_b, staff_user_b):
+        """TC-ADMIN-053: 标签数据隔离 — 租户隔离"""
+        from apps.tags.models import UserTag
+        from common.utils import create_access_token
+
+        # 在租户A创建标签
+        tag_a = UserTag.objects.create(
+            tenant_id=staff_user.tenant_id, name="租户A标签", color="#f5222d"
+        )
+
+        # 租户B的 token
+        staff_b_token = create_access_token({
+            "user_id": staff_user_b.id,
+            "tenant_id": staff_user_b.tenant_id,
+            "user_type": staff_user_b.user_type,
+        })
+        staff_b_headers = {"HTTP_AUTHORIZATION": f"Bearer {staff_b_token}"}
+
+        # 租户B的标签列表不应包含租户A的标签
+        resp_b_list = api_client.get("/api/v1/admin/tags", **staff_b_headers)
+        data_b = json.loads(resp_b_list.content)
+        tag_b_names = [t["name"] for t in data_b["data"]["tags"]]
+        assert "租户A标签" not in tag_b_names
+
+        # 租户B的用户尝试绑定租户A的标签（跨租户无效）
+        resp = api_client.post(
+            f"/api/v1/admin/users/{staff_user_b.id}/tags/bind",
+            {"tag_ids": [tag_a.id]},
+            content_type="application/json",
+            **staff_b_headers,
+        )
+        data = json.loads(resp.content)
+        assert data["code"] == 0
+        # 绑定计数为0，因为tag_id对应的标签不属于B的租户
+        assert data["data"]["count"] == 0

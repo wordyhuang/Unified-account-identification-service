@@ -30,13 +30,20 @@ class RefreshSerializer(serializers.Serializer):
 
 
 class UserInfoSerializer(serializers.ModelSerializer):
+    tags = serializers.SerializerMethodField()
+
     class Meta:
         model = User
         fields = [
             "id", "uuid", "user_type", "username", "email", "phone",
             "nickname", "avatar", "department", "status",
-            "tenant_id", "last_login_at", "created_at",
+            "tenant_id", "last_login_at", "created_at", "tags",
         ]
+
+    def get_tags(self, obj):
+        from apps.tags.models import UserTagBinding
+        bindings = UserTagBinding.objects.filter(user=obj)
+        return [b.tag.name for b in bindings]
 
 
 class UpdateUserInfoSerializer(serializers.Serializer):

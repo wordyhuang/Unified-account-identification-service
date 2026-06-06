@@ -327,7 +327,10 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
                 "status": 1,
                 "tenant_id": 1,
                 "last_login_at": "2024-01-15T09:00:00",
-                "created_at": "2024-01-01T10:00:00"
+                "created_at": "2024-01-01T10:00:00",
+                "tags": [
+                    {"id": 1, "name": "VIP用户", "color": "#1890ff"}
+                ]
             }
         ],
         "total": 100
@@ -421,7 +424,10 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
         "status": 1,
         "tenant_id": 1,
         "last_login_at": "2024-01-15T09:00:00",
-        "created_at": "2024-01-01T10:00:00"
+        "created_at": "2024-01-01T10:00:00",
+        "tags": [
+            {"id": 1, "name": "VIP用户", "color": "#1890ff"}
+        ]
     }
 }
 ```
@@ -1025,7 +1031,11 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
         "status": 1,
         "tenant_id": 1,
         "last_login_at": "2024-01-15T09:00:00",
-        "created_at": "2024-01-01T10:00:00"
+        "created_at": "2024-01-01T10:00:00",
+        "tags": [
+            {"id": 1, "name": "VIP用户", "color": "#1890ff"},
+            {"id": 2, "name": "管理员", "color": "#52c41a"}
+        ]
     }
 }
 ```

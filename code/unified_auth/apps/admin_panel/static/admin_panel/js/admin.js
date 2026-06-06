@@ -97,6 +97,7 @@ function showApp() {
 const PAGES = {
     dashboard: renderDashboard,
     users: renderUsers,
+    tags: renderTags,
     applications: renderApplications,
     roles: renderRoles,
     departments: renderDepartments,
@@ -320,7 +321,7 @@ async function renderUsers(container) {
                 <div class="card"><div class="table-wrap">
                 <table><thead><tr>
                     <th style="width:40px"><input type="checkbox" onchange="toggleAllUsers(this.checked)"></th>
-                    <th>ID</th><th>用户名</th><th>昵称</th><th>手机号</th><th>邮箱</th><th>类型</th><th>部门</th><th>角色</th><th>状态</th><th>创建时间</th><th>操作</th>
+                    <th>ID</th><th>用户名</th><th>昵称</th><th>手机号</th><th>类型</th><th>部门</th><th>角色</th><th>标签</th><th>状态</th><th>创建时间</th><th>操作</th>
                 </tr></thead><tbody>
                 ${d.users.length ? d.users.map(u => `
                     <tr>
@@ -329,15 +330,16 @@ async function renderUsers(container) {
                         <td><strong>${u.username}</strong></td>
                         <td>${u.nickname || "-"}</td>
                         <td>${u.phone || "-"}</td>
-                        <td>${u.email || "-"}</td>
                         <td><span class="badge badge-info">${u.user_type === "internal" ? "内部" : "外部"}</span></td>
                         <td>${u.department || "-"}</td>
                         <td>${u.is_staff ? '<span class="badge badge-active" style="margin-right:4px">租户管理员</span> ' : ''}${(u.role_names || []).length ? u.role_names.map(r => `<span class="perm-tag">${r}</span>`).join("") : u.is_staff ? '' : '<span style="color:var(--text-light)">-</span>'}</td>
+                        <td>${(u.tags || []).length ? u.tags.map(t => `<span class="badge" style="background:${t.color}20;color:${t.color};border-color:${t.color}">${t.name}</span>`).join(" ") : '<span style="color:var(--text-light)">-</span>'}</td>
                         <td><span class="badge ${u.status ? 'badge-active' : 'badge-disabled'}">${u.status ? "正常" : "禁用"}</span></td>
                         <td>${formatTime(u.created_at)}</td>
                         <td style="white-space:nowrap">
                             <button class="btn btn-sm btn-text" onclick="showEditUserModal(${u.id})">编辑</button>
                             <button class="btn btn-sm btn-text" onclick="showUserProfileModal(${u.id})">资料</button>
+                            <button class="btn btn-sm btn-text" onclick="showUserTagsModal(${u.id})">标签</button>
                             <button class="btn btn-sm btn-text" onclick="toggleUserStatus(${u.id},${u.status})">${u.status ? "禁用" : "启用"}</button>
                             <button class="btn btn-sm btn-text" onclick="showResetPasswordModal(${u.id},'${u.username}')">重置密码</button>
                             ${u.status ? `<button class="btn btn-sm btn-text" onclick="deleteUser(${u.id})" style="color:var(--danger)">删除</button>` : ''}
@@ -2373,6 +2375,181 @@ function formatTime(ts) {
     const pad = n => n.toString().padStart(2, "0");
     return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate())
         + " " + pad(d.getHours()) + ":" + pad(d.getMinutes());
+}
+
+// ================== TAGS ==================
+
+async function renderTags(container) {
+    container.innerHTML = '<div class="loading"></div>';
+    try {
+        const res = await apiCall(API.admin + "/tags");
+        if (!res) return;
+        const tags = res.data.tags || [];
+        
+        container.innerHTML = `
+            <div class="toolbar">
+                <div></div>
+                <button class="btn btn-primary" onclick="showCreateTagModal()">+ 新增标签</button>
+            </div>
+            <div class="card"><div class="table-wrap">
+            <table><thead><tr>
+                <th>ID</th><th>标签名称</th><th>颜色</th><th>描述</th><th>排序</th><th>创建时间</th><th>操作</th>
+            </tr></thead><tbody>
+            ${tags.length ? tags.map(t => `
+                <tr>
+                    <td>${t.id}</td>
+                    <td><strong>${t.name}</strong></td>
+                    <td><span class="tag-color" style="background:${t.color};width:24px;height:24px;border-radius:4px;display:inline-block"></span></td>
+                    <td>${t.description || "-"}</td>
+                    <td>${t.sort_order}</td>
+                    <td>${formatTime(t.created_at)}</td>
+                    <td style="white-space:nowrap">
+                        <button class="btn btn-sm btn-text" onclick="showEditTagModal(${t.id}, '${t.name}', '${t.color}', '${t.description || ''}')">编辑</button>
+                        <button class="btn btn-sm btn-text" onclick="deleteTag(${t.id}, '${t.name}')" style="color:var(--danger)">删除</button>
+                    </td>
+                </tr>`).join("") : '<tr><td colspan="7"><div class="empty-state">暂无标签</div></td></tr>'}
+            </tbody></table></div></div>`;
+    } catch (e) { container.innerHTML = `<div class="empty-state">加载失败: ${e.message}</div>`; }
+}
+
+function showCreateTagModal() {
+    openModal(`
+        <div class="modal-header"><h2>新增标签</h2><button class="modal-close" onclick="closeModal()">&times;</button></div>
+        <form onsubmit="return false">
+            <div class="form-group"><label>标签名称 *</label><input id="ct-name" required placeholder="请输入标签名称"></div>
+            <div class="form-group"><label>颜色</label>
+                <div style="display:flex;gap:8px;flex-wrap:wrap">
+                    ${['#1a73e8', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16'].map(c => 
+                        `<label style="cursor:pointer"><input type="radio" name="tag-color" value="${c}" ${c === '#1a73e8' ? 'checked' : ''} style="display:none"><span style="width:28px;height:28px;border-radius:4px;display:block;background:${c};border:2px solid ${c === '#1a73e8' ? '#1a73e8' : 'transparent'}" onclick="document.querySelectorAll('input[name=tag-color]').forEach(i => i.parentElement.querySelector('span').style.borderColor = 'transparent');this.style.borderColor='${c}';this.parentElement.querySelector('input').checked=true"></span></label>`
+                    ).join("")}
+                </div>
+                <input type="text" id="ct-color" value="#1a73e8" style="margin-top:8px;width:120px">
+            </div>
+            <div class="form-group"><label>描述</label><input id="ct-desc" placeholder="标签描述（可选）"></div>
+            <div class="modal-footer">
+                <button class="btn btn-text" onclick="closeModal()">取消</button>
+                <button class="btn btn-primary" onclick="createTag()">确认创建</button>
+            </div>
+        </form>`);
+}
+
+async function createTag() {
+    const name = document.getElementById("ct-name").value.trim();
+    const color = document.getElementById("ct-color").value.trim() || '#1a73e8';
+    const desc = document.getElementById("ct-desc").value.trim();
+    
+    if (!name) { showToast("标签名称不能为空", "error"); return; }
+    
+    try {
+        const res = await apiCall(API.admin + "/tags/create", {
+            method: "POST",
+            body: JSON.stringify({ name, color, description: desc || null }),
+        });
+        if (!res) return;
+        if (res.code < 0) { showToast(res.message, "error"); return; }
+        showToast("标签创建成功", "success");
+        closeModal();
+        switchPage("tags");
+    } catch (e) { showToast(e.message, "error"); }
+}
+
+function showEditTagModal(id, name, color, description) {
+    openModal(`
+        <div class="modal-header"><h2>编辑标签 #${id}</h2><button class="modal-close" onclick="closeModal()">&times;</button></div>
+        <form onsubmit="return false">
+            <div class="form-group"><label>标签名称</label><input id="et-name" value="${name}"></div>
+            <div class="form-group"><label>颜色</label>
+                <div style="display:flex;gap:8px;flex-wrap:wrap">
+                    ${['#1a73e8', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16'].map(c => 
+                        `<label style="cursor:pointer"><input type="radio" name="tag-color" value="${c}" ${c === color ? 'checked' : ''} style="display:none"><span style="width:28px;height:28px;border-radius:4px;display:block;background:${c};border:2px solid ${c === color ? c : 'transparent'}" onclick="document.querySelectorAll('input[name=tag-color]').forEach(i => i.parentElement.querySelector('span').style.borderColor = 'transparent');this.style.borderColor='${c}';this.parentElement.querySelector('input').checked=true"></span></label>`
+                    ).join("")}
+                </div>
+                <input type="text" id="et-color" value="${color}" style="margin-top:8px;width:120px">
+            </div>
+            <div class="form-group"><label>描述</label><input id="et-desc" value="${description}"></div>
+            <div class="modal-footer">
+                <button class="btn btn-text" onclick="closeModal()">取消</button>
+                <button class="btn btn-primary" onclick="editTag(${id})">保存</button>
+            </div>
+        </form>`);
+}
+
+async function editTag(id) {
+    const name = document.getElementById("et-name").value.trim();
+    const color = document.getElementById("et-color").value.trim() || '#1a73e8';
+    const desc = document.getElementById("et-desc").value.trim();
+    
+    if (!name) { showToast("标签名称不能为空", "error"); return; }
+    
+    try {
+        const res = await apiCall(API.admin + "/tags/" + id, {
+            method: "PUT",
+            body: JSON.stringify({ name, color, description: desc || null }),
+        });
+        if (!res) return;
+        if (res.code < 0) { showToast(res.message, "error"); return; }
+        showToast("标签已更新", "success");
+        closeModal();
+        switchPage("tags");
+    } catch (e) { showToast(e.message, "error"); }
+}
+
+async function deleteTag(id, name) {
+    if (!confirm(`确定删除标签 "${name}" 吗？`)) return;
+    try {
+        const res = await apiCall(API.admin + "/tags/" + id, { method: "DELETE" });
+        if (!res) return;
+        if (res.code < 0) { showToast(res.message, "error"); return; }
+        showToast("标签已删除", "success");
+        switchPage("tags");
+    } catch (e) { showToast(e.message, "error"); }
+}
+
+async function showUserTagsModal(userId) {
+    try {
+        const [tagsRes, userTagsRes] = await Promise.all([
+            apiCall(API.admin + "/tags"),
+            apiCall(API.admin + "/users/" + userId + "/tags"),
+        ]);
+        if (!tagsRes) return;
+        
+        const allTags = tagsRes.data.tags || [];
+        const userTagIds = (userTagsRes && userTagsRes.data.tags ? userTagsRes.data.tags.map(t => t.id) : []);
+        
+        openModal(`
+            <div class="modal-header"><h2>设置用户标签</h2><button class="modal-close" onclick="closeModal()">&times;</button></div>
+            <div class="form-group"><label>选择标签</label>
+                <div class="tag-grid">
+                    ${allTags.length ? allTags.map(t => `
+                        <label class="tag-item ${userTagIds.includes(t.id) ? 'selected' : ''}" onclick="event.preventDefault();this.classList.toggle('selected');var cb=this.querySelector('input');cb.checked=!cb.checked">
+                            <input type="checkbox" value="${t.id}" ${userTagIds.includes(t.id) ? 'checked' : ''} style="display:none">
+                            <span class="tag-label" style="background:${t.color}20;color:${t.color};border-color:${t.color}">${t.name}</span>
+                        </label>`).join("") : '<span style="color:var(--text-light)">暂无标签，请先创建</span>'}
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-text" onclick="closeModal()">取消</button>
+                <button class="btn btn-primary" onclick="saveUserTags(${userId})">保存</button>
+            </div>`);
+    } catch (e) { showToast(e.message, "error"); }
+}
+
+async function saveUserTags(userId) {
+    const selectedIds = Array.from(document.querySelectorAll(".tag-grid input:checked")).map(el => parseInt(el.value));
+    
+    try {
+        // 使用 PUT 请求一次性设置用户标签（替换模式）
+        const res = await apiCall(API.admin + "/users/" + userId + "/tags", {
+            method: "PUT",
+            body: JSON.stringify({ tag_ids: selectedIds }),
+        });
+        if (!res) return;
+        if (res.code < 0) { showToast(res.message, "error"); return; }
+        
+        showToast("标签已更新", "success");
+        closeModal();
+        switchPage("users");
+    } catch (e) { showToast(e.message, "error"); }
 }
 
 // ================== Init ==================

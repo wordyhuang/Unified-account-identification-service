@@ -21,6 +21,7 @@ urlpatterns = [
     path('api/v1/open/', include('apps.openapi.urls')),
     path('oauth/', include('apps.oauth2.urls')),
     path('api/v1/admin/', include('apps.admin_panel.urls')),
+    path('api/v1/admin/', include('apps.tags.urls')),
     path('api/v1/superadmin/global-stats', admin_views.superadmin_global_stats, name="superadmin-global-stats"),
     path('api/v1/superadmin/platform-config', admin_views.superadmin_platform_config, name="superadmin-platform-config"),
     path('api/v1/superadmin/tenants', admin_views.superadmin_tenants_view, name="superadmin-tenants"),

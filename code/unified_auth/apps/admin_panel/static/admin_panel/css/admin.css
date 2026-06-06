@@ -551,6 +551,42 @@ table tbody tr:hover { background: #eef2ff; }
     to { opacity: 1; }
 }
 
+/* ========== Tags ========== */
+.tag-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    max-height: 300px;
+    overflow-y: auto;
+    padding: 4px 0;
+}
+.tag-item {
+    display: inline-flex;
+    align-items: center;
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.15s;
+    user-select: none;
+}
+.tag-item:hover { opacity: 0.8; }
+.tag-item.selected {
+    box-shadow: 0 0 0 2px currentColor;
+}
+.tag-label {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 16px;
+    font-size: 12px;
+    font-weight: 500;
+    transition: all 0.15s;
+}
+.tag-color {
+    display: inline-block;
+    vertical-align: middle;
+}
+
 /* ========== Responsive ========== */
 @media (max-width: 768px) {
     .sidebar {

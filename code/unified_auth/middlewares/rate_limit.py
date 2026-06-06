@@ -1,6 +1,7 @@
 import time
 from django.http import JsonResponse
 from django.utils.deprecation import MiddlewareMixin
+from django.conf import settings
 from common.response import api_response
 from common.errors import ErrorCode
 
@@ -17,8 +18,8 @@ class RateLimitMiddleware(MiddlewareMixin):
             return None
         key = self._get_key(request)
         now = time.time()
-        window = 60
-        max_requests = 60 if not getattr(request, "app_key", None) else 1000
+        window = getattr(settings, 'RATE_LIMIT_WINDOW_SECONDS', 60)
+        max_requests = getattr(settings, 'RATE_LIMIT_IP_DEFAULT', 60) if not getattr(request, "app_key", None) else getattr(settings, 'RATE_LIMIT_APP_DEFAULT', 1000)
 
         records = self._requests.get(key, [])
         records = [t for t in records if now - t < window]

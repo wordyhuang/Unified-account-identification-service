@@ -49,6 +49,14 @@ def _user_serialize(u):
     except UserProfile.DoesNotExist:
         pass
     
+    tags = []
+    try:
+        from apps.tags.models import UserTagBinding
+        bindings = UserTagBinding.objects.filter(user=u)
+        tags = [b.tag.name for b in bindings]
+    except Exception:
+        pass
+    
     return {
         "id": u.id, "uuid": str(u.uuid), "username": u.username,
         "user_type": u.user_type,
@@ -60,6 +68,7 @@ def _user_serialize(u):
         "tenant_id": u.tenant_id,
         "role_ids": role_ids,
         "role_names": role_names,
+        "tags": tags,
         "last_login_at": u.last_login_at.isoformat() if u.last_login_at else None,
         "created_at": u.created_at.isoformat() if u.created_at else None,
         "profile": profile,
@@ -289,6 +298,7 @@ def users_view(request):
         search = request.GET.get("search", "").strip()
         status_filter = request.GET.get("status", "")
         is_staff_filter = request.GET.get("is_staff", "")
+        tag_id = request.GET.get("tag_id", "").strip()
         page = int(request.GET.get("page", 1))
         page_size = int(request.GET.get("page_size", 20))
 
@@ -303,6 +313,9 @@ def users_view(request):
             qs = qs.filter(is_staff=True)
         elif is_staff_filter == "0":
             qs = qs.filter(is_staff=False)
+        if tag_id:
+            from apps.tags.models import UserTagBinding
+            qs = qs.filter(tag_bindings__tag_id=tag_id)
 
         total = qs.count()
         users = qs.order_by("-created_at")[(page - 1) * page_size:page * page_size]
@@ -2093,3 +2106,62 @@ def role_copy_view(request, role_id):
     )
 
     return Response(success(_role_serialize(new_role)), status=201)
+
+
+# ======================== 用户标签设置 ========================
+
+
+@api_view(["GET", "PUT"])
+def user_tags_set_view(request, user_id):
+    """
+    获取或设置用户标签
+    GET: 获取用户当前的标签列表
+    PUT: 设置用户标签（替换模式：先删除所有现有标签，再添加新标签）
+    """
+    from apps.tags.models import UserTag, UserTagBinding
+    
+    if request.method == "GET":
+        # 获取用户当前的标签
+        bindings = UserTagBinding.objects.filter(user_id=user_id, tag__tenant_id=request.tenant_id).select_related("tag")
+        tags = [{
+            "id": b.tag.id,
+            "name": b.tag.name,
+            "color": b.tag.color,
+            "description": b.tag.description,
+        } for b in bindings]
+        return Response(success({"tags": tags}))
+    
+    # PUT: 设置用户标签
+    tag_ids = request.data.get("tag_ids", [])
+    
+    if not isinstance(tag_ids, list):
+        return Response(error(ErrorCode.PARAM_INVALID, message="tag_ids必须是数组"), status=400)
+    
+    # 验证标签是否属于当前租户
+    valid_tags = UserTag.objects.filter(tenant_id=request.tenant_id, id__in=tag_ids)
+    valid_tag_ids = set(valid_tags.values_list("id", flat=True))
+    
+    # 删除用户现有标签绑定
+    UserTagBinding.objects.filter(user_id=user_id, tag__tenant_id=request.tenant_id).delete()
+    
+    # 创建新的标签绑定
+    new_bindings = []
+    for tag_id in tag_ids:
+        if tag_id in valid_tag_ids:
+            binding = UserTagBinding.objects.create(user_id=user_id, tag_id=tag_id)
+            new_bindings.append(binding)
+    
+    AuditLog.objects.create(
+        tenant_id=request.tenant_id,
+        actor_id=request.user_id,
+        actor_name=request.user.username,
+        action="admin.user.tags.set",
+        resource_type="user",
+        resource_id=user_id,
+        detail={"tag_ids": tag_ids, "count": len(new_bindings)},
+    )
+    
+    return Response(success({
+        "count": len(new_bindings),
+        "tag_ids": [b.tag_id for b in new_bindings],
+    }))

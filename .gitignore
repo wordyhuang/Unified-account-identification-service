@@ -48,3 +48,5 @@ tmp/
 # ==================== 项目调试/测试脚本 ====================
 code/unified_auth/test_*.py
 code/unified_auth/unified_auth
+.ai/
+*.zip

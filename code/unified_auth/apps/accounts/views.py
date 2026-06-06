@@ -91,6 +91,8 @@ def login(request):
         timeout=86400,
     )
 
+    from apps.tags.models import UserTagBinding
+    tag_names = [b.tag.name for b in UserTagBinding.objects.filter(user=user)]
     return Response(success({
         "access_token": access_token,
         "refresh_token": refresh_token,
@@ -100,6 +102,7 @@ def login(request):
         "user_type": user.user_type,
         "is_superuser": user.is_superuser,
         "is_staff": user.is_staff,
+        "tags": tag_names,
     }))
 
 
@@ -222,11 +225,19 @@ def sms_login(request):
         timeout=86400,
     )
 
+    from apps.tags.models import UserTagBinding
+    tag_names = [b.tag.name for b in UserTagBinding.objects.filter(user=user)]
     return Response(success({
         "access_token": access_token,
         "refresh_token": refresh_token,
         "user_id": user.id,
         "is_new": created,
+        "username": user.username,
+        "nickname": user.nickname,
+        "user_type": user.user_type,
+        "is_superuser": user.is_superuser,
+        "is_staff": user.is_staff,
+        "tags": tag_names,
     }))
 
 
@@ -325,11 +336,19 @@ def social_login(request):
         timeout=86400,
     )
 
+    from apps.tags.models import UserTagBinding
+    tag_names = [b.tag.name for b in UserTagBinding.objects.filter(user=user)]
     return Response(success({
         "access_token": access_token,
         "refresh_token": refresh_token,
         "user_id": user.id,
         "is_new": created,
+        "username": user.username,
+        "nickname": user.nickname,
+        "user_type": user.user_type,
+        "is_superuser": user.is_superuser,
+        "is_staff": user.is_staff,
+        "tags": tag_names,
     }))
 
 

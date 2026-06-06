@@ -39,6 +39,7 @@ INSTALLED_APPS = [
     'apps.openapi',
     'apps.admin_panel',
     'apps.oauth2',
+    'apps.tags',
 ]
 
 TEMPLATES = [
@@ -142,3 +143,8 @@ if not JWT_SECRET_KEY:
 SMS_PHONE_COOLDOWN_SECONDS = int(os.getenv('SMS_PHONE_COOLDOWN_SECONDS', '60'))
 SMS_PHONE_DAILY_LIMIT = int(os.getenv('SMS_PHONE_DAILY_LIMIT', '5'))
 SMS_IP_RATE_PER_MINUTE = int(os.getenv('SMS_IP_RATE_PER_MINUTE', '10'))
+
+# ==================== API限流策略 ====================
+RATE_LIMIT_WINDOW_SECONDS = int(os.getenv('RATE_LIMIT_WINDOW_SECONDS', '60'))
+RATE_LIMIT_IP_DEFAULT = int(os.getenv('RATE_LIMIT_IP_DEFAULT', '60'))
+RATE_LIMIT_APP_DEFAULT = int(os.getenv('RATE_LIMIT_APP_DEFAULT', '1000'))

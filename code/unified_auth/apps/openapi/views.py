@@ -274,6 +274,8 @@ def user_profile_by_token(request):
 
     if request.method == "GET":
         from datetime import date as date_type
+        from apps.tags.models import UserTagBinding
+        user_tag_names = [b.tag.name for b in UserTagBinding.objects.filter(user=user)]
         profile_data = {
             "user_id": user.id, "username": user.username, "nickname": user.nickname,
             "avatar": profile.avatar, "real_name": profile.real_name,
@@ -293,7 +295,7 @@ def user_profile_by_token(request):
             "qq": _mask_sensitive_data("qq", profile.qq),
             "weibo": _mask_sensitive_data("weibo", profile.weibo),
             "bio": profile.bio, "interests": profile.interests,
-            "tags": profile.tags, "extra_data": profile.extra_data,
+            "tags": user_tag_names, "extra_data": profile.extra_data,
         }
         return Response(success(profile_data))
 
