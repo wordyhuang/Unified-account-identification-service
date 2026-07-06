@@ -40,15 +40,14 @@ class OpenAPIClient:
             base_url: 服务地址，默认 http://localhost:8000
         """
         self.app_key = app_key
-        # 签名使用 app_secret 的 SHA256 哈希值
-        self.app_secret_hash = hashlib.sha256(app_secret.encode()).hexdigest()
+        self.app_secret = app_secret
         self.base_url = base_url.rstrip("/")
 
     def _generate_signature(self, timestamp):
         """
         生成 HMAC-SHA256 签名
         
-        签名公式: HMAC-SHA256(app_secret_hash, "{}" + timestamp)
+        签名公式: HMAC-SHA256(app_secret, "{}" + timestamp)
         
         Args:
             timestamp: Unix 时间戳字符串（秒）
@@ -58,7 +57,7 @@ class OpenAPIClient:
         """
         message = f"{{}}{timestamp}".encode("utf-8")
         return hmac.new(
-            self.app_secret_hash.encode("utf-8"),
+            self.app_secret.encode("utf-8"),
             message,
             hashlib.sha256,
         ).hexdigest()

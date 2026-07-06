@@ -52,7 +52,7 @@ class TestAppSignatureAuth:
         import time, hmac, hashlib
         old_ts = str(int(time.time()) - 600)
         sig = hmac.new(
-            app.app_secret_hash.encode("utf-8"),
+            app.app_secret.encode("utf-8"),
             f"{{}}{old_ts}".encode(),
             hashlib.sha256,
         ).hexdigest()
@@ -69,7 +69,7 @@ class TestAppSignatureAuth:
         import time, hmac, hashlib
         ts = str(int(time.time()))
         sig = hmac.new(
-            app_with_all_perms.app_secret_hash.encode("utf-8"),
+            app_with_all_perms.app_secret.encode("utf-8"),
             f"{{}}{ts}".encode(),
             hashlib.sha256,
         ).hexdigest()
@@ -87,30 +87,30 @@ class TestAppSignatureAuth:
 class TestTokenAuth:
     """TC-GW-007~012: Token 认证"""
 
-    def test_valid_token(self, api_client, staff_auth_headers):
+    def test_valid_token(self, api_client, staff_auth_headers, app_access_token):
         """TC-GW-007: Token 认证 — 有效 Token"""
-        resp = api_client.get("/api/v1/auth/userinfo", **staff_auth_headers)
+        resp = api_client.get(f"/api/v1/auth/me?access_token={app_access_token}", **staff_auth_headers)
         assert resp.status_code == 200
 
-    def test_invalid_token(self, api_client, invalid_token_headers):
+    def test_invalid_token(self, api_client, invalid_token_headers, app_access_token):
         """TC-GW-008: Token 认证 — 无效 Token"""
-        resp = api_client.get("/api/v1/auth/userinfo", **invalid_token_headers)
+        resp = api_client.get(f"/api/v1/auth/me?access_token={app_access_token}", **invalid_token_headers)
         assert resp.status_code == 401
 
-    def test_expired_token(self, api_client, expired_token_headers):
+    def test_expired_token(self, api_client, expired_token_headers, app_access_token):
         """TC-GW-009: Token 认证 — 过期 Token"""
-        resp = api_client.get("/api/v1/auth/userinfo", **expired_token_headers)
+        resp = api_client.get(f"/api/v1/auth/me?access_token={app_access_token}", **expired_token_headers)
         assert resp.status_code == 401
 
-    def test_missing_auth_header(self, api_client):
+    def test_missing_auth_header(self, api_client, app_access_token):
         """TC-GW-011: Token 认证 — 缺少 Authorization 头"""
-        resp = api_client.get("/api/v1/auth/userinfo")
+        resp = api_client.get(f"/api/v1/auth/me?access_token={app_access_token}")
         assert resp.status_code == 401
 
-    def test_wrong_auth_format(self, api_client):
+    def test_wrong_auth_format(self, api_client, app_access_token):
         """TC-GW-012: Token 认证 — 格式错误"""
         resp = api_client.get(
-            "/api/v1/auth/userinfo",
+            f"/api/v1/auth/me?access_token={app_access_token}",
             HTTP_AUTHORIZATION="NotBearer xxxxx",
         )
         assert resp.status_code == 401
@@ -133,11 +133,11 @@ class TestPermissionCheck:
 class TestAuditLog:
     """TC-GW-016~018: 审计日志"""
 
-    def test_write_operation_records_log(self, api_client, staff_auth_headers):
+    def test_write_operation_records_log(self, api_client, staff_auth_headers, app_access_token):
         """TC-GW-016: 审计日志 — 写操作记录"""
         before_count = AuditLog.objects.count()
         api_client.put(
-            "/api/v1/auth/userinfo",
+            f"/api/v1/auth/me?access_token={app_access_token}",
             {"nickname": "审计测试"},
             content_type="application/json",
             **staff_auth_headers,
@@ -145,10 +145,10 @@ class TestAuditLog:
         after_count = AuditLog.objects.count()
         assert after_count > before_count
 
-    def test_get_operation_not_recorded(self, api_client, staff_auth_headers):
+    def test_get_operation_not_recorded(self, api_client, staff_auth_headers, app_access_token):
         """TC-GW-017: 审计日志 — GET 操作不记录"""
         before_count = AuditLog.objects.count()
-        api_client.get("/api/v1/auth/userinfo", **staff_auth_headers)
+        api_client.get(f"/api/v1/auth/me?access_token={app_access_token}", **staff_auth_headers)
         after_count = AuditLog.objects.count()
         assert after_count == before_count
 
@@ -181,10 +181,10 @@ class TestDataIsolation:
 class TestNonOpenApiBypass:
     """TC-GW-021: 非开放 API 绕过应用认证"""
 
-    def test_non_open_api_not_intercepted(self, api_client):
+    def test_non_open_api_not_intercepted(self, api_client, app_access_token):
         """TC-GW-021: 非开放 API（登录）不受 AppAuth 拦截"""
         resp = api_client.post(
-            "/api/v1/auth/login",
+            f"/api/v1/auth/login?access_token={app_access_token}",
             {"username": "nonexistent", "password": "test"},
             content_type="application/json",
         )

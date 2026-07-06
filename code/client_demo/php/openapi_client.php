@@ -17,7 +17,7 @@
 class OpenAPIClient
 {
     private $appKey;
-    private $appSecretHash;
+    private $appSecret;
     private $baseUrl;
 
     /**
@@ -30,15 +30,14 @@ class OpenAPIClient
     public function __construct($appKey, $appSecret, $baseUrl = 'http://localhost:8000')
     {
         $this->appKey = $appKey;
-        // 签名使用 app_secret 的 SHA256 哈希值
-        $this->appSecretHash = hash('sha256', $appSecret);
+        $this->appSecret = $appSecret;
         $this->baseUrl = rtrim($baseUrl, '/');
     }
 
     /**
      * 生成 HMAC-SHA256 签名
      *
-     * 签名公式: HMAC-SHA256(app_secret_hash, "{}" + timestamp)
+     * 签名公式: HMAC-SHA256(app_secret, "{}" + timestamp)
      *
      * @param string $timestamp Unix 时间戳字符串（秒）
      * @return string 十六进制签名字符串
@@ -47,7 +46,7 @@ class OpenAPIClient
     {
         // 签名固定使用 "{}" + timestamp，不包含请求体
         $message = '{}' . $timestamp;
-        return hash_hmac('sha256', $message, $this->appSecretHash);
+        return hash_hmac('sha256', $message, $this->appSecret);
     }
 
     /**

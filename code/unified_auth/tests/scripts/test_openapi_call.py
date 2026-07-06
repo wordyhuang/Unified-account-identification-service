@@ -13,16 +13,14 @@ import sys
 # 应用配置
 APP_KEY = "efc44f100f59fa0e08c1986715f587df"
 APP_SECRET = "11e48d90a7b776973572b74b1baeb28c0a7e12cea0c2b918ddf099d08f43a9c5"
-# 数据库中存储的是 SHA256 哈希后的密钥
-APP_SECRET_HASH = hashlib.sha256(APP_SECRET.encode()).hexdigest()
 BASE_URL = "http://127.0.0.1:8000"
 
-def generate_signature(app_secret_hash, timestamp, params=None):
+def generate_signature(app_secret, timestamp, params=None):
     """
     生成签名
     
     Args:
-        app_secret_hash: SHA256 哈希后的密钥
+        app_secret: 应用密钥
         timestamp: 时间戳
         params: 请求参数（总是空字典，与服务器验证逻辑一致）
     """
@@ -30,7 +28,7 @@ def generate_signature(app_secret_hash, timestamp, params=None):
         params = {}
     message = f"{params}{timestamp}".encode("utf-8")
     signature = hmac.new(
-        app_secret_hash.encode("utf-8"),
+        app_secret.encode("utf-8"),
         message,
         hashlib.sha256
     ).hexdigest()
@@ -47,7 +45,7 @@ def make_api_request(method, path, body=None, token=None):
         token: 验证用的Token（可选，用于verify_token接口）
     """
     timestamp = str(int(time.time()))
-    signature = generate_signature(APP_SECRET_HASH, timestamp)
+    signature = generate_signature(APP_SECRET, timestamp)
     
     headers = {
         "X-App-Key": APP_KEY,
@@ -108,7 +106,7 @@ def test_verify_token():
     print("📝 测试 1: 验证Token接口 (token:verify)")
     print("="*80)
     sample_token = "dummy_token_for_test"
-    make_api_request("POST", "/api/v1/open/verify_token", {"token": sample_token})
+    make_api_request("POST", "/api/v1/open/token/verify", {"token": sample_token})
 
 def test_list_users():
     """测试获取用户列表"""
@@ -153,7 +151,7 @@ def test_check_permission(user_id):
     print("\n" + "="*80)
     print(f"📝 测试 5: 权限校验 (permission:check) - user_id={user_id}")
     print("="*80)
-    make_api_request("POST", "/api/v1/open/check_permission", {
+    make_api_request("POST", "/api/v1/open/permissions/check", {
         "user_id": user_id,
         "permission_code": "user:read"
     })
@@ -165,7 +163,7 @@ def main():
     print(f"\n应用配置:")
     print(f"  APPKEY: {APP_KEY}")
     print(f"  APPSECRET: {APP_SECRET[:20]}...")
-    print(f"  APPSECRET_HASH: {APP_SECRET_HASH[:20]}...")
+    print(f"  APPSECRET: {APP_SECRET[:20]}...")
     print(f"  服务地址: {BASE_URL}")
     
     # 先测试服务连接

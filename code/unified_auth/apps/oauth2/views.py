@@ -148,7 +148,11 @@ def token_exchange(request):
         "user_type": user.user_type,
         "app_id": app.id,
     })
-    refresh_token = generate_refresh_token()
+    refresh_token = generate_refresh_token({
+        "user_id": user.id,
+        "tenant_id": user.tenant_id,
+        "user_type": user.user_type,
+    })
 
     return JsonResponse(success({
         "access_token": access_token,

@@ -11,6 +11,11 @@ class AdminAuthenticationMiddleware(MiddlewareMixin):
     SUPERADMIN_API_PREFIX = "/api/v1/superadmin/"
     ADMIN_PAGE_PREFIX = "/admin-panel/"
 
+    # 管理端不需要 token 认证的公开路径（如登录）
+    PUBLIC_ADMIN_PATHS = {
+        "/api/v1/admin/login",
+    }
+
     def process_request(self, request):
         path = request.path
         is_admin_api = path.startswith(self.ADMIN_API_PREFIX)
@@ -23,6 +28,9 @@ class AdminAuthenticationMiddleware(MiddlewareMixin):
         if request.method == "OPTIONS":
             return None
         if is_page and path == self.ADMIN_PAGE_PREFIX.rstrip("/"):
+            return None
+        # 管理端公开路径跳过 token 校验（登录等）
+        if is_admin_api and path.rstrip("/") in self.PUBLIC_ADMIN_PATHS:
             return None
 
         auth_header = request.headers.get("Authorization", "")

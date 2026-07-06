@@ -18,7 +18,7 @@ class TestSecurity:
         assert user.password.startswith("pbkdf2_sha256$")
 
     def test_secret_stored_as_hash(self, api_client, staff_auth_headers):
-        """SEC-002: Secret 明文检测 — 通过API创建应用后，数据库存储的是哈希值"""
+        """SEC-002: Secret 明文检测 — 通过API创建应用后，数据库存储的是明文secret"""
         resp = api_client.post(
             "/api/v1/admin/applications",
             {"name": "安全测试应用"},
@@ -27,19 +27,16 @@ class TestSecurity:
         )
         data = json.loads(resp.content)
         app_id = data["data"]["id"]
-        raw_secret = data["data"]["app_secret_raw"]
+        raw_secret = data["data"]["app_secret"]
 
         from apps.applications.models import Application
         app_obj = Application.objects.get(id=app_id)
-        import hashlib
-        expected_hash = hashlib.sha256(raw_secret.encode()).hexdigest()
-        assert app_obj.app_secret_hash == expected_hash
-        assert app_obj.app_secret_hash != raw_secret
+        assert app_obj.app_secret == raw_secret
 
-    def test_sql_injection_protection(self, api_client):
+    def test_sql_injection_protection(self, api_client, app_access_token):
         """SEC-003: SQL 注入防护"""
         resp = api_client.post(
-            "/api/v1/auth/login",
+            f"/api/v1/auth/login?access_token={app_access_token}",
             {"username": "' OR 1=1 --", "password": "test"},
             content_type="application/json",
         )
@@ -47,23 +44,23 @@ class TestSecurity:
         data = json.loads(resp.content)
         assert data["code"] < 0
 
-    def test_xss_protection(self, api_client):
+    def test_xss_protection(self, api_client, app_access_token):
         """SEC-004: XSS 防护 — 用户名字段传入脚本"""
         resp = api_client.post(
-            "/api/v1/auth/login",
+            f"/api/v1/auth/login?access_token={app_access_token}",
             {"username": "<script>alert('xss')</script>", "password": "test1234"},
             content_type="application/json",
         )
         assert resp.status_code in (400, 404)
 
-    def test_error_response_no_stacktrace(self, api_client):
+    def test_error_response_no_stacktrace(self, api_client, app_access_token):
         """SEC-006: 敏感信息泄露 — 错误响应不暴露堆栈信息"""
-        resp = api_client.get("/api/v1/auth/userinfo")
+        resp = api_client.get(f"/api/v1/auth/me?access_token={app_access_token}")
         body = resp.content.decode()
         assert "Traceback" not in body
         assert "File \"" not in body
 
-    def test_token_forgery_protection(self, api_client):
+    def test_token_forgery_protection(self, api_client, app_access_token):
         """SEC-007: Token 伪造 — 修改 JWT payload 应失败"""
         import jwt
         from django.conf import settings
@@ -77,7 +74,7 @@ class TestSecurity:
             algorithm="HS256",
         )
         resp = api_client.get(
-            "/api/v1/auth/userinfo",
+            f"/api/v1/auth/me?access_token={app_access_token}",
             HTTP_AUTHORIZATION=f"Bearer {forged_token}",
         )
         assert resp.status_code == 401

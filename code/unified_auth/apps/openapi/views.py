@@ -1,17 +1,18 @@
 import logging
+import secrets
 import requests
 
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from common.response import success, error
 from common.errors import ErrorCode
-from common.utils import decode_access_token
+from common.utils import decode_access_token, create_access_token
 from apps.accounts.models import User, Department, UserProfile
 from apps.accounts.serializers import UserInfoSerializer
 from apps.applications.models import Application
 from apps.rbac.models import UserRole, RolePermission, Role
 from .serializers import (
-    VerifyTokenSerializer, CreateUserSerializer, UpdateUserSerializer,
+    VerifyTokenSerializer, AppTokenSerializer, CreateUserSerializer, UpdateUserSerializer,
     StatusUpdateSerializer, CheckPermissionSerializer,
     WeChatPhoneSerializer, WeChatTokenSerializer,
     ProfileByTokenSerializer, UpdateProfileByTokenSerializer,
@@ -45,6 +46,33 @@ def _mask_sensitive_data(field_name, value):
         if len(value) > 10:
             return value[:10] + "..."
     return value
+
+
+@api_view(["POST"])
+def app_token(request):
+    """使用 AppKey + Secret 换取应用 Access Token"""
+    ser = AppTokenSerializer(data=request.data)
+    if not ser.is_valid():
+        return Response(error(ErrorCode.PARAM_INVALID, data=ser.errors), status=400)
+
+    try:
+        app = Application.objects.get(
+            app_key=ser.validated_data["app_key"],
+            app_secret=ser.validated_data["app_secret"],
+            status=True,
+        )
+    except Application.DoesNotExist:
+        return Response(error(ErrorCode.APP_KEY_INVALID), status=401)
+
+    access_token = create_access_token({
+        "app_id": app.id,
+        "tenant_id": app.tenant_id,
+        "token_type": "app",
+    })
+    return Response(success({
+        "access_token": access_token,
+        "expires_in": 7200,
+    }))
 
 
 @api_view(["POST"])
@@ -82,10 +110,23 @@ def users_view(request):
         return Response(error(ErrorCode.PARAM_INVALID, data=ser.errors), status=400)
 
     data = ser.validated_data
-    if User.objects.filter(tenant_id=request.tenant_id, username=data["username"]).exists():
+
+    # 未提供 username 时自动生成：优先用手机号，其次用邮箱前缀，最后用随机值
+    username = (data.get("username") or "").strip()
+    if not username:
+        if data.get("phone"):
+            username = data["phone"]
+        elif data.get("email"):
+            username = data["email"].split("@")[0]
+        else:
+            username = "user_" + secrets.token_hex(4)
+
+    # 确保生成的 username 在当前租户内不重复
+    if User.objects.filter(tenant_id=request.tenant_id, username=username).exists():
         return Response(
             error(ErrorCode.PARAM_INVALID, message="用户名已存在"), status=400
         )
+    data["username"] = username
 
     dept_code = data.get("dept_code")
     dept_id = None
@@ -256,7 +297,7 @@ def user_profile_by_token(request):
     if not ser.is_valid():
         return Response(error(ErrorCode.PARAM_INVALID, data=ser.errors), status=400)
 
-    payload = decode_access_token(ser.validated_data["user_token"])
+    payload = decode_access_token(ser.validated_data["access_token"])
     if payload is None:
         return Response(error(ErrorCode.TOKEN_INVALID), status=401)
 
@@ -287,7 +328,7 @@ def user_profile_by_token(request):
             "zip_code": profile.zip_code,
             "emergency_contact": profile.emergency_contact,
             "emergency_phone": _mask_sensitive_data("emergency_phone", profile.emergency_phone),
-            "job_title": profile.job_title, "employee_id": profile.employee_id,
+            "job_title": profile.job_title, "company": profile.company, "employee_id": profile.employee_id,
             "hire_date": profile.hire_date.isoformat() if profile.hire_date else None,
             "work_email": _mask_sensitive_data("work_email", profile.work_email),
             "work_phone": _mask_sensitive_data("work_phone", profile.work_phone),
@@ -303,7 +344,7 @@ def user_profile_by_token(request):
     fields = [
         "avatar", "real_name", "gender", "birthday", "id_card", "nationality",
         "address", "zip_code", "emergency_contact", "emergency_phone",
-        "job_title", "employee_id", "hire_date", "work_email", "work_phone",
+        "job_title", "company", "employee_id", "hire_date", "work_email", "work_phone",
         "wechat", "qq", "weibo", "bio", "interests", "tags", "extra_data",
     ]
     update_fields = []

@@ -9,7 +9,7 @@ class Application(models.Model):
     tenant = models.ForeignKey("accounts.Tenant", on_delete=models.CASCADE)
     name = models.CharField(max_length=128, verbose_name="应用名称")
     app_key = models.CharField(max_length=64, unique=True, verbose_name="AppKey")
-    app_secret_hash = models.CharField(max_length=256, verbose_name="AppSecret(Hash)")
+    app_secret = models.CharField(max_length=256, verbose_name="AppSecret")
     callback_urls = CompatibleJSONField(null=True, blank=True, verbose_name="回调地址列表")
     default_access_user_types = CompatibleJSONField(
         null=True, blank=True, default=list,

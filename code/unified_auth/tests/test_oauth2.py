@@ -7,7 +7,6 @@ from urllib.parse import urlparse, parse_qs
 
 
 ORIGINAL_OAUTH_SECRET = "my_oauth_secret_key"
-OAUTH_SECRET_HASH = hashlib.sha256(ORIGINAL_OAUTH_SECRET.encode()).hexdigest()
 
 
 class TestOAuth2:
@@ -61,7 +60,7 @@ class TestOAuth2:
     def test_full_oauth2_flow(self, api_client, app, staff_user):
         """完整 OAuth2 授权码流程"""
         app.callback_urls = ["http://example.com/callback"]
-        app.app_secret_hash = OAUTH_SECRET_HASH
+        app.app_secret = ORIGINAL_OAUTH_SECRET
         app.save()
 
         api_client.force_login(staff_user)
@@ -99,7 +98,7 @@ class TestOAuth2:
     def test_oauth2_code_one_time_use(self, api_client, app, staff_user):
         """OAuth2 授权码一次性使用"""
         app.callback_urls = ["http://example.com/callback"]
-        app.app_secret_hash = OAUTH_SECRET_HASH
+        app.app_secret = ORIGINAL_OAUTH_SECRET
         app.save()
         api_client.force_login(staff_user)
 

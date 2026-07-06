@@ -5,8 +5,13 @@ class VerifyTokenSerializer(serializers.Serializer):
     token = serializers.CharField(max_length=512)
 
 
+class AppTokenSerializer(serializers.Serializer):
+    app_key = serializers.CharField(max_length=64)
+    app_secret = serializers.CharField(max_length=128)
+
+
 class CreateUserSerializer(serializers.Serializer):
-    username = serializers.CharField(max_length=64)
+    username = serializers.CharField(max_length=64, required=False, allow_blank=True, allow_null=True)
     user_type = serializers.ChoiceField(choices=["internal", "external"], default="internal")
     email = serializers.EmailField(max_length=128, required=False, allow_null=True)
     phone = serializers.CharField(max_length=20, required=False, allow_null=True)
@@ -45,11 +50,11 @@ class WeChatTokenSerializer(serializers.Serializer):
 
 
 class ProfileByTokenSerializer(serializers.Serializer):
-    user_token = serializers.CharField(max_length=512, help_text="用户的JWT AccessToken")
+    access_token = serializers.CharField(max_length=512, help_text="用户的JWT AccessToken")
 
 
 class UpdateProfileByTokenSerializer(serializers.Serializer):
-    user_token = serializers.CharField(max_length=512, help_text="用户的JWT AccessToken")
+    access_token = serializers.CharField(max_length=512, help_text="用户的JWT AccessToken")
     avatar = serializers.URLField(max_length=512, required=False, allow_null=True)
     real_name = serializers.CharField(max_length=64, required=False, allow_null=True)
     gender = serializers.ChoiceField(choices=["male", "female", "other"], required=False, allow_null=True)
@@ -61,6 +66,7 @@ class UpdateProfileByTokenSerializer(serializers.Serializer):
     emergency_contact = serializers.CharField(max_length=64, required=False, allow_null=True)
     emergency_phone = serializers.CharField(max_length=20, required=False, allow_null=True)
     job_title = serializers.CharField(max_length=128, required=False, allow_null=True)
+    company = serializers.CharField(max_length=256, required=False, allow_null=True)
     employee_id = serializers.CharField(max_length=64, required=False, allow_null=True)
     hire_date = serializers.DateField(required=False, allow_null=True)
     work_email = serializers.EmailField(max_length=128, required=False, allow_null=True)

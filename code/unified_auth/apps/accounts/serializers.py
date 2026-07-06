@@ -17,6 +17,11 @@ class SmsLoginSerializer(serializers.Serializer):
     code = serializers.CharField(max_length=10)
 
 
+class SmsVerifySerializer(serializers.Serializer):
+    phone = serializers.CharField(max_length=20)
+    code = serializers.CharField(max_length=10)
+
+
 class SocialLoginSerializer(serializers.Serializer):
     provider = serializers.ChoiceField(
         choices=["wechat_mp", "wechat_web", "dingtalk", "feishu"]
@@ -26,18 +31,19 @@ class SocialLoginSerializer(serializers.Serializer):
 
 
 class RefreshSerializer(serializers.Serializer):
-    refresh_token = serializers.CharField(max_length=64)
+    refresh_token = serializers.CharField(max_length=512)
 
 
 class UserInfoSerializer(serializers.ModelSerializer):
     tags = serializers.SerializerMethodField()
+    company = serializers.SerializerMethodField()
 
     class Meta:
         model = User
         fields = [
             "id", "uuid", "user_type", "username", "email", "phone",
             "nickname", "avatar", "department", "status",
-            "tenant_id", "last_login_at", "created_at", "tags",
+            "tenant_id", "last_login_at", "created_at", "tags", "company",
         ]
 
     def get_tags(self, obj):
@@ -45,12 +51,19 @@ class UserInfoSerializer(serializers.ModelSerializer):
         bindings = UserTagBinding.objects.filter(user=obj)
         return [b.tag.name for b in bindings]
 
+    def get_company(self, obj):
+        try:
+            return obj.profile.company
+        except AttributeError:
+            return None
+
 
 class UpdateUserInfoSerializer(serializers.Serializer):
     nickname = serializers.CharField(max_length=128, required=False)
     email = serializers.EmailField(max_length=128, required=False)
     phone = serializers.CharField(max_length=20, required=False)
     avatar = serializers.URLField(max_length=512, required=False)
+    company = serializers.CharField(max_length=256, required=False, allow_null=True)
 
 
 class ChangePasswordSerializer(serializers.Serializer):
@@ -64,7 +77,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
         fields = [
             "id", "avatar", "real_name", "gender", "birthday", "id_card", "nationality",
             "address", "zip_code", "emergency_contact", "emergency_phone",
-            "job_title", "employee_id", "hire_date", "work_email", "work_phone",
+            "job_title", "company", "employee_id", "hire_date", "work_email", "work_phone",
             "wechat", "qq", "weibo", "bio", "interests", "tags", "extra_data",
             "created_at", "updated_at",
         ]
@@ -89,6 +102,7 @@ class UpdateUserProfileSerializer(serializers.Serializer):
 
     # 工作信息
     job_title = serializers.CharField(max_length=128, required=False, allow_null=True)
+    company = serializers.CharField(max_length=256, required=False, allow_null=True)
     employee_id = serializers.CharField(max_length=64, required=False, allow_null=True)
     hire_date = serializers.DateField(required=False, allow_null=True)
     work_email = serializers.EmailField(max_length=128, required=False, allow_null=True)

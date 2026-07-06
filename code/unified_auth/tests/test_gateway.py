@@ -80,25 +80,25 @@ def setup_test_data():
     admin_tenant = admin.tenant
     app = Application.objects.filter(app_key=APP_KEY).first()
     if app:
-        app.app_secret_hash = APP_SECRET
+        app.app_secret = APP_SECRET
         app.default_access_user_types = ["internal", "external"]
-        app.save(update_fields=["app_secret_hash", "default_access_user_types"])
+        app.save(update_fields=["app_secret", "default_access_user_types"])
     else:
         app = Application.objects.create(
             tenant=admin_tenant, name="网关测试应用",
-            app_key=APP_KEY, app_secret_hash=APP_SECRET,
+            app_key=APP_KEY, app_secret=APP_SECRET,
             default_access_user_types=["internal", "external"],
         )
 
     perms = []
     perm_data = [
-        ("token:verify", "验证Token", "POST", "/api/v1/open/verify_token", "auth"),
+        ("token:verify", "验证Token", "POST", "/api/v1/open/token/verify", "auth"),
         ("user:read", "读取用户", "GET", "/api/v1/open/users", "user"),
         ("user:read_detail", "读取用户详情", "GET", "/api/v1/open/users/:id", "user"),
         ("user:create", "创建用户", "POST", "/api/v1/open/users", "user"),
         ("user:update", "修改用户", "PUT", "/api/v1/open/users/:id", "user"),
         ("user:status", "修改用户状态", "PATCH", "/api/v1/open/users/:id/status", "user"),
-        ("permission:check", "校验权限", "POST", "/api/v1/open/check_permission", "permission"),
+        ("permission:check", "校验权限", "POST", "/api/v1/open/permissions/check", "permission"),
     ]
     for code, name, method, path, cat in perm_data:
         p, _ = ApiPermission.objects.get_or_create(
@@ -150,23 +150,23 @@ def test_auth_api(admin):
     check("login 返回 is_superuser", body["data"].get("is_superuser") is True)
 
     # 2. 获取用户信息
-    r = s.get(f"{BASE}/api/v1/auth/userinfo", headers={"Authorization": f"Bearer {access_token}"})
+    r = s.get(f"{BASE}/api/v1/auth/me", headers={"Authorization": f"Bearer {access_token}"})
     body = r.json()
     check("GET userinfo 200", r.status_code == 200 and body["code"] == 0)
     check("userinfo 返回 username", body["data"]["username"] == "admin")
 
     # 3. 修改用户信息
-    r = s.put(f"{BASE}/api/v1/auth/userinfo", json={"nickname": "管理员"},
+    r = s.put(f"{BASE}/api/v1/auth/me", json={"nickname": "管理员"},
               headers={"Authorization": f"Bearer {access_token}"})
     check("PUT userinfo 200", r.status_code == 200)
 
     # 4. 认证API不带Token应返回401
-    r = s.get(f"{BASE}/api/v1/auth/userinfo")
+    r = s.get(f"{BASE}/api/v1/auth/me")
     check("userinfo 无Token 401", r.status_code == 401,
           f"实际={r.status_code}")
 
     # 5. 修改密码
-    r = s.patch(f"{BASE}/api/v1/auth/userinfo/password", json={
+    r = s.patch(f"{BASE}/api/v1/auth/me/password", json={
         "old_password": "admin123456", "new_password": "newpass1234",
     }, headers={"Authorization": f"Bearer {access_token}"})
     body = r.json()
@@ -180,13 +180,13 @@ def test_auth_api(admin):
 
     # 7. 改回原密码
     new_token = r.json()["data"]["access_token"]
-    r = s.patch(f"{BASE}/api/v1/auth/userinfo/password", json={
+    r = s.patch(f"{BASE}/api/v1/auth/me/password", json={
         "old_password": "newpass1234", "new_password": "admin123456",
     }, headers={"Authorization": f"Bearer {new_token}"})
     check("恢复原密码", r.status_code == 200)
 
     # 8. 刷新Token
-    r = s.post(f"{BASE}/api/v1/auth/refresh", json={"refresh_token": refresh_token})
+    r = s.post(f"{BASE}/api/v1/auth/token/refresh", json={"refresh_token": refresh_token})
     body = r.json()
     check("POST refresh 200", r.status_code == 200 and body["code"] == 0)
     new_access = body["data"].get("access_token")
@@ -222,7 +222,7 @@ def test_openapi(admin, app):
     })
     valid_token = login_r.json()["data"]["access_token"]
 
-    r = s.post(f"{BASE}/api/v1/open/verify_token", json={"token": valid_token},
+    r = s.post(f"{BASE}/api/v1/open/token/verify", json={"token": valid_token},
                headers=headers)
     body = r.json()
     check("POST verify_token 有效Token", r.status_code == 200 and body["code"] == 0,
@@ -232,7 +232,7 @@ def test_openapi(admin, app):
     check("verify_token 返回user_id", body.get("data", {}).get("user_id") == admin.id)
 
     # 2. 验证无效Token
-    r = s.post(f"{BASE}/api/v1/open/verify_token", json={"token": "invalid.jwt.token"},
+    r = s.post(f"{BASE}/api/v1/open/token/verify", json={"token": "invalid.jwt.token"},
                headers=headers)
     body = r.json() if r.headers.get("content-type", "").startswith("application/json") else {}
     check("POST verify_token 无效Token", body.get("data", {}).get("valid") is False or r.status_code == 200,
@@ -296,7 +296,7 @@ def test_openapi(admin, app):
           f"body={json.dumps(body_enable, ensure_ascii=False)[:200]}")
 
     # 9. 校验权限
-    r = s.post(f"{BASE}/api/v1/open/check_permission", json={
+    r = s.post(f"{BASE}/api/v1/open/permissions/check", json={
         "user_id": admin.id, "permission_code": "user:read",
     }, headers=headers)
     body = r.json()
@@ -305,7 +305,7 @@ def test_openapi(admin, app):
           f"response={json.dumps(body, ensure_ascii=False)[:200]}")
 
     # 10. 不存在的权限码
-    r = s.post(f"{BASE}/api/v1/open/check_permission", json={
+    r = s.post(f"{BASE}/api/v1/open/permissions/check", json={
         "user_id": admin.id, "permission_code": "nonexist:perm",
     }, headers=headers)
     body = r.json()
@@ -530,10 +530,10 @@ def test_gateway_isolation(admin):
         "username": "admin", "password": "admin123456",
     })
     token = login_r.json()["data"]["access_token"]
-    r = s.get(f"{BASE}/api/v1/auth/userinfo", headers={"Authorization": f"Bearer {token}"})
+    r = s.get(f"{BASE}/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"})
     check("Token认证中间件 — 有效Token通过", r.status_code == 200)
 
-    r = s.get(f"{BASE}/api/v1/auth/userinfo", headers={"Authorization": "Bearer invalid.token"})
+    r = s.get(f"{BASE}/api/v1/auth/me", headers={"Authorization": "Bearer invalid.token"})
     check("Token认证中间件 — 无效Token拒绝", r.status_code == 401)
 
     # 4. 权限校验 — 创建用户需要user:create权限
@@ -559,7 +559,7 @@ def test_gateway_isolation(admin):
         "username": "admin", "password": "admin123456",
     })
     token = r.json()["data"]["access_token"]
-    s.put(f"{BASE}/api/v1/auth/userinfo", json={"nickname": "审计测试"},
+    s.put(f"{BASE}/api/v1/auth/me", json={"nickname": "审计测试"},
           headers={"Authorization": f"Bearer {token}"})
     after_count = AuditLog.objects.count()
     check("审计日志中间件 — 写操作产生日志", after_count > before_count,

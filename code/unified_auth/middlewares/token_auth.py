@@ -9,9 +9,10 @@ from apps.accounts.models import User
 PUBLIC_PATHS = [
     "/api/v1/auth/login",
     "/api/v1/auth/sms/send",
+    "/api/v1/auth/sms/verify",
     "/api/v1/auth/sms/login",
     "/api/v1/auth/social/login",
-    "/api/v1/auth/refresh",
+    "/api/v1/auth/token/refresh",
 ]
 
 

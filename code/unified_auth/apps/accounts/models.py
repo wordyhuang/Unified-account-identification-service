@@ -177,6 +177,7 @@ class UserProfile(models.Model):
 
     # 工作信息
     job_title = models.CharField(max_length=128, null=True, blank=True, verbose_name="职位")
+    company = models.CharField(max_length=256, null=True, blank=True, verbose_name="公司")
     employee_id = models.CharField(max_length=64, null=True, blank=True, verbose_name="员工编号")
     hire_date = models.DateField(null=True, blank=True, verbose_name="入职日期")
     work_email = models.EmailField(max_length=128, null=True, blank=True, verbose_name="工作邮箱")

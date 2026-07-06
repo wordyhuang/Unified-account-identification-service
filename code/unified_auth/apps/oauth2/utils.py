@@ -1,5 +1,4 @@
 import uuid
-import hashlib
 from django.utils import timezone
 from datetime import timedelta
 from .models import AuthCode, Application, User
@@ -28,5 +27,4 @@ def generate_auth_code(app: Application, user: User, redirect_uri: str, state: s
 
 
 def verify_app_secret(app: Application, app_secret_input: str) -> bool:
-    hashed = hashlib.sha256(app_secret_input.encode()).hexdigest()
-    return hashed == app.app_secret_hash
+    return app_secret_input == app.app_secret

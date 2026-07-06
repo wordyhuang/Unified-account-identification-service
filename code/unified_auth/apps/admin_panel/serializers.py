@@ -35,6 +35,7 @@ class AdminUpdateUserSerializer(serializers.Serializer):
     phone = serializers.CharField(max_length=20, required=False, allow_null=True)
     department = serializers.CharField(max_length=128, required=False, allow_null=True)
     dept_id = serializers.IntegerField(required=False, allow_null=True)
+    user_type = serializers.ChoiceField(choices=["internal", "external"], required=False)
     is_staff = serializers.BooleanField(required=False, allow_null=True)
 
 
@@ -97,6 +98,11 @@ class AdminUpdateRoleSerializer(serializers.Serializer):
 class AdminBatchUserStatusSerializer(serializers.Serializer):
     user_ids = serializers.ListField(child=serializers.IntegerField(), min_length=1)
     status = serializers.ChoiceField(choices=[0, 1])
+
+
+class AdminBatchUserTypeSerializer(serializers.Serializer):
+    user_ids = serializers.ListField(child=serializers.IntegerField(), min_length=1)
+    user_type = serializers.ChoiceField(choices=["internal", "external"])
 
 
 class AdminBatchUserDeleteSerializer(serializers.Serializer):

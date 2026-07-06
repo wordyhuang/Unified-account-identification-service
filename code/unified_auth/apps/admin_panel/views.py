@@ -24,7 +24,7 @@ from .serializers import (
     AdminCreateAppSerializer, AdminUpdateAppSerializer,
     AdminAppStatusSerializer,
     AdminCreateRoleSerializer, AdminUpdateRoleSerializer,
-    AdminBatchUserStatusSerializer, AdminBatchUserDeleteSerializer,
+    AdminBatchUserStatusSerializer, AdminBatchUserTypeSerializer, AdminBatchUserDeleteSerializer,
     AdminDepartmentSerializer, AdminDepartmentUpdateSerializer,
     AdminAppPermissionSerializer, AdminCopyRoleSerializer,
     AdminUserImportSerializer, AdminImpersonateSerializer,
@@ -43,7 +43,7 @@ def _user_serialize(u):
         profile = {
             "real_name": p.real_name, "gender": p.gender,
             "birthday": p.birthday.isoformat() if p.birthday else None,
-            "job_title": p.job_title, "employee_id": p.employee_id,
+            "job_title": p.job_title, "company": p.company, "employee_id": p.employee_id,
             "work_email": p.work_email, "work_phone": p.work_phone,
         }
     except UserProfile.DoesNotExist:
@@ -52,8 +52,8 @@ def _user_serialize(u):
     tags = []
     try:
         from apps.tags.models import UserTagBinding
-        bindings = UserTagBinding.objects.filter(user=u)
-        tags = [b.tag.name for b in bindings]
+        bindings = UserTagBinding.objects.filter(user=u).select_related("tag")
+        tags = [{"id": b.tag.id, "name": b.tag.name, "color": b.tag.color, "description": b.tag.description} for b in bindings]
     except Exception:
         pass
     
@@ -471,6 +471,7 @@ def user_profile_view(request, user_id):
             "emergency_contact": profile.emergency_contact,
             "emergency_phone": profile.emergency_phone,
             "job_title": profile.job_title,
+            "company": profile.company,
             "employee_id": profile.employee_id,
             "hire_date": profile.hire_date.isoformat() if profile.hire_date else None,
             "work_email": profile.work_email,
@@ -491,7 +492,7 @@ def user_profile_view(request, user_id):
         fields = [
             "avatar", "real_name", "gender", "birthday", "id_card", "nationality",
             "address", "zip_code", "emergency_contact", "emergency_phone",
-            "job_title", "employee_id", "hire_date", "work_email", "work_phone",
+            "job_title", "company", "employee_id", "hire_date", "work_email", "work_phone",
             "wechat", "qq", "weibo", "bio", "interests", "tags", "extra_data",
         ]
         update_fields = []
@@ -601,19 +602,18 @@ def apps_view(request):
 
     data = ser.validated_data
     app_key = hashlib.sha256(secrets.token_bytes(32)).hexdigest()[:32]
-    app_secret_raw = secrets.token_hex(32)
-    app_secret_hash = hashlib.sha256(app_secret_raw.encode()).hexdigest()
+    app_secret = secrets.token_hex(32)
 
     app = Application.objects.create(
         tenant_id=request.tenant_id,
         name=data["name"],
         app_key=app_key,
-        app_secret_hash=app_secret_hash,
+        app_secret=app_secret,
         callback_urls=data.get("callback_urls"),
         default_access_user_types=data.get("default_access_user_types"),
     )
     result = _app_serialize(app)
-    result["app_secret_raw"] = app_secret_raw
+    result["app_secret"] = app_secret
 
     AuditLog.objects.create(
         tenant_id=request.tenant_id,
@@ -706,9 +706,9 @@ def app_regenerate_secret_view(request, app_id):
     except Application.DoesNotExist:
         return Response(error(ErrorCode.APP_KEY_INVALID), status=404)
 
-    new_secret = secrets.token_hex(32)
-    app.app_secret_hash = hashlib.sha256(new_secret.encode()).hexdigest()
-    app.save(update_fields=["app_secret_hash"])
+    app_secret = secrets.token_hex(32)
+    app.app_secret = app_secret
+    app.save(update_fields=["app_secret"])
     AuditLog.objects.create(
         tenant_id=request.tenant_id,
         actor_id=request.user_id,
@@ -717,7 +717,7 @@ def app_regenerate_secret_view(request, app_id):
         resource_type="application",
         resource_id=app_id,
     )
-    return Response(success({"app_id": app.id, "app_secret_raw": new_secret}))
+    return Response(success({"app_id": app.id, "app_secret": app_secret}))
 
 
 # ======================== 角色权限 ========================
@@ -1242,16 +1242,13 @@ def superadmin_impersonate(request, tenant_id):
         "impersonated": True,
         "impersonated_tenant_name": tenant.name,
     })
-    refresh_token = generate_refresh_token()
-
-    from django.core.cache import cache
-    cache.set(
-        f"refresh_payload:{refresh_token}",
-        {"username": request.superadmin_username, "is_superadmin": True,
-         "tenant_id": tenant.id, "impersonated": True,
-         "impersonated_tenant_name": tenant.name},
-        timeout=86400,
-    )
+    refresh_token = generate_refresh_token({
+        "username": request.superadmin_username,
+        "is_superadmin": True,
+        "tenant_id": tenant.id,
+        "impersonated": True,
+        "impersonated_tenant_name": tenant.name,
+    })
 
     superadmin_audit_log(request, "superadmin.impersonate", "tenant", tenant_id,
                           {"tenant_name": tenant.name})
@@ -1275,14 +1272,11 @@ def superadmin_impersonate_exit(request):
         "is_superadmin": True,
         "tenant_id": None,
     })
-    refresh_token = generate_refresh_token()
-
-    from django.core.cache import cache
-    cache.set(
-        f"refresh_payload:{refresh_token}",
-        {"username": request.superadmin_username, "is_superadmin": True, "tenant_id": None},
-        timeout=86400,
-    )
+    refresh_token = generate_refresh_token({
+        "username": request.superadmin_username,
+        "is_superadmin": True,
+        "tenant_id": None,
+    })
 
     return Response(success({
         "access_token": access_token,
@@ -1401,6 +1395,30 @@ def user_batch_status_view(request):
         action="admin.user.batch_status",
         resource_type="user",
         detail={"user_ids": user_ids, "new_status": new_status, "count": updated},
+    )
+
+    return Response(success({"updated_count": updated}))
+
+
+@api_view(["POST"])
+def user_batch_user_type_view(request):
+    ser = AdminBatchUserTypeSerializer(data=request.data)
+    if not ser.is_valid():
+        return Response(error(ErrorCode.PARAM_INVALID, data=ser.errors), status=400)
+
+    data = ser.validated_data
+    user_ids = data["user_ids"]
+    new_user_type = data["user_type"]
+
+    updated = User.objects.filter(id__in=user_ids, tenant_id=request.tenant_id).update(user_type=new_user_type)
+
+    AuditLog.objects.create(
+        tenant_id=request.tenant_id,
+        actor_id=request.user_id,
+        actor_name=request.user.username,
+        action="admin.user.batch_user_type",
+        resource_type="user",
+        detail={"user_ids": user_ids, "new_user_type": new_user_type, "count": updated},
     )
 
     return Response(success({"updated_count": updated}))
@@ -2106,6 +2124,188 @@ def role_copy_view(request, role_id):
     )
 
     return Response(success(_role_serialize(new_role)), status=201)
+
+
+# ======================== 管理端登录 ========================
+
+
+@api_view(["POST"])
+def admin_login_view(request):
+    """
+    管理端专用登录接口（不依赖开放API的 access_token）
+    支持超级管理员和租户管理员登录
+    """
+    username = request.data.get("username", "").strip()
+    password = request.data.get("password", "")
+
+    if not username or not password:
+        return Response(error(ErrorCode.PARAM_INVALID, message="用户名和密码不能为空"), status=400)
+
+    ip_address = request.META.get('REMOTE_ADDR', '')
+    user_agent = request.META.get('HTTP_USER_AGENT', '')
+
+    # 超级管理员登录（从环境变量读取账号）
+    from common.utils import is_superadmin_credentials
+    superadmin = is_superadmin_credentials(username, password)
+    if superadmin:
+        from common.utils import create_access_token, generate_refresh_token
+        access_token = create_access_token({
+            "username": username,
+            "is_superadmin": True,
+            "tenant_id": None,
+        })
+        refresh_token = generate_refresh_token()
+        from django.core.cache import cache
+        cache.set(
+            f"refresh_payload:{refresh_token}",
+            {"username": username, "is_superadmin": True, "tenant_id": None},
+            timeout=86400,
+        )
+        try:
+            AuditLog.objects.create(
+                tenant=None,
+                actor_name=username,
+                action="superadmin.login",
+                ip_address=ip_address,
+                user_agent=user_agent,
+            )
+        except Exception:
+            pass
+        return Response(success({
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+            "username": username,
+            "is_superadmin": True,
+            "is_superuser": True,
+            "is_staff": True,
+        }))
+
+    # 租户管理员登录
+    user = User.objects.filter(username=username).first()
+    if user is None:
+        return Response(error(ErrorCode.USER_NOT_FOUND), status=404)
+    if user.status == 0:
+        return Response(error(ErrorCode.PARAM_INVALID, message="用户已禁用"), status=400)
+    if not user.check_password(password):
+        return Response(error(ErrorCode.PASSWORD_ERROR), status=400)
+
+    # 非管理员用户不允许登录管理后台
+    if not user.is_staff and not user.is_superuser:
+        return Response(error(ErrorCode.PERMISSION_DENIED, message="非管理员无权登录管理后台"), status=403)
+
+    user.last_login_at = tz.now()
+    user.save(update_fields=["last_login_at"])
+
+    from common.utils import create_access_token, generate_refresh_token
+    access_token = create_access_token({
+        "user_id": user.id,
+        "tenant_id": user.tenant_id,
+        "user_type": user.user_type,
+    })
+    refresh_token = generate_refresh_token()
+    from django.core.cache import cache
+    cache.set(
+        f"refresh_payload:{refresh_token}",
+        {"user_id": user.id, "tenant_id": user.tenant_id, "user_type": user.user_type},
+        timeout=86400,
+    )
+
+    try:
+        AuditLog.objects.create(
+            tenant_id=user.tenant_id,
+            actor_id=user.id,
+            actor_name=user.username,
+            action="admin.login",
+            ip_address=ip_address,
+            user_agent=user_agent,
+        )
+    except Exception:
+        pass
+
+    from apps.tags.models import UserTagBinding
+    tag_names = [b.tag.name for b in UserTagBinding.objects.filter(user=user)]
+
+    return Response(success({
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "user_id": user.id,
+        "username": user.username,
+        "nickname": user.nickname,
+        "user_type": user.user_type,
+        "is_superuser": user.is_superuser,
+        "is_staff": user.is_staff,
+        "is_superadmin": False,
+        "tenant_id": user.tenant_id,
+        "tags": tag_names,
+    }))
+
+
+# ======================== 用户登录测试 ========================
+
+
+@api_view(["POST"])
+def user_login_test_view(request):
+    """
+    管理员登录测试
+    允许管理员输入账号密码进行登录测试
+    """
+    username = request.data.get("username")
+    password = request.data.get("password")
+    
+    if not username or not password:
+        return Response(error(ErrorCode.PARAM_INVALID, message="用户名和密码不能为空"), status=400)
+    
+    user = User.objects.filter(username=username, tenant_id=request.tenant_id).first()
+    
+    if not user:
+        return Response(error(ErrorCode.USER_NOT_FOUND), status=404)
+    
+    if user.status != 1:
+        return Response(error(ErrorCode.PARAM_INVALID, message="用户已禁用"), status=400)
+    
+    from django.contrib.auth.hashers import check_password
+    if not check_password(password, user.password):
+        return Response(error(ErrorCode.PASSWORD_ERROR), status=400)
+    
+    from common.utils import create_access_token, generate_refresh_token
+    access_token = create_access_token({
+        "user_id": user.id,
+        "tenant_id": user.tenant_id,
+        "user_type": user.user_type,
+    })
+    refresh_token = generate_refresh_token()
+    
+    from django.core.cache import cache
+    cache.set(
+        f"refresh_payload:{refresh_token}",
+        {"user_id": user.id, "tenant_id": user.tenant_id, "user_type": user.user_type},
+        timeout=86400,
+    )
+    
+    from apps.tags.models import UserTagBinding
+    tag_names = [b.tag.name for b in UserTagBinding.objects.filter(user=user)]
+    
+    AuditLog.objects.create(
+        tenant_id=request.tenant_id,
+        actor_id=request.user_id,
+        actor_name=request.user.username,
+        action="admin.user.login_test",
+        resource_type="user",
+        resource_id=user.id,
+        detail={"username": user.username, "test_type": "password_login"},
+    )
+    
+    return Response(success({
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "user_id": user.id,
+        "username": user.username,
+        "nickname": user.nickname,
+        "user_type": user.user_type,
+        "is_superuser": user.is_superuser,
+        "is_staff": user.is_staff,
+        "tags": tag_names,
+    }))
 
 
 # ======================== 用户标签设置 ========================

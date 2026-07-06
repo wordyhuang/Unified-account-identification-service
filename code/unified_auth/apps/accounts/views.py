@@ -1,17 +1,18 @@
 from django.conf import settings
 from django.utils import timezone
 from django.db import transaction
+from django.db.models import Q
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from common.response import success, error
 from common.errors import ErrorCode
-from common.utils import create_access_token, generate_refresh_token, is_superadmin_credentials
+from common.utils import decode_access_token, create_access_token, generate_refresh_token, is_superadmin_credentials
 from services.sms_service import send_sms, generate_code
 from apps.applications.models import Application
 from .models import Tenant, User, SocialAccount, UserProfile
 from apps.audit.models import AuditLog
 from .serializers import (
-    LoginSerializer, SmsSendSerializer, SmsLoginSerializer,
+    LoginSerializer, SmsSendSerializer, SmsLoginSerializer, SmsVerifySerializer,
     SocialLoginSerializer, RefreshSerializer, UserInfoSerializer,
     UpdateUserInfoSerializer, ChangePasswordSerializer,
     UserProfileSerializer, UpdateUserProfileSerializer,
@@ -37,14 +38,11 @@ def login(request):
             "is_superadmin": True,
             "tenant_id": None,
         })
-        refresh_token = generate_refresh_token()
-
-        from django.core.cache import cache
-        cache.set(
-            f"refresh_payload:{refresh_token}",
-            {"username": username, "is_superadmin": True, "tenant_id": None},
-            timeout=86400,
-        )
+        refresh_token = generate_refresh_token({
+            "username": username,
+            "is_superadmin": True,
+            "tenant_id": None,
+        })
 
         try:
             AuditLog.objects.create(
@@ -58,7 +56,7 @@ def login(request):
             pass
 
         return Response(success({
-            "access_token": access_token,
+            "token": access_token,
             "refresh_token": refresh_token,
             "username": username,
             "is_superadmin": True,
@@ -66,7 +64,7 @@ def login(request):
             "is_staff": True,
         }))
 
-    user = User.objects.filter(username=username).first()
+    user = User.objects.filter(Q(username=username) | Q(phone=username)).first()
     if user is None:
         return Response(error(ErrorCode.USER_NOT_FOUND), status=404)
     if user.status == 0:
@@ -82,19 +80,16 @@ def login(request):
         "tenant_id": user.tenant_id,
         "user_type": user.user_type,
     })
-    refresh_token = generate_refresh_token()
-
-    from django.core.cache import cache
-    cache.set(
-        f"refresh_payload:{refresh_token}",
-        {"user_id": user.id, "tenant_id": user.tenant_id, "user_type": user.user_type},
-        timeout=86400,
-    )
+    refresh_token = generate_refresh_token({
+        "user_id": user.id,
+        "tenant_id": user.tenant_id,
+        "user_type": user.user_type,
+    })
 
     from apps.tags.models import UserTagBinding
     tag_names = [b.tag.name for b in UserTagBinding.objects.filter(user=user)]
     return Response(success({
-        "access_token": access_token,
+        "token": access_token,
         "refresh_token": refresh_token,
         "user_id": user.id,
         "username": user.username,
@@ -178,6 +173,34 @@ def sms_send(request):
 
 
 @api_view(["POST"])
+def sms_verify(request):
+    """验证短信验证码是否匹配，不执行登录。用于修改手机号前号主确认等场景。"""
+    ser = SmsVerifySerializer(data=request.data)
+    if not ser.is_valid():
+        return Response(error(ErrorCode.PARAM_INVALID, data=ser.errors), status=400)
+
+    phone = ser.validated_data["phone"]
+    code = ser.validated_data["code"]
+
+    from django.core.cache import cache
+    cached_code = cache.get(f"sms:{phone}")
+
+    if cached_code is None:
+        return Response(
+            error(ErrorCode.SMS_CODE_EXPIRED, message="验证码已过期，请重新获取"),
+            status=400,
+        )
+
+    if cached_code != code:
+        return Response(
+            error(ErrorCode.SMS_CODE_INVALID, message="验证码错误"),
+            status=400,
+        )
+
+    return Response(success({"verified": True}))
+
+
+@api_view(["POST"])
 def sms_login(request):
     ser = SmsLoginSerializer(data=request.data)
     if not ser.is_valid():
@@ -196,15 +219,43 @@ def sms_login(request):
     cache.delete(f"sms:{phone}")
 
     tenant = Tenant.objects.first()
-    user, created = User.objects.get_or_create(
-        tenant=tenant,
-        phone=phone,
-        defaults={
-            "username": phone,
-            "user_type": "external",
-            "nickname": f"用户{phone[-4:]}",
-        },
-    )
+    if tenant is None:
+        return Response(error(ErrorCode.TENANT_NOT_FOUND), status=400)
+    
+    # 先通过手机号查找用户
+    user = User.objects.filter(tenant=tenant, phone=phone).first()
+    created = False
+    
+    if user is None:
+        # 如果没找到，尝试通过用户名查找（可能用户名就是手机号）
+        user = User.objects.filter(tenant=tenant, username=phone).first()
+        if user is None:
+            # 使用事务和唯一约束来处理并发创建
+            try:
+                with transaction.atomic():
+                    # 再次检查，可能在其他事务中已创建
+                    user = User.objects.filter(tenant=tenant, phone=phone).first()
+                    if user is None:
+                        user = User.objects.filter(tenant=tenant, username=phone).first()
+                    if user is None:
+                        user = User.objects.create(
+                            tenant=tenant,
+                            phone=phone,
+                            username=phone,
+                            user_type="external",
+                            nickname=f"用户{phone[-4:]}",
+                        )
+                        created = True
+            except Exception:
+                # 并发冲突，重新查询用户
+                user = User.objects.filter(tenant=tenant, phone=phone).first()
+                if user is None:
+                    user = User.objects.filter(tenant=tenant, username=phone).first()
+    
+    # 如果仍然没有找到用户，返回错误
+    if user is None:
+        return Response(error(ErrorCode.USER_NOT_FOUND), status=400)
+    
     if user.status == 0:
         return Response(error(ErrorCode.USER_DISABLED), status=403)
 
@@ -216,19 +267,16 @@ def sms_login(request):
         "tenant_id": user.tenant_id,
         "user_type": user.user_type,
     })
-    refresh_token = generate_refresh_token()
-
-    from django.core.cache import cache
-    cache.set(
-        f"refresh_payload:{refresh_token}",
-        {"user_id": user.id, "tenant_id": user.tenant_id, "user_type": user.user_type},
-        timeout=86400,
-    )
+    refresh_token = generate_refresh_token({
+        "user_id": user.id,
+        "tenant_id": user.tenant_id,
+        "user_type": user.user_type,
+    })
 
     from apps.tags.models import UserTagBinding
     tag_names = [b.tag.name for b in UserTagBinding.objects.filter(user=user)]
     return Response(success({
-        "access_token": access_token,
+        "token": access_token,
         "refresh_token": refresh_token,
         "user_id": user.id,
         "is_new": created,
@@ -305,6 +353,8 @@ def social_login(request):
         else:
             created = True
             tenant = Tenant.objects.first()
+            if tenant is None:
+                return Response(error(ErrorCode.TENANT_NOT_FOUND), status=400)
             user = User.objects.create(
                 tenant=tenant,
                 username=f"{provider}_{open_id[-8:]}",
@@ -327,19 +377,16 @@ def social_login(request):
         "tenant_id": user.tenant_id,
         "user_type": user.user_type,
     })
-    refresh_token = generate_refresh_token()
-
-    from django.core.cache import cache
-    cache.set(
-        f"refresh_payload:{refresh_token}",
-        {"user_id": user.id, "tenant_id": user.tenant_id, "user_type": user.user_type},
-        timeout=86400,
-    )
+    refresh_token = generate_refresh_token({
+        "user_id": user.id,
+        "tenant_id": user.tenant_id,
+        "user_type": user.user_type,
+    })
 
     from apps.tags.models import UserTagBinding
     tag_names = [b.tag.name for b in UserTagBinding.objects.filter(user=user)]
     return Response(success({
-        "access_token": access_token,
+        "token": access_token,
         "refresh_token": refresh_token,
         "user_id": user.id,
         "is_new": created,
@@ -410,36 +457,36 @@ def refresh(request):
     if len(refresh_token) < 32:
         return Response(error(ErrorCode.TOKEN_INVALID), status=401)
 
-    from django.core.cache import cache
-    cache_key = f"refresh:{refresh_token}"
-
-    if cache.get(cache_key) == "used":
+    # 解码 refresh_token（JWT 自包含，无需服务端存储）
+    user_payload = decode_access_token(refresh_token)
+    if not user_payload or user_payload.get("token_type") != "refresh":
         return Response(error(ErrorCode.TOKEN_INVALID), status=401)
-
-    user_payload = cache.get(f"refresh_payload:{refresh_token}")
-    if not user_payload:
-        return Response(error(ErrorCode.TOKEN_INVALID), status=401)
-
-    cache.set(cache_key, "used", timeout=86400)
-    cache.delete(f"refresh_payload:{refresh_token}")
 
     if user_payload.get("is_superadmin"):
         return Response(success({
-            "access_token": create_access_token({
+            "token": create_access_token({
                 "username": user_payload["username"],
                 "is_superadmin": True,
                 "tenant_id": None,
             }),
-            "refresh_token": generate_refresh_token(),
+            "refresh_token": generate_refresh_token({
+                "username": user_payload["username"],
+                "is_superadmin": True,
+                "tenant_id": None,
+            }),
         }))
 
     return Response(success({
-        "access_token": create_access_token({
+        "token": create_access_token({
             "user_id": user_payload["user_id"],
             "tenant_id": user_payload["tenant_id"],
             "user_type": user_payload["user_type"],
         }),
-        "refresh_token": generate_refresh_token(),
+        "refresh_token": generate_refresh_token({
+            "user_id": user_payload["user_id"],
+            "tenant_id": user_payload["tenant_id"],
+            "user_type": user_payload["user_type"],
+        }),
     }))
 
 
@@ -466,9 +513,28 @@ def userinfo(request):
         ).exclude(id=request.user.id).exists():
             return Response(error(ErrorCode.PARAM_INVALID, message="手机号已被占用"), status=400)
 
+    # 从 validated_data 中分离 User 字段和 UserProfile 字段
+    profile_fields = {"company"}
+    user_fields = {}
+    profile_data = {}
     for field, value in ser.validated_data.items():
+        if field in profile_fields:
+            profile_data[field] = value
+        else:
+            user_fields[field] = value
+
+    # 保存 User 字段
+    for field, value in user_fields.items():
         setattr(request.user, field, value)
-    request.user.save(update_fields=ser.validated_data.keys())
+    if user_fields:
+        request.user.save(update_fields=user_fields.keys())
+
+    # 保存 UserProfile 字段
+    if profile_data:
+        profile, _ = UserProfile.objects.get_or_create(user=request.user)
+        for field, value in profile_data.items():
+            setattr(profile, field, value)
+        profile.save(update_fields=profile_data.keys())
 
     return Response(success({"user_id": request.user.id}))
 
@@ -487,17 +553,14 @@ def change_password(request):
     return Response(success())
 
 
-@api_view(["GET"])
+@api_view(["GET", "PUT"])
 def profile(request):
     profile, created = UserProfile.objects.get_or_create(user=request.user)
-    ser = UserProfileSerializer(profile)
-    return Response(success(ser.data))
 
+    if request.method == "GET":
+        ser = UserProfileSerializer(profile)
+        return Response(success(ser.data))
 
-@api_view(["PUT"])
-def update_profile(request):
-    profile, created = UserProfile.objects.get_or_create(user=request.user)
-    
     ser = UpdateUserProfileSerializer(data=request.data)
     if not ser.is_valid():
         return Response(error(ErrorCode.PARAM_INVALID, data=ser.errors), status=400)

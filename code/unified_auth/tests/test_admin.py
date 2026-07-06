@@ -308,7 +308,7 @@ class TestAdminApplications:
         )
         data = json.loads(resp.content)
         assert data["code"] == 0
-        assert "app_secret_raw" in data["data"]
+        assert "app_secret" in data["data"]
 
     def test_app_permissions(self, api_client, staff_auth_headers, app, permissions):
         """TC-ADMIN-023: 应用权限配置"""

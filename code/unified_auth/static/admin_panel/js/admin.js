@@ -98,6 +98,7 @@ const PAGES = {
     dashboard: renderDashboard,
     users: renderUsers,
     tags: renderTags,
+    login_test: renderLoginTest,
     applications: renderApplications,
     roles: renderRoles,
     departments: renderDepartments,
@@ -312,6 +313,7 @@ async function renderUsers(container) {
                     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
                         <button class="btn btn-sm btn-primary" onclick="batchAction('enable')">批量启用</button>
                         <button class="btn btn-sm btn-warning" onclick="batchAction('disable')" style="background:var(--warning);color:#fff">批量禁用</button>
+                        <button class="btn btn-sm btn-info" onclick="batchSetUserType()" style="background:var(--primary);color:#fff">批量设置类型</button>
                         <button class="btn btn-sm btn-danger" onclick="batchAction('delete')" style="background:var(--danger);color:#fff">批量删除</button>
                         <button class="btn btn-sm btn-text" onclick="showImportUsers()">导入用户</button>
                         <button class="btn btn-sm btn-text" onclick="exportUsers()">导出用户</button>
@@ -340,6 +342,7 @@ async function renderUsers(container) {
                             <button class="btn btn-sm btn-text" onclick="showEditUserModal(${u.id})">编辑</button>
                             <button class="btn btn-sm btn-text" onclick="showUserProfileModal(${u.id})">资料</button>
                             <button class="btn btn-sm btn-text" onclick="showUserTagsModal(${u.id})">标签</button>
+                            <button class="btn btn-sm btn-text" onclick="showSetUserTypeModal(${u.id},'${u.user_type}')">类型</button>
                             <button class="btn btn-sm btn-text" onclick="toggleUserStatus(${u.id},${u.status})">${u.status ? "禁用" : "启用"}</button>
                             <button class="btn btn-sm btn-text" onclick="showResetPasswordModal(${u.id},'${u.username}')">重置密码</button>
                             ${u.status ? `<button class="btn btn-sm btn-text" onclick="deleteUser(${u.id})" style="color:var(--danger)">删除</button>` : ''}
@@ -452,6 +455,12 @@ async function showEditUserModal(id) {
                         ${buildDeptOptions(depts)}
                     </select>
                 </div>
+                <div class="form-group"><label>用户类型</label>
+                    <select id="eu-user-type">
+                        <option value="internal" ${u.user_type === 'internal' ? 'selected' : ''}>内部用户</option>
+                        <option value="external" ${u.user_type === 'external' ? 'selected' : ''}>外部用户</option>
+                    </select>
+                </div>
                 <div class="form-group"><label>角色分配</label>
                     <div class="perm-grid" id="eu-roles-container">
                         ${roles.length ? roles.map(r => `
@@ -483,6 +492,7 @@ async function editUser(id) {
         email: document.getElementById("eu-email").value.trim() || null,
         phone: document.getElementById("eu-phone").value.trim() || null,
         dept_id: deptId ? parseInt(deptId) : null,
+        user_type: document.getElementById("eu-user-type").value,
         is_staff: document.getElementById("eu-is-staff").checked,
     };
     try {
@@ -689,6 +699,73 @@ async function batchAction(action) {
     } catch (e) {
         showToast("批量操作失败: " + e.message, "error");
     }
+}
+
+function batchSetUserType() {
+    if (!batchUserIds.length) { showToast("请先选择用户", "error"); return; }
+    openModal(`
+        <div class="modal-header"><h2>批量设置用户类型</h2><button class="modal-close" onclick="closeModal()">&times;</button></div>
+        <form onsubmit="return false">
+            <div style="padding:4px 0 12px;color:var(--text-secondary);font-size:13px">已选中 <strong>${batchUserIds.length}</strong> 个用户</div>
+            <div class="form-group"><label>目标用户类型</label>
+                <select id="batch-user-type-select">
+                    <option value="internal">内部用户</option>
+                    <option value="external">外部用户</option>
+                </select>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-text" onclick="closeModal()">取消</button>
+                <button class="btn btn-primary" onclick="doBatchSetUserType()">确认设置</button>
+            </div>
+        </form>`);
+}
+
+async function doBatchSetUserType() {
+    const user_type = document.getElementById("batch-user-type-select").value;
+    try {
+        const res = await apiCall(API.admin + "/users/batch-user-type", {
+            method: "POST",
+            body: JSON.stringify({ user_ids: batchUserIds, user_type: user_type }),
+        });
+        if (!res) return;
+        if (res.code < 0) { showToast(res.message, "error"); return; }
+        showToast(`批量设置类型成功，已更新 ${res.data.updated_count} 个用户`, "success");
+        batchUserIds = [];
+        closeModal();
+        switchPage("users");
+    } catch (e) { showToast("批量设置类型失败: " + e.message, "error"); }
+}
+
+function showSetUserTypeModal(userId, currentType) {
+    openModal(`
+        <div class="modal-header"><h2>设置用户类型</h2><button class="modal-close" onclick="closeModal()">&times;</button></div>
+        <form onsubmit="return false">
+            <div class="form-group"><label>用户类型</label>
+                <select id="su-user-type">
+                    <option value="internal" ${currentType === 'internal' ? 'selected' : ''}>内部用户</option>
+                    <option value="external" ${currentType === 'external' ? 'selected' : ''}>外部用户</option>
+                </select>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-text" onclick="closeModal()">取消</button>
+                <button class="btn btn-primary" onclick="doSetUserType(${userId})">确认设置</button>
+            </div>
+        </form>`);
+}
+
+async function doSetUserType(userId) {
+    const user_type = document.getElementById("su-user-type").value;
+    try {
+        const res = await apiCall(API.admin + "/users/" + userId, {
+            method: "PUT",
+            body: JSON.stringify({ user_type: user_type }),
+        });
+        if (!res) return;
+        if (res.code < 0) { showToast(res.message, "error"); return; }
+        showToast("用户类型已更新", "success");
+        closeModal();
+        switchPage("users");
+    } catch (e) { showToast("设置类型失败: " + e.message, "error"); }
 }
 
 function showImportUsers() {
@@ -2503,6 +2580,119 @@ async function deleteTag(id, name) {
         showToast("标签已删除", "success");
         switchPage("tags");
     } catch (e) { showToast(e.message, "error"); }
+}
+
+function renderLoginTest(container) {
+    try {
+        container.innerHTML = `
+            <div class="page-header">
+                <h1>登录测试</h1>
+                <p>输入用户账号和密码进行登录测试</p>
+            </div>
+            <div class="card" style="max-width:500px;margin:0 auto">
+                <form id="login-test-form" onsubmit="return false">
+                    <div class="form-group">
+                        <label>用户名</label>
+                        <input id="lt-username" placeholder="请输入用户名" required>
+                    </div>
+                    <div class="form-group">
+                        <label>密码</label>
+                        <input type="password" id="lt-password" placeholder="请输入密码" required>
+                    </div>
+                    <div class="form-actions">
+                        <button class="btn btn-primary" onclick="doLoginTest()">测试登录</button>
+                    </div>
+                </form>
+            </div>
+            <div id="login-result" style="display:none;max-width:800px;margin:20px auto">
+                <div class="card">
+                    <h3 style="margin-bottom:20px">登录结果</h3>
+                    <div id="result-content"></div>
+                </div>
+            </div>`;
+    } catch (e) {
+        container.innerHTML = `<div class="empty-state">加载失败: ${e.message}</div>`;
+    }
+}
+
+async function doLoginTest() {
+    const username = document.getElementById("lt-username").value.trim();
+    const password = document.getElementById("lt-password").value.trim();
+    
+    if (!username || !password) {
+        showToast("请输入用户名和密码", "error");
+        return;
+    }
+    
+    try {
+        const res = await apiCall(API.admin + "/login-test", {
+            method: "POST",
+            body: JSON.stringify({ username, password }),
+        });
+        
+        if (!res) return;
+        
+        const resultDiv = document.getElementById("login-result");
+        const contentDiv = document.getElementById("result-content");
+        
+        if (res.code < 0) {
+            contentDiv.innerHTML = `
+                <div style="color:var(--danger);padding:15px;border:1px solid var(--danger);border-radius:6px;">
+                    <strong>登录失败</strong><br>
+                    ${escapeHTML(res.message)}
+                </div>`;
+            resultDiv.style.display = "block";
+            return;
+        }
+        
+        const data = res.data;
+        contentDiv.innerHTML = `
+            <div style="padding:10px 0;border-bottom:1px solid #eee;margin-bottom:15px;color:var(--success);font-weight:bold">
+                ✅ 登录成功
+            </div>
+            <div class="form-group" style="margin-bottom:12px">
+                <label>用户名</label>
+                <input type="text" value="${escapeHTML(data.username)}" readonly style="background:#f5f5f5">
+            </div>
+            <div class="form-group" style="margin-bottom:12px">
+                <label>用户ID</label>
+                <input type="text" value="${data.user_id}" readonly style="background:#f5f5f5">
+            </div>
+            <div class="form-group" style="margin-bottom:12px">
+                <label>昵称</label>
+                <input type="text" value="${escapeHTML(data.nickname) || '-'}" readonly style="background:#f5f5f5">
+            </div>
+            <div class="form-group" style="margin-bottom:12px">
+                <label>用户类型</label>
+                <input type="text" value="${data.user_type === 'internal' ? '内部用户' : '外部用户'}" readonly style="background:#f5f5f5">
+            </div>
+            <div class="form-group" style="margin-bottom:12px">
+                <label>Access Token</label>
+                <textarea readonly style="background:#f5f5f5;height:100px;font-family:monospace;font-size:12px">${data.access_token}</textarea>
+            </div>
+            <div class="form-group" style="margin-bottom:12px">
+                <label>Refresh Token</label>
+                <textarea readonly style="background:#f5f5f5;height:100px;font-family:monospace;font-size:12px">${data.refresh_token}</textarea>
+            </div>
+            <div class="form-group" style="margin-bottom:12px">
+                <label>标签</label>
+                <input type="text" value="${(data.tags || []).join(', ') || '-'}" readonly style="background:#f5f5f5">
+            </div>
+            <div class="form-group" style="margin-bottom:12px">
+                <label>租户管理员</label>
+                <input type="text" value="${data.is_staff ? '是' : '否'}" readonly style="background:#f5f5f5">
+            </div>
+            <div class="form-group" style="margin-bottom:12px">
+                <label>超级管理员</label>
+                <input type="text" value="${data.is_superuser ? '是' : '否'}" readonly style="background:#f5f5f5">
+            </div>`;
+        
+        resultDiv.style.display = "block";
+        resultDiv.scrollIntoView({ behavior: 'smooth' });
+        
+    } catch (e) { 
+        showToast(e.message, "error"); 
+    }
 }
 
 async function showUserTagsModal(userId) {

@@ -128,12 +128,13 @@ def normal_auth_headers(normal_user):
 @pytest.fixture
 def app(tenant_default):
     app_secret = "test_secret_key_for_signing"
-    return Application.objects.create(
+    app = Application.objects.create(
         tenant=tenant_default,
         name="测试应用",
         app_key="test_key_001",
-        app_secret_hash=app_secret,
+        app_secret=app_secret,
     )
+    return app
 
 
 @pytest.fixture
@@ -142,7 +143,7 @@ def app_headers(app):
     body_str = json.dumps({}, ensure_ascii=False, separators=(",", ":"))
     message = f"{body_str}{timestamp}"
     signature = hmac.new(
-        app.app_secret_hash.encode("utf-8"),
+        app.app_secret.encode("utf-8"),
         message.encode("utf-8"),
         hashlib.sha256,
     ).hexdigest()
@@ -156,12 +157,13 @@ def app_headers(app):
 @pytest.fixture
 def app_b(tenant_b):
     app_secret = "test_secret_key_b"
-    return Application.objects.create(
+    app = Application.objects.create(
         tenant=tenant_b,
         name="B企业应用",
         app_key="test_key_b_002",
-        app_secret_hash=app_secret,
+        app_secret=app_secret,
     )
+    return app
 
 
 @pytest.fixture
@@ -170,7 +172,7 @@ def app_b_headers(app_b):
     body_str = json.dumps({}, ensure_ascii=False, separators=(",", ":"))
     message = f"{body_str}{timestamp}"
     signature = hmac.new(
-        app_b.app_secret_hash.encode("utf-8"),
+        app_b.app_secret.encode("utf-8"),
         message.encode("utf-8"),
         hashlib.sha256,
     ).hexdigest()
@@ -187,7 +189,7 @@ def disabled_app(tenant_default):
         tenant=tenant_default,
         name="已禁用应用",
         app_key="disabled_key_003",
-        app_secret_hash="disabled_secret",
+        app_secret="disabled_secret",
         status=False,
     )
 
@@ -196,15 +198,17 @@ def disabled_app(tenant_default):
 def permissions():
     perms = []
     perm_data = [
-        ("token:verify", "验证Token", "POST", "/api/v1/open/verify_token", "auth"),
+        ("token:verify", "验证Token", "POST", "/api/v1/open/token/verify", "auth"),
         ("user:read", "读取用户", "GET", "/api/v1/open/users", "user"),
         ("user:read_detail", "读取用户详情", "GET", "/api/v1/open/users/:id", "user"),
         ("user:create", "创建用户", "POST", "/api/v1/open/users", "user"),
         ("user:update", "修改用户", "PUT", "/api/v1/open/users/:id", "user"),
         ("user:status", "修改用户状态", "PATCH", "/api/v1/open/users/:id/status", "user"),
-        ("permission:check", "校验权限", "POST", "/api/v1/open/check_permission", "permission"),
-        ("user:profile:read", "读取用户资料", "GET", "/api/v1/open/user/profile/by_token", "user"),
-        ("user:profile:update", "修改用户资料", "PUT", "/api/v1/open/user/profile/by_token", "user"),
+        ("permission:check", "校验权限", "POST", "/api/v1/open/permissions/check", "permission"),
+        ("user:profile:read", "读取用户资料", "GET", "/api/v1/open/users/me/profile", "user"),
+        ("user:profile:update", "修改用户资料", "PUT", "/api/v1/open/users/me/profile", "user"),
+        ("wechat:access_token", "获取微信AccessToken", "GET", "/api/v1/open/wechat/access_token", "wechat"),
+        ("wechat:phone", "获取微信用户手机号", "POST", "/api/v1/open/wechat/phone", "wechat"),
     ]
     for code, name, method, path, cat in perm_data:
         p, _ = ApiPermission.objects.get_or_create(
@@ -248,6 +252,16 @@ def app_with_all_perms(app, permissions):
     for p in permissions:
         AppRoleBinding.objects.get_or_create(app=app, permission=p)
     return app
+
+
+@pytest.fixture
+def app_access_token(app):
+    """生成应用级别的 JWT access_token，用于 /api/v1/auth/* 接口的认证"""
+    return create_access_token({
+        "app_id": app.id,
+        "tenant_id": app.tenant_id,
+        "token_type": "app",
+    })
 
 
 @pytest.fixture

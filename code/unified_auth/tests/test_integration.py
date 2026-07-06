@@ -21,7 +21,7 @@ class TestAuthOpenApiIntegration:
         })
 
         resp = api_client.post(
-            "/api/v1/open/verify_token",
+            "/api/v1/open/token/verify",
             {"token": token},
             content_type="application/json",
             **app_headers,
@@ -60,14 +60,14 @@ class TestAuthOpenApiIntegration:
             tenant=tenant_default,
             name="集成测试应用",
             app_key="integration-app-key",
-            app_secret_hash="integration-secret-hash",
+            app_secret="integration-secret-hash",
         )
         for p in permissions[:2]:
             AppRoleBinding.objects.create(app=app, permission=p)
 
         ts = str(int(time.time()))
         sig = hmac.new(
-            app.app_secret_hash.encode("utf-8"),
+            app.app_secret.encode("utf-8"),
             f"{{}}{ts}".encode(),
             hashlib.sha256,
         ).hexdigest()
@@ -99,7 +99,7 @@ class TestAuthOpenApiIntegration:
         UserRole.objects.create(user=new_user, role=role)
 
         resp = api_client.post(
-            "/api/v1/open/check_permission",
+            "/api/v1/open/permissions/check",
             {"user_id": new_user.id, "permission_code": "user:read"},
             content_type="application/json",
             **app_headers,
@@ -108,19 +108,19 @@ class TestAuthOpenApiIntegration:
         assert data["code"] == 0
         assert data["data"]["has_permission"] is True
 
-    def test_token_refresh_rotation_flow(self, api_client, staff_user):
+    def test_token_refresh_rotation_flow(self, api_client, staff_user, app_access_token):
         """IT-005: 登录 → Token 刷新 → 旧 Token 失效"""
         login_resp = api_client.post(
-            "/api/v1/auth/login",
+            f"/api/v1/auth/login?access_token={app_access_token}",
             {"username": "staff_user", "password": "test1234"},
             content_type="application/json",
         )
         login_data = json.loads(login_resp.content)
-        old_access_token = login_data["data"]["access_token"]
+        old_access_token = login_data["data"]["token"]
         refresh_token = login_data["data"]["refresh_token"]
 
         refresh_resp = api_client.post(
-            "/api/v1/auth/refresh",
+            f"/api/v1/auth/token/refresh?access_token={app_access_token}",
             {"refresh_token": refresh_token},
             content_type="application/json",
         )
@@ -128,7 +128,7 @@ class TestAuthOpenApiIntegration:
         assert refresh_data["code"] == 0
 
         old_token_resp = api_client.get(
-            "/api/v1/auth/userinfo",
+            f"/api/v1/auth/me?access_token={app_access_token}",
             HTTP_AUTHORIZATION=f"Bearer {old_access_token}",
         )
         assert old_token_resp.status_code == 200
@@ -168,6 +168,63 @@ class TestMultiTenantIntegration:
         data = json.loads(resp.content)
         app_names = [a["name"] for a in data["data"]["apps"]]
         assert "测试应用" not in app_names
+
+
+class TestTokenVerification:
+    """IT-009~010: Token验证测试"""
+
+    def test_password_login_token_verify(self, api_client, app_with_all_perms, app_headers,
+                                         staff_user, app_access_token):
+        """IT-009: 账号密码登录生成的token能通过verify_token校验"""
+        login_resp = api_client.post(
+            f"/api/v1/auth/login?access_token={app_access_token}",
+            {"username": "staff_user", "password": "test1234"},
+            content_type="application/json",
+        )
+        login_data = json.loads(login_resp.content)
+        assert login_data["code"] == 0
+        access_token = login_data["data"]["token"]
+
+        verify_resp = api_client.post(
+            "/api/v1/open/token/verify",
+            {"token": access_token},
+            content_type="application/json",
+            **app_headers,
+        )
+        verify_data = json.loads(verify_resp.content)
+        assert verify_data["code"] == 0
+        assert verify_data["data"]["valid"] is True
+        assert verify_data["data"]["user_id"] == staff_user.id
+        assert verify_data["data"]["tenant_id"] == staff_user.tenant_id
+
+    def test_sms_login_token_verify(self, api_client, app_with_all_perms, app_headers,
+                                    tenant_default, app_access_token):
+        """IT-010: 短信登录生成的token能通过verify_token校验"""
+        phone = "13800138001"
+        
+        from django.core.cache import cache
+        cache.set(f"sms:{phone}", "555555", timeout=300)
+
+        login_resp = api_client.post(
+            f"/api/v1/auth/sms/login?access_token={app_access_token}",
+            {"phone": phone, "code": "555555"},
+            content_type="application/json",
+        )
+        login_data = json.loads(login_resp.content)
+        assert login_data["code"] == 0, f"短信登录失败: {login_data}"
+        access_token = login_data["data"]["token"]
+
+        verify_resp = api_client.post(
+            "/api/v1/open/token/verify",
+            {"token": access_token},
+            content_type="application/json",
+            **app_headers,
+        )
+        verify_data = json.loads(verify_resp.content)
+        assert verify_data["code"] == 0
+        assert verify_data["data"]["valid"] is True
+        assert verify_data["data"]["user_id"] is not None
+        assert verify_data["data"]["tenant_id"] == tenant_default.id
 
 
 class TestGatewayChain:

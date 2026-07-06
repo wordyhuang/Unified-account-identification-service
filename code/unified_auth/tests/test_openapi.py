@@ -21,7 +21,7 @@ class TestVerifyToken:
             "user_type": staff_user.user_type,
         })
         resp = api_client.post(
-            "/api/v1/open/verify_token",
+            "/api/v1/open/token/verify",
             {"token": token},
             content_type="application/json",
             **app_headers,
@@ -35,7 +35,7 @@ class TestVerifyToken:
     def test_verify_invalid_token(self, api_client, app_with_all_perms, app_headers):
         """TC-OPEN-002: 验证 Token — 无效 Token"""
         resp = api_client.post(
-            "/api/v1/open/verify_token",
+            "/api/v1/open/token/verify",
             {"token": "invalid.jwt.token"},
             content_type="application/json",
             **app_headers,
@@ -47,7 +47,7 @@ class TestVerifyToken:
     def test_verify_missing_headers(self, api_client):
         """TC-OPEN-003: 验证 Token — 缺少请求头"""
         resp = api_client.post(
-            "/api/v1/open/verify_token",
+            "/api/v1/open/token/verify",
             {"token": "xxx"},
             content_type="application/json",
         )
@@ -196,7 +196,7 @@ class TestCheckPermission:
                                         staff_user_role):
         """TC-OPEN-013: 校验权限 — 有权限"""
         resp = api_client.post(
-            "/api/v1/open/check_permission",
+            "/api/v1/open/permissions/check",
             {"user_id": staff_user_role.id, "permission_code": "user:read"},
             content_type="application/json",
             **app_headers,
@@ -209,7 +209,7 @@ class TestCheckPermission:
                                        normal_user):
         """TC-OPEN-014: 校验权限 — 无权限"""
         resp = api_client.post(
-            "/api/v1/open/check_permission",
+            "/api/v1/open/permissions/check",
             {"user_id": normal_user.id, "permission_code": "nonexist:perm"},
             content_type="application/json",
             **app_headers,
@@ -243,7 +243,7 @@ class TestOpenApiAuth:
         body_str = json.dumps({}, ensure_ascii=False, separators=(",", ":"))
         message = f"{body_str}{old_ts}"
         signature = hmac.new(
-            app.app_secret_hash.encode("utf-8"),
+            app.app_secret.encode("utf-8"),
             message.encode("utf-8"),
             hashlib.sha256,
         ).hexdigest()
@@ -261,7 +261,7 @@ class TestOpenApiAuth:
         body_str = json.dumps({}, ensure_ascii=False, separators=(",", ":"))
         message = f"{body_str}{timestamp}"
         signature = hmac.new(
-            disabled_app.app_secret_hash.encode("utf-8"),
+            disabled_app.app_secret.encode("utf-8"),
             message.encode("utf-8"),
             hashlib.sha256,
         ).hexdigest()
@@ -296,7 +296,7 @@ class TestWechatApi:
     def test_get_phone_number_not_configured(self, api_client, app_with_all_perms, app_headers):
         """TC-OPEN-022: 获取微信用户手机号 — 未配置微信"""
         resp = api_client.post(
-            "/api/v1/open/wechat/get_phone_number",
+            "/api/v1/open/wechat/phone",
             {"code": "mock_code"},
             content_type="application/json",
             **app_headers,
@@ -307,7 +307,7 @@ class TestWechatApi:
     def test_get_phone_number_missing_code(self, api_client, app_with_all_perms, app_headers):
         """TC-OPEN-023: 获取微信用户手机号 — 缺少参数"""
         resp = api_client.post(
-            "/api/v1/open/wechat/get_phone_number",
+            "/api/v1/open/wechat/phone",
             {},
             content_type="application/json",
             **app_headers,
@@ -328,8 +328,8 @@ class TestUserProfileByToken:
             "user_type": staff_user.user_type,
         })
         resp = api_client.get(
-            "/api/v1/open/user/profile/by_token",
-            {"user_token": token},
+            "/api/v1/open/users/me/profile",
+            {"access_token": token},
             **app_headers,
         )
         data = json.loads(resp.content)
@@ -340,8 +340,8 @@ class TestUserProfileByToken:
     def test_get_profile_invalid_token(self, api_client, app_with_all_perms, app_headers):
         """TC-OPEN-025: 获取用户资料 — 无效Token"""
         resp = api_client.get(
-            "/api/v1/open/user/profile/by_token",
-            {"user_token": "invalid.jwt.token"},
+            "/api/v1/open/users/me/profile",
+            {"access_token": "invalid.jwt.token"},
             **app_headers,
         )
         data = json.loads(resp.content)
@@ -357,8 +357,8 @@ class TestUserProfileByToken:
             "user_type": disabled_user.user_type,
         })
         resp = api_client.get(
-            "/api/v1/open/user/profile/by_token",
-            {"user_token": token},
+            "/api/v1/open/users/me/profile",
+            {"access_token": token},
             **app_headers,
         )
         data = json.loads(resp.content)
@@ -374,8 +374,8 @@ class TestUserProfileByToken:
             "user_type": staff_user.user_type,
         })
         resp = api_client.get(
-            "/api/v1/open/user/profile/by_token",
-            {"user_token": token},
+            "/api/v1/open/users/me/profile",
+            {"access_token": token},
         )
         assert resp.status_code == 401
 
@@ -388,8 +388,8 @@ class TestUserProfileByToken:
             "user_type": staff_user.user_type,
         })
         resp = api_client.get(
-            "/api/v1/open/user/profile/by_token",
-            {"user_token": token},
+            "/api/v1/open/users/me/profile",
+            {"access_token": token},
             **app_headers,
         )
         assert resp.status_code == 403
@@ -403,8 +403,8 @@ class TestUserProfileByToken:
             "user_type": staff_user.user_type,
         })
         resp = api_client.put(
-            "/api/v1/open/user/profile/by_token",
-            {"user_token": token, "real_name": "张三", "gender": "male", "bio": "测试简介"},
+            "/api/v1/open/users/me/profile",
+            {"access_token": token, "real_name": "张三", "gender": "male", "bio": "测试简介", "company": "测试公司"},
             content_type="application/json",
             **app_headers,
         )
@@ -418,12 +418,13 @@ class TestUserProfileByToken:
         assert profile.real_name == "张三"
         assert profile.gender == "male"
         assert profile.bio == "测试简介"
+        assert profile.company == "测试公司"
 
     def test_update_profile_partial(self, api_client, app_with_all_perms, app_headers, staff_user):
         """TC-OPEN-030: 修改用户资料 — 只更新单个字段"""
         from common.utils import create_access_token
         from apps.accounts.models import UserProfile
-        UserProfile.objects.create(user=staff_user, real_name="旧名字", bio="旧简介")
+        UserProfile.objects.create(user=staff_user, real_name="旧名字", bio="旧简介", company="旧公司")
 
         token = create_access_token({
             "user_id": staff_user.id,
@@ -431,8 +432,8 @@ class TestUserProfileByToken:
             "user_type": staff_user.user_type,
         })
         resp = api_client.put(
-            "/api/v1/open/user/profile/by_token",
-            {"user_token": token, "real_name": "新名字"},
+            "/api/v1/open/users/me/profile",
+            {"access_token": token, "real_name": "新名字"},
             content_type="application/json",
             **app_headers,
         )
@@ -443,12 +444,13 @@ class TestUserProfileByToken:
         assert profile.real_name == "新名字"
         # Unchanged field should remain
         assert profile.bio == "旧简介"
+        assert profile.company == "旧公司"
 
     def test_update_profile_invalid_token(self, api_client, app_with_all_perms, app_headers):
         """TC-OPEN-031: 修改用户资料 — 无效Token"""
         resp = api_client.put(
-            "/api/v1/open/user/profile/by_token",
-            {"user_token": "invalid.jwt.token", "real_name": "测试"},
+            "/api/v1/open/users/me/profile",
+            {"access_token": "invalid.jwt.token", "real_name": "测试"},
             content_type="application/json",
             **app_headers,
         )
@@ -459,7 +461,7 @@ class TestUserProfileByToken:
     def test_update_profile_missing_token(self, api_client, app_with_all_perms, app_headers):
         """TC-OPEN-032: 修改用户资料 — 缺少Token参数"""
         resp = api_client.put(
-            "/api/v1/open/user/profile/by_token",
+            "/api/v1/open/users/me/profile",
             {"real_name": "测试"},
             content_type="application/json",
             **app_headers,

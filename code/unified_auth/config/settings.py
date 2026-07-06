@@ -141,7 +141,7 @@ if not JWT_SECRET_KEY:
 
 # ==================== 短信限频策略 ====================
 SMS_PHONE_COOLDOWN_SECONDS = int(os.getenv('SMS_PHONE_COOLDOWN_SECONDS', '60'))
-SMS_PHONE_DAILY_LIMIT = int(os.getenv('SMS_PHONE_DAILY_LIMIT', '5'))
+SMS_PHONE_DAILY_LIMIT = int(os.getenv('SMS_PHONE_DAILY_LIMIT', '50'))
 SMS_IP_RATE_PER_MINUTE = int(os.getenv('SMS_IP_RATE_PER_MINUTE', '10'))
 
 # ==================== API限流策略 ====================

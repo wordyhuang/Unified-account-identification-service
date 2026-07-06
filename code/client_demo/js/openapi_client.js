@@ -50,13 +50,13 @@
     /**
      * 生成 HMAC-SHA256 签名
      *
-     * 签名公式: HMAC-SHA256(app_secret_hash, "{}" + timestamp)
+     * 签名公式: HMAC-SHA256(app_secret, "{}" + timestamp)
      * 签名固定使用 "{}" + timestamp，不包含请求体
      */
-    function generateSignature(appSecretHash, timestamp) {
+    function generateSignature(appSecret, timestamp) {
         if (crypto) {
             var message = '{}' + timestamp;
-            return crypto.createHmac('sha256', appSecretHash).update(message).digest('hex');
+            return crypto.createHmac('sha256', appSecret).update(message).digest('hex');
         }
         throw new Error('crypto 模块不可用');
     }
@@ -64,9 +64,9 @@
     /**
      * 构建认证请求头
      */
-    function buildHeaders(appKey, appSecretHash) {
+    function buildHeaders(appKey, appSecret) {
         var timestamp = String(Math.floor(Date.now() / 1000));
-        var signature = generateSignature(appSecretHash, timestamp);
+        var signature = generateSignature(appSecret, timestamp);
         return {
             'Content-Type': 'application/json',
             'X-App-Key': appKey,
@@ -126,12 +126,12 @@
          */
         constructor(appKey, appSecret, baseUrl) {
             this.appKey = appKey;
-            this.appSecretHash = sha256(appSecret);
+            this.appSecret = appSecret;
             this.baseUrl = (baseUrl || 'http://localhost:8000').replace(/\/+$/, '');
         }
 
         _headers() {
-            return buildHeaders(this.appKey, this.appSecretHash);
+            return buildHeaders(this.appKey, this.appSecret);
         }
 
         _req(method, path, body) {

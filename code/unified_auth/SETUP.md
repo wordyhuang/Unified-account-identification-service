@@ -4,7 +4,7 @@
 
 > 以下步骤假设你**已在宝塔面板创建好 Python 站点**，项目代码已上传到站点根目录，依赖尚未安装，数据库尚未初始化。
 
----
+***
 
 ## 第一步：安装依赖
 
@@ -29,7 +29,7 @@ gunicorn>=22.0,<23.0
 aliyun-python-sdk-dysmsapi>=2.1.2,<3.0
 ```
 
-5. 点击「安装」，等待安装完成
+1. 点击「安装」，等待安装完成
 
 ### 方式 B：通过 SSH 终端手动安装
 
@@ -53,12 +53,13 @@ pip install -r requirements.txt
 ```
 
 > **提示**：如果 cryptography 安装失败（提示缺少 Rust 编译器），先升级 pip 再重试：
+>
 > ```bash
 > pip install --upgrade pip
 > pip install cryptography==42.0.5
 > ```
 
----
+***
 
 ## 第二步：配置 .env 文件
 
@@ -127,11 +128,12 @@ ADMIN_INIT_PASSWORD=YourStrongPassword123!
 ```
 
 > **安全提醒**：
+>
 > - `DJANGO_SECRET_KEY` 和 `JWT_SECRET_KEY` 必须修改为随机字符串，切勿使用默认值
 > - `SUPERADMIN_ACCOUNTS` 中的管理员密码必须符合密码策略要求（长度≥8，需包含大写字母）
 > - 数据库密码使用宝塔面板设置的强密码
 
----
+***
 
 ## 第三步：初始化数据库
 
@@ -155,11 +157,12 @@ python manage.py collectstatic --noinput
 ```
 
 > **如果使用 MySQL 数据库**，在执行迁移前确保：
+>
 > 1. 宝塔面板中 MySQL 服务已启动
 > 2. 已创建 `unified_auth` 数据库
 > 3. `.env` 中 `DB_ENGINE` 已切换为 `django.db.backends.mysql` 且配置正确
 
----
+***
 
 ## 第四步：验证服务
 
@@ -188,23 +191,23 @@ curl http://your-domain.com/static/admin_panel/js/admin.js
 # 如果返回 JavaScript 内容，说明静态文件配置正确
 ```
 
----
+***
 
 ## 第五步：配置宝塔面板 Python 项目
 
 > 以下步骤在宝塔面板「网站」中找到你的站点，进入站点设置完成配置。
 
-| 配置项 | 推荐值 | 说明 |
-|--------|--------|------|
-| 项目路径 | `/www/wwwroot/unified_auth` | 代码所在目录 |
-| 启动脚本 | `config/wsgi.py` | Django WSGI 入口 |
-| 监听端口 | `8000` | Gunicorn 监听端口 |
-| 虚拟环境 | `/www/wwwroot/unified_auth/venv` | pip 安装依赖的虚拟环境 |
-| Gunicorn 配置 | `gunicorn.conf.py` | 项目根目录下的配置文件 |
+| 配置项         | 推荐值                              | 说明             |
+| ----------- | -------------------------------- | -------------- |
+| 项目路径        | `/www/wwwroot/unified_auth`      | 代码所在目录         |
+| 启动脚本        | `config/wsgi.py`                 | Django WSGI 入口 |
+| 监听端口        | `8000`                           | Gunicorn 监听端口  |
+| 虚拟环境        | `/www/wwwroot/unified_auth/venv` | pip 安装依赖的虚拟环境  |
+| Gunicorn 配置 | `gunicorn.conf.py`               | 项目根目录下的配置文件    |
 
 点击「提交」后，宝塔面板会自动启动 Gunicorn 进程。
 
----
+***
 
 ## 常见问题排查
 
@@ -213,6 +216,7 @@ curl http://your-domain.com/static/admin_panel/js/admin.js
 **原因**：Gunicorn 未启动或启动失败
 
 **排查步骤**：
+
 ```bash
 # 1. 检查 Gunicorn 进程是否运行
 ps aux | grep gunicorn
@@ -232,6 +236,7 @@ gunicorn config.wsgi:application --bind 0.0.0.0:8000 --log-level debug
 **原因**：数据库配置错误或 MySQL 服务未启动
 
 **排查步骤**：
+
 ```bash
 # 1. 检查 MySQL 服务状态
 systemctl status mysql   # Ubuntu/Debian
@@ -248,6 +253,7 @@ mysql -u unified_auth -p -h 127.0.0.1 unified_auth
 **原因**：`collectstatic` 未执行或 Nginx 静态文件目录配置错误
 
 **排查步骤**：
+
 ```bash
 # 1. 确认静态文件目录存在
 ls /www/wwwroot/unified_auth/static/
@@ -261,12 +267,13 @@ ls /www/wwwroot/unified_auth/static/
 **原因**：pip 版本过低，无法获取预编译 wheel
 
 **解决方法**：
+
 ```bash
 pip install --upgrade pip
 pip install cryptography==42.0.5
 ```
 
----
+***
 
 ## 快速检查清单
 
@@ -278,16 +285,17 @@ pip install cryptography==42.0.5
 - [ ] `python manage.py collectstatic --noinput` 执行成功
 - [ ] 宝塔面板 Python 项目配置正确（端口 8000、启动脚本 wsgi.py）
 - [ ] 宝塔面板 Nginx 已配置反向代理到 8000 端口
-- [ ] 管理后台 http://your-domain.com/admin-panel/ 可正常访问
+- [ ] 管理后台 <http://your-domain.com/admin-panel/> 可正常访问
 
----
+***
 
 ## 登录信息
 
-| 项目 | 值 |
-|------|-----|
-| 管理后台地址 | `http://your-domain.com/admin-panel/` |
-| 默认管理员用户名 | `admin`（由 `SUPERADMIN_ACCOUNTS` 配置） |
-| 默认管理员密码 | 由 `.env` 中的 `ADMIN_INIT_PASSWORD` 指定 |
+| 项目       | 值                                     |
+| -------- | ------------------------------------- |
+| 管理后台地址   | `http://your-domain.com/admin-panel/` |
+| 默认管理员用户名 | `admin`（由 `SUPERADMIN_ACCOUNTS` 配置）   |
+| 默认管理员密码  | 由 `.env` 中的 `ADMIN_INIT_PASSWORD` 指定  |
 
 > **首次登录后请立即修改默认密码！**
+

@@ -24,9 +24,12 @@ def decode_access_token(token: str) -> dict:
         return None
 
 
-def generate_refresh_token() -> str:
-    import uuid
-    return uuid.uuid4().hex
+def generate_refresh_token(payload: dict) -> str:
+    data = payload.copy()
+    data["exp"] = datetime.now(timezone.utc) + timedelta(days=settings.JWT_REFRESH_TOKEN_EXPIRE_DAYS)
+    data["iat"] = datetime.now(timezone.utc)
+    data["token_type"] = "refresh"
+    return jwt.encode(data, settings.JWT_SECRET_KEY, algorithm="HS256")
 
 
 def verify_signature(app_secret: str, params: dict, timestamp: str, signature: str) -> bool:
