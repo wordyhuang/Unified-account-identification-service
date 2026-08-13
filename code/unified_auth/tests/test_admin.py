@@ -240,15 +240,15 @@ class TestAdminApplications:
         data = json.loads(resp.content)
         assert data["code"] == 0
         assert data["data"]["name"] == app.name
-        assert "permission_ids" in data["data"]
-        assert isinstance(data["data"]["permission_ids"], list)
+        assert "role_ids" in data["data"]
+        assert isinstance(data["data"]["role_ids"], list)
 
-    def test_get_app_detail_with_permissions(self, api_client, staff_auth_headers, app_with_all_perms):
-        """TC-ADMIN-019: 获取应用详情（带权限）"""
+    def test_get_app_detail_with_roles(self, api_client, staff_auth_headers, app_with_all_perms):
+        """TC-ADMIN-019: 获取应用详情（带角色）"""
         resp = api_client.get(f"/api/v1/admin/applications/{app_with_all_perms.id}", **staff_auth_headers)
         data = json.loads(resp.content)
         assert data["code"] == 0
-        assert len(data["data"]["permission_ids"]) > 0
+        assert len(data["data"]["role_ids"]) > 0
 
     def test_update_app(self, api_client, staff_auth_headers, app):
         """TC-ADMIN-020: 修改应用"""
@@ -261,22 +261,22 @@ class TestAdminApplications:
         data = json.loads(resp.content)
         assert data["code"] == 0
 
-    def test_update_app_with_permissions(self, api_client, staff_auth_headers, app, permissions):
-        """TC-ADMIN-020: 修改应用（带权限更新）"""
-        perm_ids = [p.id for p in permissions[:3]]
+    def test_update_app_with_roles(self, api_client, staff_auth_headers, app, role_with_all_perms):
+        """TC-ADMIN-020: 修改应用（带角色更新）"""
+        role_ids = [role_with_all_perms.id]
         resp = api_client.put(
             f"/api/v1/admin/applications/{app.id}",
-            {"name": "更新应用名", "permission_ids": perm_ids},
+            {"name": "更新应用名", "role_ids": role_ids},
             content_type="application/json",
             **staff_auth_headers,
         )
         data = json.loads(resp.content)
         assert data["code"] == 0
-        assert data["data"]["permission_ids"] == perm_ids
+        assert data["data"]["role_ids"] == role_ids
 
         from apps.rbac.models import AppRoleBinding
         bindings = AppRoleBinding.objects.filter(app=app)
-        assert len(bindings) == 3
+        assert len(bindings) == 1
 
     def test_toggle_app_status(self, api_client, staff_auth_headers, app):
         """TC-ADMIN-021: 启用/禁用应用"""
@@ -310,14 +310,51 @@ class TestAdminApplications:
         assert data["code"] == 0
         assert "app_secret" in data["data"]
 
-    def test_app_permissions(self, api_client, staff_auth_headers, app, permissions):
-        """TC-ADMIN-023: 应用权限配置"""
+    def test_view_secret_no_regenerate(self, api_client, staff_auth_headers, app):
+        """TC-ADMIN-022B: 只读查看应用密钥，不触发重新生成"""
+        from apps.applications.models import Application
+        original_secret = Application.objects.get(id=app.id).app_secret
+
+        # 查看密钥（GET）不应改变密钥
         resp = api_client.get(
-            f"/api/v1/admin/applications/{app.id}/permissions",
+            f"/api/v1/admin/applications/{app.id}/secret",
             **staff_auth_headers,
         )
         data = json.loads(resp.content)
         assert data["code"] == 0
+        assert data["data"]["app_secret"] == original_secret
+
+        # 数据库中密钥仍为原值，未被重新生成
+        assert Application.objects.get(id=app.id).app_secret == original_secret
+
+        # 重新生成后密钥发生变化
+        resp2 = api_client.post(
+            f"/api/v1/admin/applications/{app.id}/regenerate-secret",
+            **staff_auth_headers,
+        )
+        data2 = json.loads(resp2.content)
+        assert data2["code"] == 0
+        assert data2["data"]["app_secret"] != original_secret
+
+    def test_app_roles(self, api_client, staff_auth_headers, app, role_with_all_perms):
+        """TC-ADMIN-023: 应用角色授权"""
+        resp = api_client.put(
+            f"/api/v1/admin/applications/{app.id}/roles",
+            {"role_ids": [role_with_all_perms.id]},
+            content_type="application/json",
+            **staff_auth_headers,
+        )
+        data = json.loads(resp.content)
+        assert data["code"] == 0
+        assert data["data"]["role_ids"] == [role_with_all_perms.id]
+
+        resp2 = api_client.get(
+            f"/api/v1/admin/applications/{app.id}/roles",
+            **staff_auth_headers,
+        )
+        data2 = json.loads(resp2.content)
+        assert data2["code"] == 0
+        assert data2["data"]["role_ids"] == [role_with_all_perms.id]
 
     def test_app_api_stats(self, api_client, staff_auth_headers, app):
         """TC-ADMIN-024: 应用 API 调用统计"""

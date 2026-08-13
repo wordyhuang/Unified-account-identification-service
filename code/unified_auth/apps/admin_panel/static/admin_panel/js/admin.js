@@ -909,6 +909,7 @@ async function renderApplications(container) {
                             <button class="btn btn-sm btn-text" onclick="showEditAppModal(${a.id})">编辑</button>
                             <button class="btn btn-sm btn-text" onclick="toggleAppStatus(${a.id},${a.status})">${a.status ? "禁用" : "启用"}</button>
                             <button class="btn btn-sm btn-text" onclick="showAppSecret(${a.id})">查看密钥</button>
+                            <button class="btn btn-sm btn-text" onclick="showAppPermissions(${a.id})">应用权限</button>
                             <button class="btn btn-sm btn-text" onclick="showAppApiStats(${a.id})">API统计</button>
                         </td>
                     </tr>`).join("") : '<tr><td colspan="8"><div class="empty-state">暂无数据</div></td></tr>'}
@@ -978,7 +979,7 @@ async function showEditAppModal(id) {
         if (!res) return;
         const a = res.data;
         const types = a.default_access_user_types || [];
-        const assignedPerms = a.permission_ids || [];
+        const assignedRoles = a.role_ids || [];
         openModal(`
             <div class="modal-header"><h2>编辑应用 #${id}</h2><button class="modal-close" onclick="closeModal()">&times;</button></div>
             <form onsubmit="return false">
@@ -990,8 +991,8 @@ async function showEditAppModal(id) {
                     </div></div>
                 <div class="form-group"><label>回调地址（每行一个）</label>
                     <textarea id="ea-urls" rows="3" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:var(--radius-sm)">${(a.callback_urls||[]).join("\\n")}</textarea></div>
-                <div class="form-group"><label>权限配置</label>
-                    <div id="ea-permissions-section" style="padding:4px 0;min-height:40px"><span style="color:var(--text-light)">加载中...</span></div></div>
+                <div class="form-group"><label>角色授权</label>
+                    <div id="ea-roles-section" style="padding:4px 0;min-height:40px"><span style="color:var(--text-light)">加载中...</span></div></div>
                 <div class="panel-section-title">微信登录配置（选填）</div>
                 <div class="form-group"><label>微信小程序 AppID</label><input id="ea-wx-mp-id" value="${a.wechat_mp_app_id||''}" placeholder="微信小程序 AppID"></div>
                 <div class="form-group"><label>微信小程序 AppSecret</label><input type="password" id="ea-wx-mp-secret" value="${a.wechat_mp_app_secret||''}" placeholder="输入新值将更新，留空保持不变"></div>
@@ -1002,7 +1003,7 @@ async function showEditAppModal(id) {
                     <button class="btn btn-primary" onclick="editApp(${id})">保存</button>
                 </div>
             </form>`);
-        loadAppPermissions(id, assignedPerms);
+        loadAppRoles(id, assignedRoles);
     } catch (e) { showToast(e.message, "error"); }
 }
 
@@ -1011,12 +1012,12 @@ async function editApp(id) {
     const types = [];
     if (document.getElementById("ea-type-internal").checked) types.push("internal");
     if (document.getElementById("ea-type-external").checked) types.push("external");
-    const permIds = Array.from(document.querySelectorAll("#ea-permissions-section input[type=checkbox]:checked")).map(el => parseInt(el.value));
+    const roleIds = Array.from(document.querySelectorAll("#ea-roles-section input[type=checkbox]:checked")).map(el => parseInt(el.value));
     const data = {
         name: document.getElementById("ea-name").value.trim(),
         callback_urls: urls.length ? urls : null,
         default_access_user_types: types.length ? types : null,
-        permission_ids: permIds.length ? permIds : null,
+        role_ids: roleIds.length ? roleIds : null,
         wechat_mp_app_id: document.getElementById("ea-wx-mp-id").value.trim() || null,
         wechat_mp_app_secret: document.getElementById("ea-wx-mp-secret").value.trim() || null,
         wechat_web_app_id: document.getElementById("ea-wx-web-id").value.trim() || null,
@@ -1046,21 +1047,72 @@ async function toggleAppStatus(id, current) {
     } catch (e) { showToast(e.message, "error"); }
 }
 
+async function showAppPermissions(id) {
+    try {
+        const res = await apiCall(API.admin + "/applications/" + id + "/permissions");
+        if (!res) return;
+        const perms = res.data.permissions || [];
+        const cats = [...new Set(perms.map(p => p.category))];
+        const permHtml = perms.length ? `<div class="perm-grid">
+            ${cats.map(cat => `<div style="margin:8px 0 4px;font-weight:600;font-size:13px;color:var(--primary)">${cat}</div>`
+                + perms.filter(p => p.category === cat).map(p => `
+                <div class="perm-item" style="cursor:default">
+                    <span style="display:flex;flex-direction:column;gap:2px;padding:2px 0">
+                        <strong style="font-size:13px">${p.name}</strong>
+                        <small style="font-size:11px;color:var(--text-light)">${p.code} · ${p.method} ${p.path}</small>
+                    </span>
+                </div>`).join("")).join("")}
+        </div>` : '<div style="padding:24px;text-align:center;color:var(--text-light)">该应用暂未通过任何角色获得权限</div>';
+
+        openModal(`
+            <div class="modal-header"><h2>应用权限 #${id}</h2><button class="modal-close" onclick="closeModal()">&times;</button></div>
+            <div style="max-height:60vh;overflow-y:auto;padding:0 4px">
+                ${permHtml}
+            </div>
+            <div style="padding:12px 20px;text-align:right;border-top:1px solid var(--border)">
+                <button class="btn btn-secondary" onclick="closeModal()">关闭</button>
+            </div>
+        `);
+    } catch (e) {
+        alert("加载应用权限失败: " + e.message);
+    }
+}
+
 async function showAppSecret(id) {
+    try {
+        // 只读查看当前密钥，不重新生成
+        const res = await apiCall(API.admin + "/applications/" + id + "/secret");
+        if (!res) return;
+        if (res.code < 0) { showToast(res.message, "error"); return; }
+        openModal(`
+            <div class="modal-header"><h2>应用密钥</h2><button class="modal-close" onclick="closeModal()">&times;</button></div>
+            <p id="app-secret-tip" style="margin-bottom:12px;color:var(--text-secondary)">当前 AppSecret（如需更换请点击"重新生成"按钮）：</p>
+            <div style="background:#f1f5f9;padding:12px;border-radius:var(--radius-sm);margin-bottom:16px">
+                <div><label style="font-size:12px;color:var(--text-secondary)">AppSecret</label>
+                <div id="app-secret-value" style="font-family:monospace;font-size:13px;word-break:break-all">${res.data.app_secret}</div></div>
+            </div>
+            <div style="display:flex;gap:8px">
+                <button class="btn btn-danger" onclick="regenerateAppSecret(${id})">重新生成</button>
+                <button class="btn btn-primary btn-block" onclick="closeModal()">关闭</button>
+            </div>`);
+    } catch (e) { showToast(e.message, "error"); }
+}
+
+async function regenerateAppSecret(id) {
+    if (!confirm("确定要重新生成密钥吗？旧密钥将立即失效，相关对接方需同步更新。")) return;
     try {
         const res = await apiCall(API.admin + "/applications/" + id + "/regenerate-secret", {
             method: "POST",
         });
         if (!res) return;
         if (res.code < 0) { showToast(res.message, "error"); return; }
-        openModal(`
-            <div class="modal-header"><h2>应用密钥</h2><button class="modal-close" onclick="closeModal()">&times;</button></div>
-            <p style="margin-bottom:12px;color:var(--text-secondary)">已重新生成密钥，请立即保存：</p>
-            <div style="background:#f1f5f9;padding:12px;border-radius:var(--radius-sm);margin-bottom:16px">
-                <div><label style="font-size:12px;color:var(--text-secondary)">AppSecret</label>
-                <div style="font-family:monospace;font-size:13px;word-break:break-all">${res.data.app_secret_raw}</div></div>
-            </div>
-            <button class="btn btn-primary btn-block" onclick="closeModal()">我已保存</button>`);
+        const secretEl = document.getElementById("app-secret-value");
+        if (secretEl) {
+            secretEl.textContent = res.data.app_secret;
+            const tipEl = document.getElementById("app-secret-tip");
+            if (tipEl) tipEl.textContent = "已重新生成新密钥，旧密钥已失效，请立即保存并同步更新对接方配置：";
+        }
+        showToast("密钥已重新生成", "success");
     } catch (e) { showToast(e.message, "error"); }
 }
 
@@ -1096,31 +1148,29 @@ async function showAppApiStats(id) {
     } catch (e) { showToast(e.message, "error"); }
 }
 
-async function loadAppPermissions(appId, assignedPermIds) {
+async function loadAppRoles(appId, assignedRoleIds) {
     try {
-        const res = await apiCall(API.admin + "/permissions");
+        const res = await apiCall(API.admin + "/roles");
         if (!res) return;
-        const allPerms = res.data.permissions || [];
-        const cats = [...new Set(allPerms.map(p => p.category))];
-        const section = document.getElementById("ea-permissions-section");
+        const allRoles = res.data.roles || [];
+        const section = document.getElementById("ea-roles-section");
         if (!section) return;
-        if (!allPerms.length) {
-            section.innerHTML = '<span style="color:var(--text-light)">无可用权限</span>';
+        if (!allRoles.length) {
+            section.innerHTML = '<span style="color:var(--text-light)">无可用角色</span>';
             return;
         }
         section.innerHTML = `<div class="perm-grid">
-            ${cats.map(cat => `<div style="margin:8px 0 4px;font-weight:600;font-size:13px;color:var(--primary)">${cat}</div>`
-                + allPerms.filter(p => p.category === cat).map(p => `
-                <label class="perm-item ${assignedPermIds.includes(p.id) ? 'selected' : ''}" onclick="event.preventDefault();this.classList.toggle('selected');var cb=this.querySelector('input');cb.checked=!cb.checked" title="${p.description}">
-                    <input type="checkbox" value="${p.id}" ${assignedPermIds.includes(p.id) ? 'checked' : ''} style="display:none">
+            ${allRoles.map(r => `
+                <label class="perm-item ${assignedRoleIds.includes(r.id) ? 'selected' : ''}" onclick="event.preventDefault();this.classList.toggle('selected');var cb=this.querySelector('input');cb.checked=!cb.checked" title="${r.code}">
+                    <input type="checkbox" value="${r.id}" ${assignedRoleIds.includes(r.id) ? 'checked' : ''} style="display:none">
                     <span style="display:flex;flex-direction:column;gap:2px;padding:2px 0;cursor:pointer">
-                        <strong style="font-size:13px">${p.name}</strong>
-                        <small style="font-size:11px;color:var(--text-light)">${p.description || p.code}</small>
+                        <strong style="font-size:13px">${r.name}</strong>
+                        <small style="font-size:11px;color:var(--text-light)">${r.code}</small>
                     </span>
-                </label>`).join("")).join("")}
+                </label>`).join("")}
         </div>`;
     } catch (e) {
-        const section = document.getElementById("ea-permissions-section");
+        const section = document.getElementById("ea-roles-section");
         if (section) section.innerHTML = '<span style="color:var(--danger)">加载失败</span>';
     }
 }

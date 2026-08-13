@@ -248,9 +248,8 @@ def staff_user_role(staff_user, role_with_all_perms):
 
 
 @pytest.fixture
-def app_with_all_perms(app, permissions):
-    for p in permissions:
-        AppRoleBinding.objects.get_or_create(app=app, permission=p)
+def app_with_all_perms(app, role_with_all_perms):
+    AppRoleBinding.objects.get_or_create(app=app, role=role_with_all_perms)
     return app
 
 

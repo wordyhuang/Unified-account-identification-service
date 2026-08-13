@@ -249,6 +249,123 @@ class TestSocialLogin:
         assert data["code"] < 0
 
 
+class TestWechatLogin:
+    """微信 code 换手机号并登录"""
+
+    @override_settings(MOCK_ENABLED=True)
+    def test_wechat_login_success_creates_user(self, api_client, tenant_default, app_access_token):
+        """微信登录 — 首次登录自动创建用户"""
+        resp = api_client.post(
+            _url("/api/v1/auth/wechat/login", app_access_token),
+            {"code": "mock_code"},
+            content_type="application/json",
+        )
+        data = json.loads(resp.content)
+        assert data["code"] == 0, data
+        assert "token" in data["data"]
+        assert "refresh_token" in data["data"]
+        assert data["data"]["is_new"] is True
+        assert User.objects.filter(phone="138mock_cod", tenant=tenant_default).exists()
+
+    @override_settings(MOCK_ENABLED=True)
+    def test_wechat_login_existing_user(self, api_client, tenant_default, app_access_token):
+        """微信登录 — 已存在同手机号用户时直接登录"""
+        User.objects.create(
+            tenant=tenant_default,
+            phone="13800000000",
+            username="13800000000",
+            user_type="external",
+        )
+        resp = api_client.post(
+            _url("/api/v1/auth/wechat/login", app_access_token),
+            {"code": "00000000"},
+            content_type="application/json",
+        )
+        data = json.loads(resp.content)
+        assert data["code"] == 0, data
+        assert data["data"]["is_new"] is False
+        assert data["data"]["username"] == "13800000000"
+
+    @override_settings(MOCK_ENABLED=True)
+    def test_wechat_login_missing_code(self, api_client, app_access_token):
+        """微信登录 — 缺少 code"""
+        resp = api_client.post(
+            _url("/api/v1/auth/wechat/login", app_access_token),
+            {},
+            content_type="application/json",
+        )
+        data = json.loads(resp.content)
+        assert data["code"] < 0
+
+    def test_wechat_login_not_configured(self, api_client, app_access_token):
+        """微信登录 — 应用未配置微信且非 Mock 模式"""
+        resp = api_client.post(
+            _url("/api/v1/auth/wechat/login", app_access_token),
+            {"code": "mock_code"},
+            content_type="application/json",
+        )
+        data = json.loads(resp.content)
+        assert data["code"] < 0
+
+    @override_settings(MOCK_ENABLED=True)
+    def test_wechat_login_same_phone_across_tenants(
+        self, api_client, tenant_default, tenant_b, app_b
+    ):
+        """微信登录 — 不同租户允许重复手机号，自动注册各自租户下的用户"""
+        # 租户A 已有 username=phone=13800000000 的用户
+        User.objects.create(
+            tenant=tenant_default,
+            phone="13800000000",
+            username="13800000000",
+            user_type="external",
+        )
+        # 租户B 应用 token 请求同一手机号 → 应成功注册租户B 下的同名用户
+        token_b = create_access_token({
+            "app_id": app_b.id,
+            "tenant_id": app_b.tenant_id,
+            "token_type": "app",
+        })
+        resp = api_client.post(
+            _url("/api/v1/auth/wechat/login", token_b),
+            {"code": "00000000"},
+            content_type="application/json",
+        )
+        data = json.loads(resp.content)
+        assert data["code"] == 0, data
+        assert data["data"]["is_new"] is True
+        assert data["data"]["username"] == "13800000000"
+        # 两个租户各自存在同一手机号/用户名的用户
+        assert User.objects.filter(tenant=tenant_default, username="13800000000").exists()
+        assert User.objects.filter(tenant=tenant_b, username="13800000000").exists()
+
+    def test_login_same_username_across_tenants(self, api_client, tenant_default, tenant_b, app_b):
+        """密码登录 — 同名用户按租户隔离，只能登录应用所属租户下的用户"""
+        for tenant in (tenant_default, tenant_b):
+            u = User.objects.create(
+                tenant=tenant,
+                username="cross_tenant_user",
+                user_type="internal",
+            )
+            u.set_password("pass1234")
+            u.save(update_fields=["password"])
+        # 租户B 应用 token 登录同名账号 → 命中租户B 的用户
+        token_b = create_access_token({
+            "app_id": app_b.id,
+            "tenant_id": app_b.tenant_id,
+            "token_type": "app",
+        })
+        resp = api_client.post(
+            _url("/api/v1/auth/login", token_b),
+            {"username": "cross_tenant_user", "password": "pass1234"},
+            content_type="application/json",
+        )
+        data = json.loads(resp.content)
+        assert data["code"] == 0, data
+        assert data["data"]["user_id"] == User.objects.get(
+            tenant=tenant_b, username="cross_tenant_user"
+        ).id
+
+
 class TestTokenRefresh:
     """TC-AUTH-014~016: Token 刷新"""
 
@@ -443,6 +560,95 @@ class TestChangePassword:
         )
         data = json.loads(resp.content)
         assert data["code"] < 0
+
+
+class TestPasswordResetByCode:
+    """验证码重置密码（手机号从 token 解析）"""
+
+    def test_send_pwd_code_no_phone(self, api_client, staff_user, staff_auth_headers, app_access_token):
+        """发送改密验证码 — 用户未绑定手机号"""
+        staff_user.phone = None
+        staff_user.save(update_fields=["phone"])
+        resp = api_client.post(
+            _url("/api/v1/auth/sms/send/pwd", app_access_token),
+            content_type="application/json",
+            **staff_auth_headers,
+        )
+        data = json.loads(resp.content)
+        assert data["code"] < 0
+
+    def test_reset_password_success(self, api_client, staff_user, staff_auth_headers, app_access_token):
+        """验证码重置密码 — 成功，且旧密码失效"""
+        staff_user.phone = "13800138000"
+        staff_user.save(update_fields=["phone"])
+        cache.set("sms:pwd:13800138000", "888888", timeout=300)
+
+        resp = api_client.post(
+            _url("/api/v1/auth/me/password/reset", app_access_token),
+            {"code": "888888", "new_password": "newpass5678"},
+            content_type="application/json",
+            **staff_auth_headers,
+        )
+        data = json.loads(resp.content)
+        assert data["code"] == 0, data
+
+        staff_user.refresh_from_db()
+        assert staff_user.check_password("newpass5678")
+        # 验证码已一次性删除
+        assert cache.get("sms:pwd:13800138000") is None
+
+    def test_reset_password_wrong_code(self, api_client, staff_user, staff_auth_headers, app_access_token):
+        """验证码重置密码 — 验证码错误"""
+        staff_user.phone = "13800138000"
+        staff_user.save(update_fields=["phone"])
+        cache.set("sms:pwd:13800138000", "888888", timeout=300)
+
+        resp = api_client.post(
+            _url("/api/v1/auth/me/password/reset", app_access_token),
+            {"code": "000000", "new_password": "newpass5678"},
+            content_type="application/json",
+            **staff_auth_headers,
+        )
+        data = json.loads(resp.content)
+        assert data["code"] < 0
+
+    def test_reset_password_expired(self, api_client, staff_user, staff_auth_headers, app_access_token):
+        """验证码重置密码 — 验证码过期/不存在"""
+        staff_user.phone = "13800138000"
+        staff_user.save(update_fields=["phone"])
+        cache.delete("sms:pwd:13800138000")
+
+        resp = api_client.post(
+            _url("/api/v1/auth/me/password/reset", app_access_token),
+            {"code": "888888", "new_password": "newpass5678"},
+            content_type="application/json",
+            **staff_auth_headers,
+        )
+        data = json.loads(resp.content)
+        assert data["code"] < 0
+
+    def test_reset_password_not_bound(self, api_client, staff_user, staff_auth_headers, app_access_token):
+        """验证码重置密码 — 用户未绑定手机号"""
+        staff_user.phone = None
+        staff_user.save(update_fields=["phone"])
+
+        resp = api_client.post(
+            _url("/api/v1/auth/me/password/reset", app_access_token),
+            {"code": "888888", "new_password": "newpass5678"},
+            content_type="application/json",
+            **staff_auth_headers,
+        )
+        data = json.loads(resp.content)
+        assert data["code"] < 0
+
+    def test_reset_password_no_auth(self, api_client, app_access_token):
+        """验证码重置密码 — 无用户 token"""
+        resp = api_client.post(
+            _url("/api/v1/auth/me/password/reset", app_access_token),
+            {"code": "888888", "new_password": "newpass5678"},
+            content_type="application/json",
+        )
+        assert resp.status_code == 401
 
 
 class TestProfile:

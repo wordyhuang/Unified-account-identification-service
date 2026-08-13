@@ -868,6 +868,8 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 > - 未提供有效 `access_token` 的请求将返回 `401 Unauthorized`
 >
 > 注意：`access_token` 是**应用级凭证**（控制接口调用权限），与用户登录后返回的 `token`（用户身份凭证）是两个不同的概念，不可混用。
+>
+> **租户隔离**：用户名和手机号仅在**同一租户内唯一**，不同租户允许重复。所有登录接口均按当前应用所属租户查询/创建用户，不会跨租户匹配。
 
 ### 密码登录
 
@@ -875,7 +877,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 
 **access\_token 要求**: ✅ 需要，通过 URL 参数 `?access_token=` 传递
 
-**功能描述**: 用户使用密码登录。`username` 字段支持输入**用户名**或**绑定的手机号**两种方式。
+**功能描述**: 用户使用密码登录。`username` 字段支持输入**用户名**或**绑定的手机号**两种方式。按当前应用所属租户查询用户。
 
 **请求体**:
 
@@ -1021,7 +1023,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 
 **access\_token 要求**: ✅ 需要，通过 URL 参数 `?access_token=` 传递
 
-**功能描述**: 使用短信验证码登录，自动注册外部用户（如用户不存在）。
+**功能描述**: 使用短信验证码登录，自动注册外部用户（如用户不存在）。按当前应用所属租户查找/创建用户。
 
 **登录流程**:
 
@@ -1160,6 +1162,55 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
         "user_id": 3,
         "is_new": true
     }
+}
+```
+
+### 微信手机号登录
+
+**接口地址**: `POST /api/v1/auth/wechat/login`
+
+**access\_token 要求**: ✅ 需要，通过 URL 参数 `?access_token=` 传递
+
+**功能描述**: 通过微信小程序 `getPhoneNumber` 接口返回的临时 `code` 换取真实手机号，并按手机号匹配或自动创建用户后直接登录，一次调用完成「微信 code → 登录」。按当前应用所属租户查找/创建用户。
+
+**请求体**:
+
+```json
+{
+    "code": "string (必填，微信小程序getPhoneNumber接口返回的临时code)",
+    "app_key": "string (选填，应用Key，用于获取对应的微信配置；缺省时使用 access_token 对应的应用)"
+}
+```
+
+**成功响应** (200):
+
+```json
+{
+    "code": 0,
+    "message": "success",
+    "data": {
+        "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+        "refresh_token": "abc123def456...",
+        "user_id": 3,
+        "is_new": true,
+        "username": "13800138000",
+        "nickname": "用户8000",
+        "user_type": "external",
+        "is_superuser": false,
+        "is_staff": false,
+        "tags": []
+    }
+}
+```
+
+> `is_new` 为 `true` 表示该手机号首次登录，系统已自动创建外部用户。
+
+**失败响应** (401/400/502):
+
+```json
+{
+    "code": -10801,
+    "message": "微信未配置"
 }
 ```
 
@@ -1311,6 +1362,83 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
     "message": "原密码错误"
 }
 ```
+
+### 修改密码（短信验证码重置）
+
+**接口地址**: `POST /api/v1/auth/me/password/reset`
+
+**access\_token 要求**: ✅ 需要，通过 URL 参数 `?access_token=` 传递
+
+**功能描述**: 通过手机验证码修改当前用户密码（**无需原密码**）。手机号从用户 token 解析，不接受请求方指定，仅向当前用户绑定的手机号发送验证码。
+
+**认证方式**: Bearer Token（用户身份凭证） + `access_token`（URL参数，应用接口凭证）
+
+**登录流程**:
+
+```
+① POST /api/v1/auth/sms/send/pwd   →  向当前用户绑定的手机号发送改密验证码（需 Bearer Token）
+              │
+              ▼   用户收到短信
+② POST /api/v1/auth/me/password/reset   →  校验验证码 + 新密码，完成修改
+```
+
+**发送改密验证码请求**:
+
+```json
+POST /api/v1/auth/sms/send/pwd
+（无需请求体，手机号从用户 token 解析）
+```
+
+**发送改密验证码响应** (200):
+
+```json
+{
+    "code": 0,
+    "message": "success",
+    "data": {
+        "phone": "13800138000"
+    }
+}
+```
+
+> **说明**：改密验证码缓存于 `sms:pwd:{phone}`，与登录验证码（`sms:{phone}`）相互隔离，防止验证码跨用途重放。若当前用户未绑定手机号，返回 400 错误。
+
+**修改密码请求体**:
+
+```json
+{
+    "code": "string (必填，短信验证码)",
+    "new_password": "string (必填，新密码，8-256字符)"
+}
+```
+
+**成功响应** (200):
+
+```json
+{
+    "code": 0,
+    "message": "success",
+    "data": {}
+}
+```
+
+**失败响应** (400):
+
+```json
+{
+    "code": -10302,
+    "message": "验证码已过期，请重新获取"
+}
+```
+
+```json
+{
+    "code": -10301,
+    "message": "验证码错误"
+}
+```
+
+> **⚠️ 安全说明**：验证码为一次性使用，校验通过后立即失效。验证码仅用于确认手机号归属，密码修改成功后原密码失效。
 
 ### 获取用户资料
 
@@ -1574,8 +1702,8 @@ console.log(result);
 如有问题或需要帮助，请联系技术支持团队：
 
 - **技术支持邮箱**: <395051729@qq.com>
-- **文档版本**: v3.0
-- **最后更新**: 2026-06-24
+- **文档版本**: v3.3
+- **最后更新**: 2026-08-06
 
 ***
 

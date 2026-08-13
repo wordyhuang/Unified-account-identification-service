@@ -114,8 +114,7 @@ def setup_test_data():
 
     UserRole.objects.get_or_create(user=admin, role=role)
 
-    for p in perms:
-        AppRoleBinding.objects.get_or_create(app=app, permission=p)
+    AppRoleBinding.objects.get_or_create(app=app, role=role)
 
     print(f"  测试数据就绪: 租户={admin_tenant.slug}, 应用={app.app_key}, 权限={len(perms)}条, 角色=管理员")
     return tenant, admin, app
@@ -538,11 +537,10 @@ def test_gateway_isolation(admin):
 
     # 4. 权限校验 — 创建用户需要user:create权限
     headers_no_perm = openapi_headers()
-    # 暂时移除user:create权限
+    # 暂时移除user:create权限 — 从角色中移除
     app = Application.objects.get(app_key=APP_KEY)
     perm_create = ApiPermission.objects.get(code="user:create")
-    binding = AppRoleBinding.objects.get(app=app, permission=perm_create)
-    binding.delete()
+    RolePermission.objects.filter(role__approlebinding__app=app, permission=perm_create).delete()
 
     r = s.post(f"{BASE}/api/v1/open/users", json={
         "username": "no_perm_user", "password": "test1234",
@@ -551,7 +549,8 @@ def test_gateway_isolation(admin):
     check("权限中间件 — 无user:create权限拒绝", r.status_code == 403)
 
     # 恢复权限
-    AppRoleBinding.objects.create(app=app, permission=perm_create)
+    role = AppRoleBinding.objects.get(app=app).role
+    RolePermission.objects.get_or_create(role=role, permission=perm_create)
 
     # 5. 审计日志 — 写操作应产生日志
     before_count = AuditLog.objects.count()

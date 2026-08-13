@@ -54,10 +54,10 @@ class UserRole(models.Model):
 
 class AppRoleBinding(models.Model):
     app = models.ForeignKey("applications.Application", on_delete=models.CASCADE)
-    permission = models.ForeignKey(ApiPermission, on_delete=models.CASCADE)
+    role = models.ForeignKey(Role, on_delete=models.CASCADE)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         db_table = "app_role_binding"
-        unique_together = [("app", "permission")]
-        verbose_name = "应用权限绑定"
+        unique_together = [("app", "role")]
+        verbose_name = "应用角色绑定"

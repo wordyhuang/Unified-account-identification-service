@@ -53,7 +53,7 @@ class TestAuthOpenApiIntegration:
     def test_create_app_auth_openapi_flow(self, api_client, tenant_default, permissions):
         """IT-003: 创建应用 → 应用授权 → 第三方调用开放 API"""
         from apps.applications.models import Application
-        from apps.rbac.models import AppRoleBinding
+        from apps.rbac.models import AppRoleBinding, Role, RolePermission
         import time, hmac, hashlib
 
         app = Application.objects.create(
@@ -62,8 +62,10 @@ class TestAuthOpenApiIntegration:
             app_key="integration-app-key",
             app_secret="integration-secret-hash",
         )
+        role = Role.objects.create(tenant=tenant_default, name="集成测试角色", code="integration_role")
         for p in permissions[:2]:
-            AppRoleBinding.objects.create(app=app, permission=p)
+            RolePermission.objects.get_or_create(role=role, permission=p)
+        AppRoleBinding.objects.get_or_create(app=app, role=role)
 
         ts = str(int(time.time()))
         sig = hmac.new(

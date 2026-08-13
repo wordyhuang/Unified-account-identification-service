@@ -63,7 +63,7 @@ class AdminUpdateAppSerializer(serializers.Serializer):
         child=serializers.ChoiceField(choices=["internal", "external"]),
         required=False, allow_null=True,
     )
-    permission_ids = serializers.ListField(child=serializers.IntegerField(), required=False, allow_null=True)
+    role_ids = serializers.ListField(child=serializers.IntegerField(), required=False, allow_null=True)
     wechat_mp_app_id = serializers.CharField(max_length=64, required=False, allow_null=True)
     wechat_mp_app_secret = serializers.CharField(max_length=256, required=False, allow_null=True)
     wechat_web_app_id = serializers.CharField(max_length=64, required=False, allow_null=True)
@@ -123,8 +123,8 @@ class AdminDepartmentUpdateSerializer(serializers.Serializer):
     sort_order = serializers.IntegerField(required=False)
 
 
-class AdminAppPermissionSerializer(serializers.Serializer):
-    permission_ids = serializers.ListField(child=serializers.IntegerField(), min_length=0)
+class AdminAppRoleSerializer(serializers.Serializer):
+    role_ids = serializers.ListField(child=serializers.IntegerField(), min_length=0)
 
 
 class AdminCopyRoleSerializer(serializers.Serializer):

@@ -118,6 +118,9 @@ CORS_ALLOWED_ORIGINS = os.getenv('CORS_ALLOWED_ORIGINS', '').split(',') if not D
 
 AUTH_USER_MODEL = 'accounts.User'
 
+# username 仅租户内唯一，使用多租户认证后端（同名用户按租户区分）
+AUTHENTICATION_BACKENDS = ['common.auth_backends.TenantModelBackend']
+
 STATIC_URL = 'static/'
 STATIC_ROOT = BASE_DIR / 'static'
 

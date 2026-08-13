@@ -13,8 +13,8 @@ from .models import Tenant, User, SocialAccount, UserProfile
 from apps.audit.models import AuditLog
 from .serializers import (
     LoginSerializer, SmsSendSerializer, SmsLoginSerializer, SmsVerifySerializer,
-    SocialLoginSerializer, RefreshSerializer, UserInfoSerializer,
-    UpdateUserInfoSerializer, ChangePasswordSerializer,
+    SocialLoginSerializer, WechatLoginSerializer, RefreshSerializer, UserInfoSerializer,
+    UpdateUserInfoSerializer, ChangePasswordSerializer, PwdResetSerializer,
     UserProfileSerializer, UpdateUserProfileSerializer,
 )
 
@@ -64,7 +64,11 @@ def login(request):
             "is_staff": True,
         }))
 
-    user = User.objects.filter(Q(username=username) | Q(phone=username)).first()
+    # username/phone 仅租户内唯一，按当前应用所属租户查询
+    user = User.objects.filter(
+        Q(username=username) | Q(phone=username),
+        tenant_id=request.tenant_id,
+    ).first()
     if user is None:
         return Response(error(ErrorCode.USER_NOT_FOUND), status=404)
     if user.status == 0:
@@ -101,21 +105,19 @@ def login(request):
     }))
 
 
-@api_view(["POST"])
-def sms_send(request):
-    ser = SmsSendSerializer(data=request.data)
-    if not ser.is_valid():
-        return Response(error(ErrorCode.PARAM_INVALID, data=ser.errors), status=400)
+def _dispatch_sms_code(phone, ip, code_cache_key, app_key=None):
+    """
+    发送短信验证码的公共流程：限频检查 + 生成验证码 + 发送 + 缓存。
 
-    phone = ser.validated_data["phone"]
-    ip = request.META.get('REMOTE_ADDR', '')
-
+    code_cache_key: 验证码缓存 key（如 sms:{phone} / sms:pwd:{phone}，用于区分用途防重放）
+    返回 (success: bool, response_or_none)
+    """
     from django.core.cache import cache
 
     # ---- 同一手机号冷却期检查（默认60秒内不可重复发送） ----
     phone_cooldown_key = f"sms:rate:phone:{phone}"
     if cache.get(phone_cooldown_key):
-        return Response(
+        return False, Response(
             error(ErrorCode.RATE_LIMIT_EXCEEDED, message="短信发送太频繁，请稍后再试"),
             status=429,
         )
@@ -125,7 +127,7 @@ def sms_send(request):
     phone_daily_count = cache.get(phone_daily_key) or 0
     daily_limit = getattr(settings, 'SMS_PHONE_DAILY_LIMIT', 5)
     if phone_daily_count >= daily_limit:
-        return Response(
+        return False, Response(
             error(ErrorCode.RATE_LIMIT_EXCEEDED, message="该手机号今日短信发送次数已达上限"),
             status=429,
         )
@@ -139,7 +141,7 @@ def sms_send(request):
     now = timezone.now().timestamp()
     ip_records = [t for t in ip_records if now - t < 60]
     if len(ip_records) >= ip_max_per_minute:
-        return Response(
+        return False, Response(
             error(ErrorCode.RATE_LIMIT_EXCEEDED, message="IP请求太频繁，请稍后再试"),
             status=429,
         )
@@ -147,7 +149,6 @@ def sms_send(request):
     code = generate_code()
 
     tenant = None
-    app_key = ser.validated_data.get("app_key")
     if app_key:
         app = Application.objects.filter(app_key=app_key, status=True).first()
         if app:
@@ -155,7 +156,7 @@ def sms_send(request):
 
     ok, msg = send_sms(phone, code, tenant=tenant)
     if not ok:
-        return Response(
+        return False, Response(
             error(ErrorCode.SMS_SEND_FAILED, message=msg),
             status=500,
         )
@@ -167,9 +168,127 @@ def sms_send(request):
     ip_records.append(now)
     cache.set(ip_rate_key, ip_records, timeout=60)
 
-    cache.set(f"sms:{phone}", code, timeout=300)
+    cache.set(code_cache_key, code, timeout=300)
+
+    return True, None
+
+
+@api_view(["POST"])
+def sms_send(request):
+    ser = SmsSendSerializer(data=request.data)
+    if not ser.is_valid():
+        return Response(error(ErrorCode.PARAM_INVALID, data=ser.errors), status=400)
+
+    phone = ser.validated_data["phone"]
+    ip = request.META.get('REMOTE_ADDR', '')
+    app_key = ser.validated_data.get("app_key")
+
+    ok, err_response = _dispatch_sms_code(phone, ip, f"sms:{phone}", app_key=app_key)
+    if not ok:
+        return err_response
 
     return Response(success({"phone": phone}))
+
+
+def _get_or_create_phone_user(tenant, phone):
+    """
+    按手机号查找用户，不存在则自动创建外部用户。
+
+    手机号/用户名仅租户内唯一，不同租户允许重复。
+    返回 (user, created)，user 可能为 None（创建失败且兜底仍查不到）。
+    """
+    user = User.objects.filter(tenant=tenant, phone=phone).first()
+    created = False
+
+    if user is None:
+        # 兼容历史数据：可能用户名就是手机号
+        user = User.objects.filter(tenant=tenant, username=phone).first()
+        if user is None:
+            try:
+                with transaction.atomic():
+                    # 并发兜底：可能在其他事务中已创建
+                    user = User.objects.filter(tenant=tenant, phone=phone).first()
+                    if user is None:
+                        user = User.objects.filter(tenant=tenant, username=phone).first()
+                    if user is None:
+                        user = User.objects.create(
+                            tenant=tenant,
+                            phone=phone,
+                            username=phone,
+                            user_type="external",
+                            nickname=f"用户{phone[-4:]}",
+                        )
+                        created = True
+            except Exception:
+                user = User.objects.filter(tenant=tenant, phone=phone).first()
+                if user is None:
+                    user = User.objects.filter(tenant=tenant, username=phone).first()
+
+    return user, created
+
+
+@api_view(["POST"])
+def send_pwd_code(request):
+    """
+    向当前登录用户绑定的手机号发送修改密码验证码。
+    手机号从用户 token 解析（user_id -> user.phone），不接受请求方指定。
+    验证码缓存于 sms:pwd:{phone}，与登录验证码（sms:{phone}）隔离，防止重放混用。
+    """
+    user = getattr(request, "user", None)
+    if user is None:
+        return Response(error(ErrorCode.TOKEN_INVALID, message="缺少用户身份"), status=401)
+    if not user.phone:
+        return Response(
+            error(ErrorCode.PARAM_INVALID, message="当前用户未绑定手机号，无法发送改密验证码"),
+            status=400,
+        )
+
+    ip = request.META.get('REMOTE_ADDR', '')
+    ok, err_response = _dispatch_sms_code(user.phone, ip, f"sms:pwd:{user.phone}")
+    if not ok:
+        return err_response
+
+    return Response(success({"phone": user.phone}))
+
+
+@api_view(["POST"])
+def reset_password(request):
+    """
+    通过手机验证码修改当前用户密码（无需原密码）。
+    手机号从用户 token 解析，验证码为 send_pwd_code 发送、缓存于 sms:pwd:{phone} 的一次性验证码。
+    验证通过后立即删除验证码并更新密码。
+    """
+    user = getattr(request, "user", None)
+    if user is None:
+        return Response(error(ErrorCode.TOKEN_INVALID, message="缺少用户身份"), status=401)
+    if not user.phone:
+        return Response(
+            error(ErrorCode.PARAM_INVALID, message="当前用户未绑定手机号，无法重置密码"),
+            status=400,
+        )
+
+    ser = PwdResetSerializer(data=request.data)
+    if not ser.is_valid():
+        return Response(error(ErrorCode.PARAM_INVALID, data=ser.errors), status=400)
+
+    from django.core.cache import cache
+    cached_code = cache.get(f"sms:pwd:{user.phone}")
+    if cached_code is None:
+        return Response(
+            error(ErrorCode.SMS_CODE_EXPIRED, message="验证码已过期，请重新获取"),
+            status=400,
+        )
+    if cached_code != ser.validated_data["code"]:
+        return Response(
+            error(ErrorCode.SMS_CODE_INVALID, message="验证码错误"),
+            status=400,
+        )
+
+    cache.delete(f"sms:pwd:{user.phone}")
+
+    user.set_password(ser.validated_data["new_password"])
+    user.save(update_fields=["password"])
+    return Response(success())
 
 
 @api_view(["POST"])
@@ -218,40 +337,14 @@ def sms_login(request):
 
     cache.delete(f"sms:{phone}")
 
-    tenant = Tenant.objects.first()
+    # 按当前应用所属租户查找用户（手机号仅租户内唯一）
+    tenant = Tenant.objects.filter(id=request.tenant_id).first()
     if tenant is None:
         return Response(error(ErrorCode.TENANT_NOT_FOUND), status=400)
-    
-    # 先通过手机号查找用户
-    user = User.objects.filter(tenant=tenant, phone=phone).first()
-    created = False
-    
-    if user is None:
-        # 如果没找到，尝试通过用户名查找（可能用户名就是手机号）
-        user = User.objects.filter(tenant=tenant, username=phone).first()
-        if user is None:
-            # 使用事务和唯一约束来处理并发创建
-            try:
-                with transaction.atomic():
-                    # 再次检查，可能在其他事务中已创建
-                    user = User.objects.filter(tenant=tenant, phone=phone).first()
-                    if user is None:
-                        user = User.objects.filter(tenant=tenant, username=phone).first()
-                    if user is None:
-                        user = User.objects.create(
-                            tenant=tenant,
-                            phone=phone,
-                            username=phone,
-                            user_type="external",
-                            nickname=f"用户{phone[-4:]}",
-                        )
-                        created = True
-            except Exception:
-                # 并发冲突，重新查询用户
-                user = User.objects.filter(tenant=tenant, phone=phone).first()
-                if user is None:
-                    user = User.objects.filter(tenant=tenant, username=phone).first()
-    
+
+    # 按手机号查找用户，不存在则自动创建
+    user, created = _get_or_create_phone_user(tenant, phone)
+
     # 如果仍然没有找到用户，返回错误
     if user is None:
         return Response(error(ErrorCode.USER_NOT_FOUND), status=400)
@@ -368,6 +461,116 @@ def social_login(request):
                 union_id=union_id,
                 extra_data={"code": code, "app_key": app_key},
             )
+
+    user.last_login_at = timezone.now()
+    user.save(update_fields=["last_login_at"])
+
+    access_token = create_access_token({
+        "user_id": user.id,
+        "tenant_id": user.tenant_id,
+        "user_type": user.user_type,
+    })
+    refresh_token = generate_refresh_token({
+        "user_id": user.id,
+        "tenant_id": user.tenant_id,
+        "user_type": user.user_type,
+    })
+
+    from apps.tags.models import UserTagBinding
+    tag_names = [b.tag.name for b in UserTagBinding.objects.filter(user=user)]
+    return Response(success({
+        "token": access_token,
+        "refresh_token": refresh_token,
+        "user_id": user.id,
+        "is_new": created,
+        "username": user.username,
+        "nickname": user.nickname,
+        "user_type": user.user_type,
+        "is_superuser": user.is_superuser,
+        "is_staff": user.is_staff,
+        "tags": tag_names,
+    }))
+
+
+@api_view(["POST"])
+def wechat_login(request):
+    """微信小程序 code 换手机号并登录
+
+    流程：微信 code → 获取手机号 → 按手机号匹配或自动创建用户 → 发放 token/refresh_token
+    认证方式：URL access_token（应用级），同 /api/v1/auth/sms/login
+    """
+    ser = WechatLoginSerializer(data=request.data)
+    if not ser.is_valid():
+        return Response(error(ErrorCode.PARAM_INVALID, data=ser.errors), status=400)
+
+    code = ser.validated_data["code"]
+    app_key = ser.validated_data.get("app_key") or getattr(request, "app_key", None)
+    tenant_id = getattr(request, "tenant_id", None)
+
+    from apps.openapi.views import (
+        _get_app_wechat_config, _get_cached_access_token,
+        _fetch_access_token_from_wechat, _set_cached_access_token,
+    )
+
+    mock_mode = False
+    if app_key:
+        app, err = _get_app_wechat_config(app_key, tenant_id)
+        if err:
+            if err == ErrorCode.WECHAT_NOT_CONFIGURED and getattr(settings, "MOCK_ENABLED", False):
+                mock_mode = True
+            else:
+                return Response(
+                    error(err),
+                    status=400 if err == ErrorCode.PARAM_INVALID else 401,
+                )
+    elif getattr(settings, "MOCK_ENABLED", False):
+        mock_mode = True
+    else:
+        return Response(error(ErrorCode.APP_KEY_INVALID, message="缺少 app_key"), status=400)
+
+    if mock_mode:
+        # 模拟微信接口：根据 code 派生一个稳定的模拟手机号
+        phone = "138" + (code[:8].ljust(8, "0"))
+    else:
+        access_token = _get_cached_access_token(app.wechat_mp_app_id)
+        if not access_token:
+            access_token = _fetch_access_token_from_wechat(
+                app.wechat_mp_app_id, app.wechat_mp_app_secret
+            )
+            if not access_token:
+                return Response(error(ErrorCode.WECHAT_API_ERROR), status=502)
+            _set_cached_access_token(app.wechat_mp_app_id, access_token)
+
+        import logging
+        logger = logging.getLogger(__name__)
+        import requests as http_requests
+        url = f"https://api.weixin.qq.com/wxa/business/getuserphonenumber?access_token={access_token}"
+        resp = http_requests.post(url, json={"code": code}, timeout=10)
+        data = resp.json()
+
+        if data.get("errcode") != 0:
+            logger.error("微信获取手机号失败: %s", data)
+            return Response(
+                error(ErrorCode.WECHAT_API_ERROR, message=data.get("errmsg", "微信接口调用失败")),
+                status=502,
+            )
+
+        phone = (data.get("phone_info", {}) or {}).get("purePhoneNumber", "")
+        if not phone:
+            logger.error("微信未返回手机号: %s", data)
+            return Response(error(ErrorCode.WECHAT_API_ERROR, message="微信未返回手机号"), status=502)
+
+    tenant = Tenant.objects.filter(id=tenant_id).first()
+    if tenant is None:
+        return Response(error(ErrorCode.TENANT_NOT_FOUND), status=400)
+
+    # 按手机号查找用户，找不到则自动创建（手机号仅租户内唯一）
+    user, created = _get_or_create_phone_user(tenant, phone)
+
+    if user is None:
+        return Response(error(ErrorCode.USER_NOT_FOUND), status=400)
+    if user.status == 0:
+        return Response(error(ErrorCode.USER_DISABLED), status=403)
 
     user.last_login_at = timezone.now()
     user.save(update_fields=["last_login_at"])

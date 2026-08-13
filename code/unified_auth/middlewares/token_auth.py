@@ -12,6 +12,7 @@ PUBLIC_PATHS = [
     "/api/v1/auth/sms/verify",
     "/api/v1/auth/sms/login",
     "/api/v1/auth/social/login",
+    "/api/v1/auth/wechat/login",
     "/api/v1/auth/token/refresh",
 ]
 

@@ -51,7 +51,7 @@ class Command(BaseCommand):
             )
         self.stdout.write(f"Admin role: {admin_role.name} with {all_perms.count()} permissions")
 
-        if not User.objects.filter(username="admin").exists():
+        if not User.objects.filter(username="admin", tenant__slug="platform").exists():
             User.objects.create_superuser(
                 username="admin",
                 password=os.getenv("ADMIN_INIT_PASSWORD", "admin123456"),

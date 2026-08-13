@@ -18,5 +18,5 @@ class RoleAdmin(TenantFilteredAdminMixin, admin.ModelAdmin):
 
 @admin.register(AppRoleBinding)
 class AppRoleBindingAdmin(admin.ModelAdmin):
-    list_display = ("app", "permission", "created_at")
+    list_display = ("app", "role", "created_at")
     list_filter = ("app",)

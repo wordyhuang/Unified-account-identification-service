@@ -19,12 +19,12 @@ class PermissionMiddleware(MiddlewareMixin):
         method = request.method
         path_template = self._path_to_template(path)
 
-        from apps.rbac.models import AppRoleBinding, ApiPermission
+        from apps.rbac.models import AppRoleBinding
 
         has_perm = AppRoleBinding.objects.filter(
             app=app,
-            permission__method=method,
-            permission__path=path_template,
+            role__permissions__method=method,
+            role__permissions__path=path_template,
         ).exists()
 
         if not has_perm:

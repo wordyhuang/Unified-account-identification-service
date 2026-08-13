@@ -26,7 +26,7 @@ from .serializers import (
     AdminCreateRoleSerializer, AdminUpdateRoleSerializer,
     AdminBatchUserStatusSerializer, AdminBatchUserTypeSerializer, AdminBatchUserDeleteSerializer,
     AdminDepartmentSerializer, AdminDepartmentUpdateSerializer,
-    AdminAppPermissionSerializer, AdminCopyRoleSerializer,
+    AdminAppRoleSerializer, AdminCopyRoleSerializer,
     AdminUserImportSerializer, AdminImpersonateSerializer,
     SuperAdminCreateTenantSerializer, SuperAdminUpdateTenantSerializer,
     AdminTenantSmsConfigSerializer,
@@ -77,14 +77,16 @@ def _user_serialize(u):
 
 def _app_serialize(a):
     from apps.rbac.models import AppRoleBinding
-    bindings = AppRoleBinding.objects.filter(app=a)
-    permission_ids = [b.permission_id for b in bindings]
+    bindings = AppRoleBinding.objects.filter(app=a).select_related("role")
+    role_ids = [b.role_id for b in bindings]
+    roles = [{"id": b.role_id, "name": b.role.name, "code": b.role.code} for b in bindings]
     return {
         "id": a.id, "uuid": str(a.uuid), "tenant_id": a.tenant_id,
         "name": a.name, "app_key": a.app_key,
         "callback_urls": a.callback_urls,
         "default_access_user_types": a.default_access_user_types or [],
-        "permission_ids": permission_ids,
+        "role_ids": role_ids,
+        "roles": roles,
         "wechat_mp_app_id": a.wechat_mp_app_id or "",
         "wechat_mp_app_secret": "***" if a.wechat_mp_app_secret else "",
         "wechat_web_app_id": a.wechat_web_app_id or "",
@@ -642,7 +644,7 @@ def app_detail_view(request, app_id):
         return Response(error(ErrorCode.PARAM_INVALID, data=ser.errors), status=400)
 
     data = ser.validated_data
-    permission_ids = data.pop("permission_ids", None)
+    role_ids = data.pop("role_ids", None)
 
     update_fields = []
     for field, value in data.items():
@@ -656,11 +658,11 @@ def app_detail_view(request, app_id):
     if update_fields:
         app.save(update_fields=update_fields)
 
-    if permission_ids is not None:
+    if role_ids is not None:
         from apps.rbac.models import AppRoleBinding
         AppRoleBinding.objects.filter(app=app).delete()
-        for pid in permission_ids:
-            AppRoleBinding.objects.create(app=app, permission_id=pid)
+        for rid in role_ids:
+            AppRoleBinding.objects.create(app=app, role_id=rid)
 
     AuditLog.objects.create(
         tenant_id=request.tenant_id,
@@ -697,6 +699,17 @@ def app_status_view(request, app_id):
         detail={"new_status": app.status},
     )
     return Response(success(_app_serialize(app)))
+
+
+@api_view(["GET"])
+def app_secret_view(request, app_id):
+    """查看应用密钥（只读，不重新生成）"""
+    try:
+        app = Application.objects.get(id=app_id, tenant_id=request.tenant_id)
+    except Application.DoesNotExist:
+        return Response(error(ErrorCode.APP_KEY_INVALID), status=404)
+
+    return Response(success({"app_id": app.id, "app_secret": app.app_secret}))
 
 
 @api_view(["POST"])
@@ -1521,51 +1534,85 @@ def users_import_view(request):
     }))
 
 
-# ======================== 应用权限配置 ========================
+# ======================== 应用角色授权 ========================
 
 
 @api_view(["GET", "PUT"])
-def app_permissions_view(request, app_id):
+def app_roles_view(request, app_id):
     try:
         app = Application.objects.get(id=app_id, tenant_id=request.tenant_id)
     except Application.DoesNotExist:
         return Response(error(ErrorCode.APP_KEY_INVALID), status=404)
 
     if request.method == "GET":
-        bindings = AppRoleBinding.objects.filter(app=app).select_related("permission")
-        bound_permissions = [
-            {"id": b.permission_id, "code": b.permission.code, "name": b.permission.name, "description": b.permission.description or ""}
+        bindings = AppRoleBinding.objects.filter(app=app).select_related("role")
+        bound_roles = [
+            {"id": b.role_id, "name": b.role.name, "code": b.role.code}
             for b in bindings
         ]
         return Response(success({
             "app_id": app.id,
-            "permission_ids": [b["id"] for b in bound_permissions],
-            "permissions": bound_permissions,
+            "role_ids": [r["id"] for r in bound_roles],
+            "roles": bound_roles,
         }))
 
-    ser = AdminAppPermissionSerializer(data=request.data)
+    ser = AdminAppRoleSerializer(data=request.data)
     if not ser.is_valid():
         return Response(error(ErrorCode.PARAM_INVALID, data=ser.errors), status=400)
 
-    permission_ids = ser.validated_data["permission_ids"]
+    role_ids = ser.validated_data["role_ids"]
     AppRoleBinding.objects.filter(app=app).delete()
-    for pid in permission_ids:
-        AppRoleBinding.objects.create(app=app, permission_id=pid)
+    for rid in role_ids:
+        AppRoleBinding.objects.create(app=app, role_id=rid)
 
-    perm_names = list(ApiPermission.objects.filter(id__in=permission_ids).values_list("name", flat=True))
+    role_names = list(Role.objects.filter(id__in=role_ids).values_list("name", flat=True))
     AuditLog.objects.create(
         tenant_id=request.tenant_id,
         actor_id=request.user_id,
         actor_name=request.user.username,
-        action="admin.app.permissions",
+        action="admin.app.roles",
         resource_type="application",
         resource_id=app_id,
-        detail={"permission_ids": permission_ids, "permissions": perm_names},
+        detail={"role_ids": role_ids, "roles": role_names},
     )
 
     return Response(success({
         "app_id": app.id,
-        "permission_ids": permission_ids,
+        "role_ids": role_ids,
+    }))
+
+
+# ======================== 应用权限查看（只读） ========================
+
+
+@api_view(["GET"])
+def app_permissions_view(request, app_id):
+    """查看应用的所有权限（通过角色间接获得，只读）"""
+    try:
+        app = Application.objects.get(id=app_id, tenant_id=request.tenant_id)
+    except Application.DoesNotExist:
+        return Response(error(ErrorCode.APP_KEY_INVALID), status=404)
+
+    permissions = ApiPermission.objects.filter(
+        role__approlebinding__app=app
+    ).distinct().values("id", "code", "name", "method", "path", "category", "description")
+
+    perm_list = [
+        {
+            "id": p["id"],
+            "code": p["code"],
+            "name": p["name"],
+            "method": p["method"],
+            "path": p["path"],
+            "category": p["category"],
+            "description": p["description"] or "",
+        }
+        for p in permissions
+    ]
+
+    return Response(success({
+        "app_id": app.id,
+        "permissions": perm_list,
     }))
 
 
@@ -2154,13 +2201,11 @@ def admin_login_view(request):
             "is_superadmin": True,
             "tenant_id": None,
         })
-        refresh_token = generate_refresh_token()
-        from django.core.cache import cache
-        cache.set(
-            f"refresh_payload:{refresh_token}",
-            {"username": username, "is_superadmin": True, "tenant_id": None},
-            timeout=86400,
-        )
+        refresh_token = generate_refresh_token({
+            "username": username,
+            "is_superadmin": True,
+            "tenant_id": None,
+        })
         try:
             AuditLog.objects.create(
                 tenant=None,
@@ -2180,10 +2225,16 @@ def admin_login_view(request):
             "is_staff": True,
         }))
 
-    # 租户管理员登录
-    user = User.objects.filter(username=username).first()
-    if user is None:
+    # 租户管理员登录（username 仅租户内唯一，同名时无法确定归属租户）
+    users = list(User.objects.filter(username=username))
+    if not users:
         return Response(error(ErrorCode.USER_NOT_FOUND), status=404)
+    if len(users) > 1:
+        return Response(
+            error(ErrorCode.PARAM_INVALID, message="存在多个同名用户，请使用手机号登录"),
+            status=400,
+        )
+    user = users[0]
     if user.status == 0:
         return Response(error(ErrorCode.PARAM_INVALID, message="用户已禁用"), status=400)
     if not user.check_password(password):
@@ -2202,13 +2253,11 @@ def admin_login_view(request):
         "tenant_id": user.tenant_id,
         "user_type": user.user_type,
     })
-    refresh_token = generate_refresh_token()
-    from django.core.cache import cache
-    cache.set(
-        f"refresh_payload:{refresh_token}",
-        {"user_id": user.id, "tenant_id": user.tenant_id, "user_type": user.user_type},
-        timeout=86400,
-    )
+    refresh_token = generate_refresh_token({
+        "user_id": user.id,
+        "tenant_id": user.tenant_id,
+        "user_type": user.user_type,
+    })
 
     try:
         AuditLog.objects.create(
@@ -2273,14 +2322,11 @@ def user_login_test_view(request):
         "tenant_id": user.tenant_id,
         "user_type": user.user_type,
     })
-    refresh_token = generate_refresh_token()
-    
-    from django.core.cache import cache
-    cache.set(
-        f"refresh_payload:{refresh_token}",
-        {"user_id": user.id, "tenant_id": user.tenant_id, "user_type": user.user_type},
-        timeout=86400,
-    )
+    refresh_token = generate_refresh_token({
+        "user_id": user.id,
+        "tenant_id": user.tenant_id,
+        "user_type": user.user_type,
+    })
     
     from apps.tags.models import UserTagBinding
     tag_names = [b.tag.name for b in UserTagBinding.objects.filter(user=user)]

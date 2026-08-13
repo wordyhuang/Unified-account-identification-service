@@ -86,7 +86,8 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE, verbose_name="所属企业")
     user_type = models.CharField(max_length=20, choices=USER_TYPE_CHOICES, default="internal")
-    username = models.CharField(max_length=64, unique=True, verbose_name="用户名")
+    # 用户名仅租户内唯一（unique_together 见 Meta），不同租户允许重复用户名/手机号
+    username = models.CharField(max_length=64, verbose_name="用户名")
     email = models.EmailField(max_length=128, null=True, blank=True, verbose_name="邮箱")
     phone = models.CharField(max_length=20, null=True, blank=True, verbose_name="手机号")
     nickname = models.CharField(max_length=128, null=True, blank=True, verbose_name="昵称")

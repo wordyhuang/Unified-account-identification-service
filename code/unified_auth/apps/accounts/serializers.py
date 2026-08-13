@@ -30,6 +30,11 @@ class SocialLoginSerializer(serializers.Serializer):
     app_key = serializers.CharField(max_length=64, required=False, allow_null=True)
 
 
+class WechatLoginSerializer(serializers.Serializer):
+    code = serializers.CharField(max_length=512)
+    app_key = serializers.CharField(max_length=64, required=False, allow_null=True)
+
+
 class RefreshSerializer(serializers.Serializer):
     refresh_token = serializers.CharField(max_length=512)
 
@@ -68,6 +73,11 @@ class UpdateUserInfoSerializer(serializers.Serializer):
 
 class ChangePasswordSerializer(serializers.Serializer):
     old_password = serializers.CharField(max_length=256)
+    new_password = serializers.CharField(max_length=256, min_length=8)
+
+
+class PwdResetSerializer(serializers.Serializer):
+    code = serializers.CharField(max_length=10)
     new_password = serializers.CharField(max_length=256, min_length=8)
 
 
