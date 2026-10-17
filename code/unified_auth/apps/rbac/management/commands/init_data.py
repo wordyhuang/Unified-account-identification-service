@@ -14,6 +14,8 @@ PERMISSIONS = [
     {"code": "permission:check", "name": "校验权限", "description": "校验用户是否拥有指定的操作权限", "method": "POST", "path": "/api/v1/open/permissions/check", "category": "permission"},
     {"code": "user:profile:read", "name": "读取用户资料", "description": "通过用户Token读取用户的完整资料信息", "method": "GET", "path": "/api/v1/open/users/me/profile", "category": "user"},
     {"code": "user:profile:update", "name": "修改用户资料", "description": "通过用户Token更新用户的个人资料信息", "method": "PUT", "path": "/api/v1/open/users/me/profile", "category": "user"},
+    {"code": "user:profile:read_app", "name": "读取用户资料(应用级)", "description": "应用按user_id读取指定用户的完整资料信息，无需用户Token", "method": "GET", "path": "/api/v1/open/users/:id/profile", "category": "user"},
+    {"code": "user:profile:update_app", "name": "修改用户资料(应用级)", "description": "应用按user_id更新指定用户的个人资料信息，无需用户Token", "method": "PUT", "path": "/api/v1/open/users/:id/profile", "category": "user"},
     {"code": "wechat:access_token", "name": "获取微信AccessToken", "description": "获取微信小程序的接口调用凭证access_token，系统自动按AppID缓存", "method": "GET", "path": "/api/v1/open/wechat/access_token", "category": "wechat"},
     {"code": "wechat:phone", "name": "获取微信用户手机号", "description": "通过微信小程序临时code获取用户的真实手机号码", "method": "POST", "path": "/api/v1/open/wechat/phone", "category": "wechat"},
 ]

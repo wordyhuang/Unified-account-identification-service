@@ -469,3 +469,66 @@ class TestUserProfileByToken:
         data = json.loads(resp.content)
         assert data["code"] < 0
         assert resp.status_code == 400
+
+
+class TestUserProfileByApp:
+    """应用级用户资料获取/修改（AppKey 认证，按 user_id，无需用户Token）"""
+
+    def test_get_profile_success(self, api_client, app_with_all_perms, app_headers, staff_user):
+        """应用级获取用户资料 — 成功"""
+        resp = api_client.get(
+            f"/api/v1/open/users/{staff_user.id}/profile",
+            **app_headers,
+        )
+        data = json.loads(resp.content)
+        assert data["code"] == 0
+        assert data["data"]["user_id"] == staff_user.id
+        assert data["data"]["username"] == staff_user.username
+
+    def test_get_profile_not_found(self, api_client, app_with_all_perms, app_headers):
+        """应用级获取用户资料 — 用户不存在/跨租户"""
+        resp = api_client.get("/api/v1/open/users/999999/profile", **app_headers)
+        data = json.loads(resp.content)
+        assert data["code"] < 0
+        assert resp.status_code == 404
+
+    def test_update_profile_success(self, api_client, app_with_all_perms, app_headers, staff_user):
+        """应用级修改用户资料 — 成功"""
+        resp = api_client.put(
+            f"/api/v1/open/users/{staff_user.id}/profile",
+            {"real_name": "李四", "gender": "female", "bio": "应用级修改", "job_title": "工程师"},
+            content_type="application/json",
+            **app_headers,
+        )
+        data = json.loads(resp.content)
+        assert data["code"] == 0
+        assert data["data"]["profile_id"] > 0
+
+        from apps.accounts.models import UserProfile
+        profile = UserProfile.objects.get(user=staff_user)
+        assert profile.real_name == "李四"
+        assert profile.gender == "female"
+        assert profile.bio == "应用级修改"
+        assert profile.job_title == "工程师"
+
+    def test_update_profile_no_permission(self, api_client, app, app_headers, staff_user):
+        """应用级修改用户资料 — 应用无权限"""
+        resp = api_client.put(
+            f"/api/v1/open/users/{staff_user.id}/profile",
+            {"real_name": "李四"},
+            content_type="application/json",
+            **app_headers,
+        )
+        assert resp.status_code in (401, 403)
+
+    def test_update_profile_invalid_param(self, api_client, app_with_all_perms, app_headers, staff_user):
+        """应用级修改用户资料 — 非法参数"""
+        resp = api_client.put(
+            f"/api/v1/open/users/{staff_user.id}/profile",
+            {"gender": "unknown"},
+            content_type="application/json",
+            **app_headers,
+        )
+        data = json.loads(resp.content)
+        assert data["code"] < 0
+        assert resp.status_code == 400

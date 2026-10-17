@@ -67,6 +67,24 @@ unified_auth/
 
 ***
 
+> **📖 给开发者 / AI Agent 的强指令（动手改代码前必读）**
+>
+> 当你要为这个项目**写代码、改 bug、加功能**时，请**严格遵守**以下顺序：
+>
+> 1. **不要**上来就翻代码。先打开主路由文档 [`document/archive/DEVELOPMENT_ROUTING_GUIDE_v1.0.md`](document/archive/DEVELOPMENT_ROUTING_GUIDE_v1.0.md)。
+> 2. 在主路由文档的"任务类型索引"中，根据你要做的事（需求理解 / 核心模块 / 微信集成 / 开放API回调 / 超管后台 / 测试）跳到对应的设计文档：
+>    - 需求评审、业务边界不清 → `document/统一账号识别服务-需求规格说明书_v1.0.md`
+>    - 搭项目骨架、模块划分、表结构、认证中间件 → `document/统一账号识别服务-实现计划_v1.0.md`
+>    - 企业微信扫码登录 / 手机号获取 → `document/企业微信登录集成设计文档_v1.1.md`
+>    - 开放 API 回调 / Webhook → `document/回调模块实施计划（独立模块）_v1.0.md`
+>    - 超级管理员后台 → `document/超级管理员后台与全模块完整设计文档_v1.5.md`
+>    - 写测试 / 压测 → `document/统一账号识别服务-系统测试计划_v1.0.md`
+> 3. **不要**直接凭 README 的目录结构或代码注释就动手，必须先进入对应设计文档理解业务边界与数据模型。
+>
+> 另外：如果你只是要**对接 API**（调用接口、查入参出参），走另一条路由：[`document/archive/AI_API_ROUTING_GUIDE_v1.0.md`](document/archive/AI_API_ROUTING_GUIDE_v1.0.md)。
+
+***
+
 ## 一、快速开始（开发环境）
 
 ### 1. 前置条件
@@ -550,21 +568,39 @@ python manage.py test
 
 ## 五、API 概览
 
+> **🤖 给 AI Agent 的强指令（对接本服务前必读）**
+>
+> 如果你是 AI Agent（包括但不限于 Cursor / Trae / 各类 Coding Agent）即将对接本服务，请**严格遵守**以下顺序：
+>
+> 1. **先打开主路由文档** [`document/archive/AI_API_ROUTING_GUIDE_v1.0.md`](document/archive/AI_API_ROUTING_GUIDE_v1.0.md)。
+> 2. 在主路由文档的"主分类索引"中，根据调用者身份 + URL 前缀，跳到对应的子路由文档：
+>    - 终端用户登录/资料 → `document/apis/API_01_AUTH_v1.0.md`
+>    - 外部应用签名对接 → `document/apis/API_02_OPEN_v1.0.md`
+>    - 企业管理后台 → `document/apis/API_03_ADMIN_v1.0.md`
+>    - 平台超级管理员 → `document/apis/API_04_SUPERADMIN_v1.0.md`
+> 3. **不要**直接凭本 README 的概览表回答接口细节，必须进入子文档查看入参、出参、错误码与示例。
+>
+> 本节概览表仅作为人类读者的快速索引；AI 对接的权威入口是主路由文档。
+
 ### 5.1 客户端认证 API `/api/v1/auth/`
 
-| 方法    | 路径                   | 功能       | 认证方式          |
-| ----- | -------------------- | -------- | ------------- |
-| POST  | `/login`             | 密码登录     | 无             |
-| POST  | `/sms/send`          | 发送短信验证码  | 无             |
-| POST  | `/sms/login`         | 短信验证码登录  | 无             |
-| POST  | `/social/login`      | 社交登录     | 无             |
-| POST  | `/refresh`           | 刷新 Token | Refresh Token |
-| POST  | `/logout`            | 登出       | Access Token  |
-| GET   | `/userinfo`          | 获取当前用户信息 | Access Token  |
-| PUT   | `/userinfo`          | 修改用户信息   | Access Token  |
-| PATCH | `/userinfo/password` | 修改密码     | Access Token  |
-| GET   | `/profile`           | 获取用户资料   | Access Token  |
-| PUT   | `/profile/update`    | 更新用户资料   | Access Token  |
+| 方法    | 路径                     | 功能                 | 认证方式          |
+| ----- | ---------------------- | ------------------ | ------------- |
+| POST  | `/login`               | 密码登录              | 无             |
+| POST  | `/sms/send`            | 发送短信验证码           | 无             |
+| POST  | `/sms/verify`          | 校验短信验证码           | 无             |
+| POST  | `/sms/login`           | 短信验证码登录           | 无             |
+| POST  | `/sms/send/pwd`        | 发送改密验证码           | Access Token  |
+| POST  | `/social/login`        | 社交登录              | 无             |
+| POST  | `/wechat/login`        | 微信小程序登录           | 无             |
+| POST  | `/token/refresh`       | 刷新 Token          | Refresh Token |
+| POST  | `/logout`              | 登出                | Access Token  |
+| GET   | `/me`                  | 获取当前用户信息          | Access Token  |
+| PUT   | `/me`                  | 修改用户信息            | Access Token  |
+| PATCH | `/me/password`         | 修改密码（原密码校验）       | Access Token  |
+| POST  | `/me/password/reset`   | 短信验证码重置密码（无需原密码）  | Access Token  |
+| GET   | `/me/profile`          | 获取用户资料            | Access Token  |
+| PUT   | `/me/profile`          | 更新用户资料            | Access Token  |
 
 ### 5.2 开放 API `/api/v1/open/`
 

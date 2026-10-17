@@ -1,0 +1,162 @@
+{% extends "admin_panel/base.html" %}
+{% load static %}
+
+{% block title %}部门管理{% endblock %}
+
+{% block head %}
+<style>
+  .page-card { margin-bottom: 12px; }
+  .page-card:last-child { margin-bottom: 0; }
+  .dept-toolbar { display: flex; justify-content: flex-end; margin-bottom: 12px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<wd-panel shadow="never" class="page-card">
+  <div class="dept-toolbar">
+    <el-button type="primary" @click="openCreate(null)">新增部门</el-button>
+    <el-button @click="loadDepartments">刷新</el-button>
+  </div>
+  <el-table v-loading="loading" :data="deptTree" row-key="id" default-expand-all border>
+    <el-table-column prop="name" label="部门名称" min-width="200" ></el-table-column>
+    <el-table-column prop="code" label="编码" min-width="120">
+      <template #default="{ row }">[[ row.code || '-' ]]</template>
+    </el-table-column>
+    <el-table-column prop="sort_order" label="排序" width="80" align="center" ></el-table-column>
+    <el-table-column label="创建时间" width="160">
+      <template #default="{ row }">[[ fmtTime(row.created_at) ]]</template>
+    </el-table-column>
+    <el-table-column label="操作" width="220" align="center" fixed="right">
+      <template #default="{ row }">
+        <el-button-group>
+          <el-button size="small" type="primary" plain @click="openCreate(row)">新增子部门</el-button>
+          <el-button size="small" type="primary" plain @click="openEdit(row)">编辑</el-button>
+          <el-button size="small" type="danger" plain @click="onDelete(row)">删除</el-button>
+        </el-button-group>
+      </template>
+    </el-table-column>
+  </el-table>
+</wd-panel>
+
+<!-- 新增 / 编辑部门 -->
+<el-drawer v-model="drawerVisible" :title="formMode === 'create' ? '新增部门' : '编辑部门'" size="440px" destroy-on-close>
+  <wd-data-form v-if="drawerVisible" :mode="formMode"
+    :api="formMode === 'edit' ? '/api/v1/admin/departments/' + formDeptId : ''"
+    :submit-api="formMode === 'edit' ? '/api/v1/admin/departments/' + formDeptId : '/api/v1/admin/departments'"
+    :submit-method="formMode === 'edit' ? 'put' : 'post'"
+    submit-keys="name,code,parent_id,sort_order"
+    :data="{ parent_id: defaultParentId, sort_order: 0 }"
+    :active="true" :rules="formRules"
+    @submit-success="onSaved" @close="drawerVisible = false">
+    <template #default="{ model }">
+      <el-form-item label="部门名称" prop="name">
+        <el-input v-model="model.name" clearable ></el-input>
+      </el-form-item>
+      <el-form-item label="编码" prop="code">
+        <el-input v-model="model.code" placeholder="选填" clearable ></el-input>
+      </el-form-item>
+      <el-form-item label="上级部门" prop="parent_id">
+        <wd-select v-model="model.parent_id" placeholder="留空为顶级部门" clearable style="width: 100%"
+          @change="function (v) { if (!v) model.parent_id = null; }"
+          api="/api/v1/admin/departments" text-prop="name" value-prop="id" ></wd-select>
+      </el-form-item>
+      <el-form-item label="排序" prop="sort_order">
+        <el-input-number v-model="model.sort_order" :min="0" :max="9999" ></el-input-number>
+      </el-form-item>
+    </template>
+  </wd-data-form>
+</el-drawer>
+{% endblock %}
+
+{% block script %}
+<script>
+AdminUI.start('/admin-panel/departments/', {
+  data: function () {
+    return {
+      deptList: [],
+      loading: false,
+      drawerVisible: false,
+      formMode: 'create',
+      formDeptId: null,
+      defaultParentId: null,
+      formRules: {
+        name: [{ required: true, message: '请输入部门名称', trigger: 'blur' }]
+      }
+    };
+  },
+  computed: {
+    deptTree: function () {
+      var map = {};
+      var roots = [];
+      this.deptList.forEach(function (d) {
+        map[d.id] = Object.assign({}, d, { children: [] });
+      });
+      Object.keys(map).forEach(function (id) {
+        var node = map[id];
+        if (node.parent_id && map[node.parent_id]) {
+          map[node.parent_id].children.push(node);
+        } else {
+          roots.push(node);
+        }
+      });
+      var clean = function (list) {
+        list.forEach(function (n) {
+          if (n.children.length) clean(n.children);
+          else delete n.children;
+        });
+      };
+      clean(roots);
+      return roots;
+    }
+  },
+  mounted: function () {
+    this.loadDepartments();
+  },
+  methods: {
+    fmtTime: AdminUI.fmtTime,
+
+    loadDepartments: function () {
+      var self = this;
+      this.loading = true;
+      WorkDesktop.request.get('/api/v1/admin/departments').then(function (res) {
+        if (res && res.success) self.deptList = res.data.departments || [];
+        else AdminUI.toastFail(res, '加载部门失败');
+      }).finally(function () {
+        self.loading = false;
+      });
+    },
+
+    openCreate: function (parent) {
+      this.formMode = 'create';
+      this.formDeptId = null;
+      this.defaultParentId = parent ? parent.id : null;
+      this.drawerVisible = true;
+    },
+    openEdit: function (row) {
+      this.formMode = 'edit';
+      this.formDeptId = row.id;
+      this.drawerVisible = true;
+    },
+    onSaved: function () {
+      this.drawerVisible = false;
+      this.loadDepartments();
+    },
+    onDelete: function (row) {
+      var self = this;
+      ElementPlus.ElMessageBox.confirm('确定删除部门「' + row.name + '」吗？部门下的用户将被移出该部门。', '删除部门', {
+        type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消'
+      }).then(function () {
+        return WorkDesktop.request.delete('/api/v1/admin/departments/' + row.id);
+      }).then(function (res) {
+        if (res && res.success) {
+          ElementPlus.ElMessage.success('已删除');
+          self.loadDepartments();
+        } else {
+          AdminUI.toastFail(res, '删除失败');
+        }
+      }).catch(function () {});
+    }
+  }
+});
+</script>
+{% endblock %}

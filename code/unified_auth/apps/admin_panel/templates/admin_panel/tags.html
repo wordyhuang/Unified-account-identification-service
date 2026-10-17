@@ -1,0 +1,125 @@
+{% extends "admin_panel/base.html" %}
+{% load static %}
+
+{% block title %}标签管理{% endblock %}
+
+{% block head %}
+<style>
+  .page-card { margin-bottom: 12px; }
+  .page-card:last-child { margin-bottom: 0; }
+  .color-dot { display: inline-block; width: 14px; height: 14px; border-radius: 3px; vertical-align: middle; margin-right: 6px; border: 1px solid var(--el-border-color); }
+</style>
+{% endblock %}
+
+{% block content %}
+<wd-panel shadow="never" class="page-card">
+  <wd-data-grid ref="gridRef" api="/api/v1/admin/tags" api-method="get" active row-key="id"
+    :tools="{ add: true, refresh: true }"
+    @add="openCreate">
+    <el-table-column label="标签" min-width="160">
+      <template #default="{ row }">
+        <el-tag :color="row.color" size="small" effect="dark" style="border-color: transparent">[[ row.name ]]</el-tag>
+      </template>
+    </el-table-column>
+    <el-table-column label="颜色" width="130">
+      <template #default="{ row }">
+        <span class="color-dot" :style="{ backgroundColor: row.color }"></span>
+        <span style="font-family: monospace">[[ row.color ]]</span>
+      </template>
+    </el-table-column>
+    <el-table-column prop="description" label="描述" min-width="200" show-overflow-tooltip>
+      <template #default="{ row }">[[ row.description || '-' ]]</template>
+    </el-table-column>
+    <el-table-column prop="sort_order" label="排序" width="80" align="center" ></el-table-column>
+    <el-table-column label="创建时间" width="150">
+      <template #default="{ row }">[[ fmtTime(row.created_at) ]]</template>
+    </el-table-column>
+    <el-table-column label="操作" width="130" align="center" fixed="right">
+      <template #default="{ row }">
+        <el-button-group>
+          <el-button size="small" type="primary" plain @click="onRowAction({ command: 'edit', row: row })">编辑</el-button>
+          <el-button size="small" type="danger" plain @click="onRowAction({ command: 'delete', row: row })">删除</el-button>
+        </el-button-group>
+      </template>
+    </el-table-column>
+  </wd-data-grid>
+</wd-panel>
+
+<!-- 新增 / 编辑标签 -->
+<el-drawer v-model="drawerVisible" :title="formMode === 'create' ? '新增标签' : '编辑标签'" size="380px" destroy-on-close>
+  <wd-data-form v-if="drawerVisible" :mode="formMode"
+    :submit-api="formMode === 'edit' ? '/api/v1/admin/tags/' + formTagId : '/api/v1/admin/tags/create'"
+    :submit-method="formMode === 'edit' ? 'put' : 'post'"
+    submit-keys="name,color,description"
+    :data="formMode === 'edit' && editRow ? { name: editRow.name, color: editRow.color, description: editRow.description } : { color: '#1890ff', description: '' }"
+    :active="true" :rules="formRules" head-refresh-datagrid
+    @close="drawerVisible = false">
+    <template #default="{ model }">
+      <el-form-item label="标签名称" prop="name">
+        <el-input v-model="model.name" clearable ></el-input>
+      </el-form-item>
+      <el-form-item label="颜色" prop="color">
+        <el-color-picker v-model="model.color" ></el-color-picker>
+        <span style="margin-left: 8px; font-family: monospace">[[ model.color ]]</span>
+      </el-form-item>
+      <el-form-item label="描述" prop="description">
+        <el-input v-model="model.description" type="textarea" :rows="3" placeholder="选填" ></el-input>
+      </el-form-item>
+    </template>
+  </wd-data-form>
+</el-drawer>
+{% endblock %}
+
+{% block script %}
+<script>
+AdminUI.start('/admin-panel/tags/', {
+  data: function () {
+    return {
+      drawerVisible: false,
+      formMode: 'create',
+      formTagId: null,
+      editRow: null,
+      formRules: {
+        name: [{ required: true, message: '请输入标签名称', trigger: 'blur' }]
+      }
+    };
+  },
+  methods: {
+    fmtTime: AdminUI.fmtTime,
+
+    openCreate: function () {
+      this.formMode = 'create';
+      this.formTagId = null;
+      this.editRow = null;
+      this.drawerVisible = true;
+    },
+    onRowAction: function (evt) {
+      var row = evt.row;
+      if (evt.command === 'edit') {
+        this.formMode = 'edit';
+        this.formTagId = row.id;
+        this.editRow = row;
+        this.drawerVisible = true;
+      } else if (evt.command === 'delete') {
+        this.onDelete(row);
+      }
+    },
+    onDelete: function (row) {
+      var self = this;
+      ElementPlus.ElMessageBox.confirm('确定删除标签「' + row.name + '」吗？将同时解除所有用户的该标签绑定。', '删除标签', {
+        type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消'
+      }).then(function () {
+        return WorkDesktop.request.delete('/api/v1/admin/tags/' + row.id + '/delete');
+      }).then(function (res) {
+        if (res && res.success) {
+          ElementPlus.ElMessage.success('已删除');
+          self.$refs.gridRef.refresh();
+        } else {
+          AdminUI.toastFail(res, '删除失败');
+        }
+      }).catch(function () {});
+    }
+  }
+});
+</script>
+{% endblock %}

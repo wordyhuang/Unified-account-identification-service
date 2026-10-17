@@ -1,0 +1,52 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}管理后台{% endblock %} · 统一账号识别服务</title>
+  <link rel="icon" href="{% static 'admin_panel/favicon.svg' %}">
+  <link rel="stylesheet" href="{% static 'admin_panel/vendor/element-plus/index.css' %}">
+  <link rel="stylesheet" href="{% static 'admin_panel/vendor/workdesktop-ai/style.css' %}">
+  <style>
+    html, body { height: 100%; margin: 0; padding: 0; }
+    #app { height: 100vh; }
+    [v-cloak] { display: none; }
+    .impersonate-tip { padding: 4px 12px; }
+    .impersonate-tip .el-button { margin-left: 12px; }
+  </style>
+  {% block head %}{% endblock %}
+</head>
+<body>
+  <div id="app">
+    <wd-station v-cloak
+      title="统一账号识别服务"
+      logo="Key"
+      :menu-groups="menuGroups"
+      :active-menu="activeMenu"
+      v-model:collapsed="stationCollapsed"
+      router-mode="html"
+      content-mode="page"
+      :user-name="currentUser.nickname || currentUser.username"
+      :toolbar-config="{ refresh: 'none', settings: 'none' }"
+      copyright="统一账号识别服务 · 管理后台"
+      @menu-select="onMenuSelect"
+      @logout="onLogout">
+      <template #header-center>
+        <el-alert v-if="currentUser.impersonated" type="warning" :closable="false" class="impersonate-tip">
+          <span>正在模拟租户 <b>[[ currentUser.tenant_name || ('#' + currentUser.tenant_id) ]]</b></span>
+          <el-button size="small" type="warning" plain @click="onExitImpersonate">退出模拟</el-button>
+        </el-alert>
+      </template>
+      {% block content %}{% endblock %}
+    </wd-station>
+  </div>
+  <script src="{% static 'admin_panel/vendor/vue/vue.global.prod.js' %}"></script>
+  <script src="{% static 'admin_panel/vendor/element-plus/index.full.min.js' %}"></script>
+  <script src="{% static 'admin_panel/vendor/element-plus/zh-cn.min.js' %}"></script>
+  <script src="{% static 'admin_panel/vendor/icons/index.iife.min.js' %}"></script>
+  <script src="{% static 'admin_panel/js/common.js' %}"></script>
+  <script src="{% static 'admin_panel/vendor/workdesktop-ai/index.umd.js' %}"></script>
+  {% block script %}{% endblock %}
+</body>
+</html>

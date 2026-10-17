@@ -1,0 +1,90 @@
+{% extends "admin_panel/base.html" %}
+{% load static %}
+
+{% block title %}短信配置{% endblock %}
+
+{% block head %}
+<style>
+  .page-card { margin-bottom: 12px; }
+  .page-card:last-child { margin-bottom: 0; }
+  .sms-form-card { max-width: 640px; }
+  .test-row { display: flex; gap: 8px; }
+  .test-row .el-input { flex: 1; }
+</style>
+{% endblock %}
+
+{% block content %}
+<wd-panel shadow="never" class="page-card sms-form-card" title="短信服务配置">
+  <wd-data-form mode="edit" api="/api/v1/admin/tenant-sms-config"
+    submit-api="/api/v1/admin/tenant-sms-config" submit-method="put"
+    submit-keys="sms_provider,sms_access_key_id,sms_access_key_secret,sms_sign_name,sms_template_code"
+    :active="true" label-width="110px"
+    @submit-success="onSaved">
+    <template #default="{ model }">
+      <el-form-item label="服务商" prop="sms_provider">
+        <el-radio-group v-model="model.sms_provider">
+          <el-radio value="">未配置</el-radio>
+          <el-radio value="mock">模拟发送</el-radio>
+          <el-radio value="aliyun">阿里云短信</el-radio>
+        </el-radio-group>
+      </el-form-item>
+      <template v-if="model.sms_provider === 'aliyun'">
+        <el-form-item label="AccessKey ID" prop="sms_access_key_id">
+          <el-input v-model="model.sms_access_key_id" clearable ></el-input>
+        </el-form-item>
+        <el-form-item label="AccessKey Secret" prop="sms_access_key_secret">
+          <el-input v-model="model.sms_access_key_secret" placeholder="*** 表示保持不变" clearable ></el-input>
+        </el-form-item>
+        <el-form-item label="短信签名" prop="sms_sign_name">
+          <el-input v-model="model.sms_sign_name" clearable ></el-input>
+        </el-form-item>
+        <el-form-item label="模板编码" prop="sms_template_code">
+          <el-input v-model="model.sms_template_code" clearable ></el-input>
+        </el-form-item>
+      </template>
+      <el-alert v-if="model.sms_provider === 'mock'" type="info" :closable="false"
+        title="模拟发送模式下验证码将直接返回在接口响应中，仅用于开发调试" ></el-alert>
+    </template>
+  </wd-data-form>
+</wd-panel>
+
+<wd-panel shadow="never" class="page-card sms-form-card" title="发送测试短信">
+  <div class="test-row">
+    <el-input v-model="testPhone" placeholder="接收测试短信的手机号" clearable maxlength="11" ></el-input>
+    <el-button type="primary" :loading="testSending" :disabled="!/^1\d{10}$/.test(testPhone)" @click="onSendTest">发送测试</el-button>
+  </div>
+</wd-panel>
+{% endblock %}
+
+{% block script %}
+<script>
+AdminUI.start('/admin-panel/sms-config/', {
+  data: function () {
+    return {
+      testPhone: '',
+      testSending: false
+    };
+  },
+  methods: {
+    onSaved: function () {
+      ElementPlus.ElMessage.success('短信配置已保存');
+    },
+    onSendTest: function () {
+      var self = this;
+      this.testSending = true;
+      WorkDesktop.request.post('/api/v1/admin/tenant-sms-config/test', {
+        phone: this.testPhone
+      }).then(function (res) {
+        if (res && res.success) {
+          ElementPlus.ElMessage.success('发送成功：' + (res.data.message || 'ok'));
+        } else {
+          AdminUI.toastFail(res, '发送失败');
+        }
+      }).finally(function () {
+        self.testSending = false;
+      });
+    }
+  }
+});
+</script>
+{% endblock %}

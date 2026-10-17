@@ -1,0 +1,147 @@
+{% extends "admin_panel/base.html" %}
+{% load static %}
+
+{% block title %}租户管理{% endblock %}
+
+{% block head %}
+<style>
+  .page-card { margin-bottom: 12px; }
+  .page-card:last-child { margin-bottom: 0; }
+</style>
+{% endblock %}
+
+{% block content %}
+<wd-panel shadow="never" class="page-card">
+  <wd-search-panel head-refresh-datagrid="true" :default-expand="true" label-width="70px">
+    <template #default="{ model }">
+      <wd-search-item label="关键词" prop="search">
+        <el-input v-model="model.search" placeholder="租户名称 / Slug" clearable style="width: 200px" ></el-input>
+      </wd-search-item>
+      <wd-search-item label="状态" prop="status">
+        <wd-select v-model="model.status" placeholder="全部" clearable style="width: 120px"
+          :data-source="[{ text: '正常', value: 'true' }, { text: '停用', value: 'false' }]" ></wd-select>
+      </wd-search-item>
+    </template>
+  </wd-search-panel>
+</wd-panel>
+
+<wd-panel shadow="never" class="page-card">
+  <wd-data-grid ref="gridRef" api="/api/v1/superadmin/tenants" api-method="get" active
+    row-key="id" :tools="{ add: true, refresh: true }"
+    @add="openCreate">
+    <el-table-column prop="name" label="租户名称" min-width="140" show-overflow-tooltip ></el-table-column>
+    <el-table-column prop="slug" label="Slug" min-width="120" show-overflow-tooltip>
+      <template #default="{ row }"><code>[[ row.slug ]]</code></template>
+    </el-table-column>
+    <el-table-column label="状态" width="80" align="center">
+      <template #default="{ row }">
+        <wd-switch v-model="row.status" :api="'/api/v1/superadmin/tenants/' + row.id"
+          api-method="put" :active-value="true" :inactive-value="false" ></wd-switch>
+      </template>
+    </el-table-column>
+    <el-table-column label="创建时间" width="150">
+      <template #default="{ row }">[[ fmtTime(row.created_at) ]]</template>
+    </el-table-column>
+    <el-table-column label="更新时间" width="150">
+      <template #default="{ row }">[[ fmtTime(row.updated_at) ]]</template>
+    </el-table-column>
+    <el-table-column label="操作" width="190" align="center" fixed="right">
+      <template #default="{ row }">
+        <el-button-group>
+          <el-button size="small" type="primary" plain @click="onRowAction({ command: 'edit', row: row })">编辑</el-button>
+          <el-button size="small" type="warning" plain @click="onRowAction({ command: 'impersonate', row: row })">模拟登录</el-button>
+          <el-button size="small" type="danger" plain @click="onRowAction({ command: 'delete', row: row })">删除</el-button>
+        </el-button-group>
+      </template>
+    </el-table-column>
+  </wd-data-grid>
+</wd-panel>
+
+<!-- 新增 / 编辑租户 -->
+<el-drawer v-model="drawerVisible" :title="formMode === 'create' ? '新增租户' : '编辑租户'" size="420px" destroy-on-close>
+  <wd-data-form v-if="drawerVisible" :mode="formMode"
+    :api="formMode === 'edit' ? '/api/v1/superadmin/tenants/' + formTenantId : ''"
+    :submit-api="formMode === 'edit' ? '/api/v1/superadmin/tenants/' + formTenantId : '/api/v1/superadmin/tenants'"
+    :submit-method="formMode === 'edit' ? 'put' : 'post'"
+    :submit-keys="formMode === 'edit' ? 'name,slug,status' : 'name,slug'"
+    :active="true" :rules="formRules" head-refresh-datagrid
+    @submit-success="drawerVisible = false" @close="drawerVisible = false">
+    <template #default="{ model }">
+      <el-form-item label="租户名称" prop="name">
+        <el-input v-model="model.name" maxlength="128" clearable ></el-input>
+      </el-form-item>
+      <el-form-item label="Slug" prop="slug">
+        <el-input v-model="model.slug" maxlength="64" placeholder="全局唯一标识，字母/数字/下划线/连字符" clearable ></el-input>
+      </el-form-item>
+      <el-form-item v-if="formMode === 'edit'" label="状态" prop="status">
+        <el-switch v-model="model.status" active-text="正常" inactive-text="停用" ></el-switch>
+      </el-form-item>
+    </template>
+  </wd-data-form>
+</el-drawer>
+{% endblock %}
+
+{% block script %}
+<script>
+AdminUI.start('/admin-panel/superadmin/tenants/', {
+  data: function () {
+    return {
+      drawerVisible: false,
+      formMode: 'create',
+      formTenantId: null,
+      formRules: {
+        name: [{ required: true, message: '请输入租户名称', trigger: 'blur' }],
+        slug: [
+          { required: true, message: '请输入 Slug', trigger: 'blur' },
+          { pattern: /^[a-zA-Z0-9_-]+$/, message: '仅支持字母、数字、下划线、连字符', trigger: 'blur' }
+        ]
+      }
+    };
+  },
+  methods: {
+    fmtTime: AdminUI.fmtTime,
+    openCreate: function () {
+      this.formMode = 'create';
+      this.formTenantId = null;
+      this.drawerVisible = true;
+    },
+    onRowAction: function (e) {
+      var row = e.row || e;
+      var cmd = e.command || '';
+      if (cmd === 'edit') return this.openEdit(row);
+      if (cmd === 'impersonate') return this.onImpersonate(row);
+      if (cmd === 'delete') return this.onDelete(row);
+    },
+    openEdit: function (row) {
+      this.formMode = 'edit';
+      this.formTenantId = row.id;
+      this.drawerVisible = true;
+    },
+    onImpersonate: function (row) {
+      ElementPlus.ElMessageBox.confirm(
+        '将以租户「' + row.name + '」的管理员身份进入租户后台，确定吗？', '模拟登录',
+        { type: 'warning', confirmButtonText: '进入', cancelButtonText: '取消' }
+      ).then(function () {
+        return AdminUI.impersonate(row.id);
+      }).then(function (res) {
+        if (res && !res.success) AdminUI.toastFail(res, '模拟登录失败');
+      }).catch(function () {});
+    },
+    onDelete: function (row) {
+      var self = this;
+      ElementPlus.ElMessageBox.confirm(
+        '删除租户「' + row.name + '」将同时删除其下所有用户、应用与数据，且不可恢复。确定删除吗？', '删除租户',
+        { type: 'error', confirmButtonText: '删除', cancelButtonText: '取消' }
+      ).then(function () {
+        return WorkDesktop.request.delete('/api/v1/superadmin/tenants/' + row.id);
+      }).then(function (res) {
+        if (!res) return;
+        if (AdminUI.toastFail(res, '删除失败')) return;
+        ElementPlus.ElMessage.success('已删除');
+        self.$refs.gridRef.refresh();
+      }).catch(function () {});
+    }
+  }
+});
+</script>
+{% endblock %}

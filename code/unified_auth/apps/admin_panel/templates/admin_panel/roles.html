@@ -1,0 +1,226 @@
+{% extends "admin_panel/base.html" %}
+{% load static %}
+
+{% block title %}角色管理{% endblock %}
+
+{% block head %}
+<style>
+  .page-card { margin-bottom: 12px; }
+  .page-card:last-child { margin-bottom: 0; }
+  .perm-group { border: 1px solid var(--el-border-color-lighter); border-radius: 4px; padding: 8px 12px; margin-bottom: 8px; }
+  .perm-group-title { font-weight: 600; margin-bottom: 4px; display: flex; align-items: center; justify-content: space-between; }
+  .perm-expand { padding: 4px 16px; }
+  .perm-expand .el-tag { margin: 2px 6px 2px 0; }
+</style>
+{% endblock %}
+
+{% block content %}
+<wd-panel shadow="never" class="page-card">
+  <wd-data-grid ref="gridRef" api="/api/v1/admin/roles" api-method="get" active row-key="id"
+    :tools="{ add: true, refresh: true }"
+    @add="openCreate">
+    <el-table-column type="expand">
+      <template #default="{ row }">
+        <div class="perm-expand">
+          <template v-if="row.permissions && row.permissions.length">
+            <el-tag v-for="p in row.permissions" :key="p.id" size="small" effect="plain"
+              :title="p.method + ' ' + p.path">[[ p.name ]]</el-tag>
+          </template>
+          <span v-else style="color: var(--el-text-color-secondary)">未分配权限</span>
+        </div>
+      </template>
+    </el-table-column>
+    <el-table-column prop="name" label="角色名称" min-width="140" show-overflow-tooltip ></el-table-column>
+    <el-table-column prop="code" label="角色编码" min-width="140" show-overflow-tooltip>
+      <template #default="{ row }"><span style="font-family: monospace">[[ row.code ]]</span></template>
+    </el-table-column>
+    <el-table-column label="权限数" width="90" align="center">
+      <template #default="{ row }">[[ row.permissions ? row.permissions.length : 0 ]]</template>
+    </el-table-column>
+    <el-table-column label="创建时间" width="150">
+      <template #default="{ row }">[[ fmtTime(row.created_at) ]]</template>
+    </el-table-column>
+    <el-table-column label="操作" width="130" align="center" fixed="right">
+      <template #default="{ row }">
+        <el-button-group>
+          <el-button size="small" type="primary" plain @click="onRowAction({ command: 'edit', row: row })">编辑</el-button>
+          <el-button size="small" type="primary" plain @click="onRowAction({ command: 'copy', row: row })">复制</el-button>
+        </el-button-group>
+      </template>
+    </el-table-column>
+  </wd-data-grid>
+</wd-panel>
+
+<!-- 新增 / 编辑角色 -->
+<el-drawer v-model="drawerVisible" :title="formMode === 'create' ? '新增角色' : '编辑角色'" size="560px" destroy-on-close>
+  <wd-data-form v-if="drawerVisible" :mode="formMode"
+    :api="formMode === 'edit' ? '/api/v1/admin/roles/' + formRoleId : ''"
+    :submit-api="formMode === 'edit' ? '/api/v1/admin/roles/' + formRoleId : '/api/v1/admin/roles'"
+    :submit-method="formMode === 'edit' ? 'put' : 'post'"
+    :submit-keys="formMode === 'edit' ? 'name,permission_ids' : 'name,code,permission_ids'"
+    :data="{ permission_ids: [] }"
+    :active="true" :rules="formRules" head-refresh-datagrid
+    @close="drawerVisible = false">
+    <template #default="{ model }">
+      <el-form-item label="角色名称" prop="name">
+        <el-input v-model="model.name" clearable ></el-input>
+      </el-form-item>
+      <el-form-item v-if="formMode === 'create'" label="角色编码" prop="code">
+        <el-input v-model="model.code" placeholder="唯一编码，创建后不可修改" clearable ></el-input>
+      </el-form-item>
+      <el-form-item label="接口权限" prop="permission_ids">
+        <div v-loading="permLoading" style="width: 100%">
+          <div v-for="group in permGroups" :key="group.category" class="perm-group">
+            <div class="perm-group-title">
+              <span>[[ group.category || '未分类' ]]（[[ group.items.length ]]）</span>
+              <el-checkbox size="small" :model-value="isGroupChecked(group, model.permission_ids)"
+                :indeterminate="isGroupIndeterminate(group, model.permission_ids)"
+                @change="function (val) { toggleGroup(group, val, model.permission_ids); }">全选</el-checkbox>
+            </div>
+            <el-checkbox-group v-model="model.permission_ids">
+              <el-checkbox v-for="p in group.items" :key="p.id" :value="p.id"
+                :title="p.method + ' ' + p.path">[[ p.name ]]</el-checkbox>
+            </el-checkbox-group>
+          </div>
+          <el-empty v-if="!permLoading && !permGroups.length" description="暂无权限数据" :image-size="60" ></el-empty>
+        </div>
+      </el-form-item>
+    </template>
+  </wd-data-form>
+</el-drawer>
+
+<!-- 复制角色 -->
+<el-dialog v-model="copyVisible" :title="'复制角色 - ' + (copySource ? copySource.name : '')" width="440px" destroy-on-close>
+  <el-form label-width="80px">
+    <el-form-item label="新名称" required>
+      <el-input v-model="copyName" placeholder="新角色名称" clearable ></el-input>
+    </el-form-item>
+    <el-form-item label="新编码" required>
+      <el-input v-model="copyCode" placeholder="唯一编码" clearable ></el-input>
+    </el-form-item>
+  </el-form>
+  <el-alert type="info" :closable="false" title="将复制源角色的全部权限到新角色" ></el-alert>
+  <template #footer>
+    <el-button @click="copyVisible = false">取消</el-button>
+    <el-button type="primary" :loading="copySaving" :disabled="!copyName.trim() || !copyCode.trim()" @click="onCopySave">确定</el-button>
+  </template>
+</el-dialog>
+{% endblock %}
+
+{% block script %}
+<script>
+AdminUI.start('/admin-panel/roles/', {
+  data: function () {
+    return {
+      drawerVisible: false,
+      formMode: 'create',
+      formRoleId: null,
+      formRules: {
+        name: [{ required: true, message: '请输入角色名称', trigger: 'blur' }],
+        code: [
+          { required: true, message: '请输入角色编码', trigger: 'blur' },
+          { pattern: /^[a-zA-Z][a-zA-Z0-9_]*$/, message: '编码以字母开头，仅含字母数字下划线', trigger: 'blur' }
+        ]
+      },
+      permOptions: [],
+      permLoading: false,
+      copyVisible: false,
+      copySource: null,
+      copyName: '',
+      copyCode: '',
+      copySaving: false
+    };
+  },
+  computed: {
+    permGroups: function () {
+      var groups = {};
+      this.permOptions.forEach(function (p) {
+        var c = p.category || '';
+        if (!groups[c]) groups[c] = [];
+        groups[c].push(p);
+      });
+      return Object.keys(groups).map(function (c) {
+        return { category: c, items: groups[c] };
+      });
+    }
+  },
+  mounted: function () {
+    this.loadPermissions();
+  },
+  methods: {
+    fmtTime: AdminUI.fmtTime,
+
+    loadPermissions: function () {
+      var self = this;
+      this.permLoading = true;
+      WorkDesktop.request.get('/api/v1/admin/permissions').then(function (res) {
+        if (res && res.success) self.permOptions = res.data.permissions || [];
+        else AdminUI.toastFail(res, '加载权限列表失败');
+      }).finally(function () {
+        self.permLoading = false;
+      });
+    },
+
+    /* ---------- 分组全选 ---------- */
+    isGroupChecked: function (group, selected) {
+      var ids = selected || [];
+      return group.items.every(function (p) { return ids.indexOf(p.id) !== -1; });
+    },
+    isGroupIndeterminate: function (group, selected) {
+      var ids = selected || [];
+      var count = group.items.filter(function (p) { return ids.indexOf(p.id) !== -1; }).length;
+      return count > 0 && count < group.items.length;
+    },
+    toggleGroup: function (group, checked, selected) {
+      var ids = (selected || []).slice();
+      group.items.forEach(function (p) {
+        var idx = ids.indexOf(p.id);
+        if (checked && idx === -1) ids.push(p.id);
+        if (!checked && idx !== -1) ids.splice(idx, 1);
+      });
+      selected.splice.apply(selected, [0, selected.length].concat(ids));
+    },
+
+    /* ---------- 新增 / 编辑 ---------- */
+    openCreate: function () {
+      this.formMode = 'create';
+      this.formRoleId = null;
+      this.drawerVisible = true;
+    },
+    onRowAction: function (evt) {
+      var row = evt.row;
+      if (evt.command === 'edit') {
+        this.formMode = 'edit';
+        this.formRoleId = row.id;
+        this.drawerVisible = true;
+      } else if (evt.command === 'copy') {
+        this.copySource = row;
+        this.copyName = row.name + ' 副本';
+        this.copyCode = '';
+        this.copyVisible = true;
+      }
+    },
+
+    /* ---------- 复制 ---------- */
+    onCopySave: function () {
+      var self = this;
+      this.copySaving = true;
+      WorkDesktop.request.post('/api/v1/admin/roles/' + this.copySource.id + '/copy', {
+        name: this.copyName.trim(),
+        code: this.copyCode.trim()
+      }).then(function (res) {
+        if (res && res.success) {
+          ElementPlus.ElMessage.success('角色已复制');
+          self.copyVisible = false;
+          self.$refs.gridRef.refresh();
+        } else {
+          AdminUI.toastFail(res, '复制失败');
+        }
+      }).finally(function () {
+        self.copySaving = false;
+      });
+    }
+  }
+});
+</script>
+{% endblock %}

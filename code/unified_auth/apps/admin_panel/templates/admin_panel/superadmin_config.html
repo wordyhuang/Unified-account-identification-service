@@ -1,0 +1,59 @@
+{% extends "admin_panel/base.html" %}
+{% load static %}
+
+{% block title %}平台配置{% endblock %}
+
+{% block head %}
+<style>
+  .page-card { margin-bottom: 12px; }
+  .page-card:last-child { margin-bottom: 0; }
+  .config-tip { margin: 0 0 12px; color: var(--el-text-color-secondary); font-size: 13px; }
+  .config-key { font-family: monospace; font-size: 12px; }
+  .config-value { word-break: break-all; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div v-loading="loading">
+  <p class="config-tip">
+    以下配置来源于服务端环境变量，仅支持查看，修改需更新部署环境后重启服务。敏感项以 *** 脱敏展示。
+  </p>
+  <el-row :gutter="12">
+    <el-col v-for="group in configs" :key="group.group" :span="12">
+      <wd-panel shadow="never" class="page-card" :title="group.group">
+        <el-table :data="group.items" size="small">
+          <el-table-column label="配置项" min-width="180">
+            <template #default="{ row }"><span class="config-key">[[ row.key ]]</span></template>
+          </el-table-column>
+          <el-table-column label="值" min-width="200">
+            <template #default="{ row }">
+              <span class="config-value">[[ row.sensitive ? '***' : (row.value === '' || row.value === null || row.value === undefined ? '未配置' : row.value) ]]</span>
+            </template>
+          </el-table-column>
+        </el-table>
+      </wd-panel>
+    </el-col>
+  </el-row>
+</div>
+{% endblock %}
+
+{% block script %}
+<script>
+AdminUI.start('/admin-panel/superadmin/config/', {
+  data: function () {
+    return {
+      loading: true,
+      configs: []
+    };
+  },
+  mounted: function () {
+    var self = this;
+    WorkDesktop.request.get('/api/v1/superadmin/platform-config').then(function (res) {
+      if (res && res.success) self.configs = (res.data && res.data.configs) || [];
+    }).finally(function () {
+      self.loading = false;
+    });
+  }
+});
+</script>
+{% endblock %}

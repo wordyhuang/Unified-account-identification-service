@@ -7,8 +7,20 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 CODE_DIR = BASE_DIR / "code" / "unified_auth"
+DOC_DIR = BASE_DIR / "document"
 DIST_DIR = BASE_DIR / "dist"
 LOG_DIR = BASE_DIR / "scripts" / "package"
+
+# 打包时只拷贝路由文档（开发路由主文档 + API 路由主文档 + 4 个 API 子文档）
+# 不拷贝 document/ 下的其他设计文档（需求规格、实现计划、企业微信设计等仅留本地开发用）
+ROUTE_DOCS = [
+    DOC_DIR / "archive" / "DEVELOPMENT_ROUTING_GUIDE_v1.0.md",
+    DOC_DIR / "archive" / "AI_API_ROUTING_GUIDE_v1.0.md",
+    DOC_DIR / "apis" / "API_01_AUTH_v1.0.md",
+    DOC_DIR / "apis" / "API_02_OPEN_v1.0.md",
+    DOC_DIR / "apis" / "API_03_ADMIN_v1.0.md",
+    DOC_DIR / "apis" / "API_04_SUPERADMIN_v1.0.md",
+]
 
 INCLUDE_PATTERNS = [
     "*.py",
@@ -209,8 +221,28 @@ def main():
         logging.info(f"Created dist directory: {DIST_DIR}")
         
         copied_files = copy_to_dist(CODE_DIR, DIST_DIR)
-        logging.info(f"Total files copied: {len(copied_files)}")
-        
+        logging.info(f"Total code files copied: {len(copied_files)}")
+
+        # 仅打包路由文档（不拷贝 document/ 下其他设计文档），供部署后 AI 对接使用
+        doc_files = []
+        for doc_src in ROUTE_DOCS:
+            if not doc_src.exists():
+                logging.warning(f"Route doc not found, skipped: {doc_src}")
+                continue
+            rel_path = doc_src.relative_to(DOC_DIR)
+            doc_dest = DIST_DIR / "document" / rel_path
+            doc_dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(doc_src, doc_dest)
+            doc_files.append(rel_path)
+            logging.info(f"Copied route doc: document/{rel_path}")
+        logging.info(f"Total route docs copied: {len(doc_files)}")
+
+        # 拷贝 README 到 dist 根目录，作为部署后 AI 对接的主入口
+        readme_src = BASE_DIR / "README.md"
+        if readme_src.exists():
+            shutil.copy2(readme_src, DIST_DIR / "README.md")
+            logging.info("Copied: README.md -> dist/README.md")
+
         migrations = check_migrations(CODE_DIR)
         if migrations:
             logging.info(f"Detected {len(migrations)} migration files")

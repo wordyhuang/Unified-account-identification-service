@@ -1,0 +1,109 @@
+{% extends "admin_panel/base.html" %}
+{% load static %}
+
+{% block title %}全局审计{% endblock %}
+
+{% block head %}
+<style>
+  .page-card { margin-bottom: 12px; }
+  .page-card:last-child { margin-bottom: 0; }
+  .log-detail { margin: 0; font-size: 12px; white-space: pre-wrap; word-break: break-all;
+    max-height: 160px; overflow: auto; background: var(--el-fill-color-light); padding: 8px; border-radius: 4px; }
+  .log-ua { color: var(--el-text-color-secondary); font-size: 12px; margin-top: 6px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<wd-panel shadow="never" class="page-card">
+  <wd-search-panel head-refresh-datagrid="true" :default-expand="true" label-width="70px"
+    @search="onSearch" @reset="onReset">
+    <template #default="{ model }">
+      <wd-search-item label="租户" prop="tenant_id">
+        <wd-select v-model="model.tenant_id" placeholder="全部租户" clearable filterable style="width: 180px"
+          api="/api/v1/superadmin/tenants" text-prop="name" value-prop="id" ></wd-select>
+      </wd-search-item>
+      <wd-search-item label="操作类型" prop="action">
+        <el-input v-model="model.action" placeholder="如 admin.user.create" clearable style="width: 180px" ></el-input>
+      </wd-search-item>
+      <wd-search-item label="操作人" prop="actor">
+        <el-input v-model="model.actor" placeholder="操作人名称" clearable style="width: 140px" ></el-input>
+      </wd-search-item>
+      <wd-search-item label="开始日期" prop="date_from">
+        <el-date-picker v-model="model.date_from" type="date" value-format="YYYY-MM-DD"
+          placeholder="开始日期" style="width: 140px" ></el-date-picker>
+      </wd-search-item>
+      <wd-search-item label="结束日期" prop="date_to">
+        <el-date-picker v-model="model.date_to" type="date" value-format="YYYY-MM-DD"
+          placeholder="结束日期" style="width: 140px" ></el-date-picker>
+      </wd-search-item>
+    </template>
+  </wd-search-panel>
+</wd-panel>
+
+<wd-panel shadow="never" class="page-card">
+  <wd-data-grid ref="gridRef" api="/api/v1/superadmin/audit-logs" api-method="get" active
+    row-key="id" :tools="{ refresh: true }">
+    <template #toolbar>
+      <el-button size="small" @click="onExport">导出 CSV</el-button>
+    </template>
+    <el-table-column type="expand">
+      <template #default="{ row }">
+        <pre class="log-detail">[[ formatDetail(row.detail) ]]</pre>
+        <div class="log-ua">User-Agent：[[ row.user_agent || '-' ]]</div>
+      </template>
+    </el-table-column>
+    <el-table-column prop="tenant_name" label="租户" min-width="110" show-overflow-tooltip>
+      <template #default="{ row }">[[ row.tenant_name || '平台' ]]</template>
+    </el-table-column>
+    <el-table-column prop="actor_name" label="操作人" min-width="110" show-overflow-tooltip>
+      <template #default="{ row }">[[ row.actor_name || '系统' ]]</template>
+    </el-table-column>
+    <el-table-column prop="action" label="操作类型" min-width="170" show-overflow-tooltip>
+      <template #default="{ row }"><code>[[ row.action ]]</code></template>
+    </el-table-column>
+    <el-table-column label="资源" min-width="130" show-overflow-tooltip>
+      <template #default="{ row }">
+        <span v-if="row.resource_type">[[ row.resource_type ]] <span v-if="row.resource_id">#[[ row.resource_id ]]</span></span>
+        <span v-else>-</span>
+      </template>
+    </el-table-column>
+    <el-table-column prop="ip_address" label="IP 地址" width="130">
+      <template #default="{ row }">[[ row.ip_address || '-' ]]</template>
+    </el-table-column>
+    <el-table-column label="时间" width="150">
+      <template #default="{ row }">[[ fmtTime(row.created_at) ]]</template>
+    </el-table-column>
+  </wd-data-grid>
+</wd-panel>
+{% endblock %}
+
+{% block script %}
+<script>
+AdminUI.start('/admin-panel/superadmin/audit/', {
+  data: function () {
+    return {
+      lastQuery: {}
+    };
+  },
+  methods: {
+    fmtTime: AdminUI.fmtTime,
+    formatDetail: function (detail) {
+      if (!detail) return '（无详情）';
+      try { return JSON.stringify(detail, null, 2); } catch (e) { return String(detail); }
+    },
+    onSearch: function (params) {
+      this.lastQuery = params || {};
+    },
+    onReset: function () {
+      this.lastQuery = {};
+    },
+    onExport: function () {
+      // 导出接口不支持 tenant_id 筛选，剔除后按其余条件导出全局日志
+      var q = Object.assign({}, this.lastQuery);
+      delete q.tenant_id;
+      AdminUI.downloadCsv('/api/v1/superadmin/audit-logs/export', q, 'global_audit_logs.csv');
+    }
+  }
+});
+</script>
+{% endblock %}

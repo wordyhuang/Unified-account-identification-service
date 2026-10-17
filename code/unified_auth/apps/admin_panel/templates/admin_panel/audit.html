@@ -1,0 +1,104 @@
+{% extends "admin_panel/base.html" %}
+{% load static %}
+
+{% block title %}审计日志{% endblock %}
+
+{% block head %}
+<style>
+  .page-card { margin-bottom: 12px; }
+  .page-card:last-child { margin-bottom: 0; }
+  .audit-expand { padding: 4px 16px; }
+  .audit-expand pre { margin: 4px 0; padding: 8px; background: var(--el-fill-color-light); border-radius: 4px; font-size: 12px; white-space: pre-wrap; word-break: break-all; }
+  .audit-expand .ua { color: var(--el-text-color-secondary); font-size: 12px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<wd-panel shadow="never" class="page-card">
+  <wd-search-panel head-refresh-datagrid="true" :default-expand="true" label-width="70px"
+    @search="onSearch" @reset="onResetSearch">
+    <template #default="{ model }">
+      <wd-search-item label="操作类型" prop="action">
+        <el-input v-model="model.action" placeholder="如 admin.user.create" clearable style="width: 180px" ></el-input>
+      </wd-search-item>
+      <wd-search-item label="操作人" prop="actor">
+        <el-input v-model="model.actor" placeholder="操作人名称" clearable style="width: 150px" ></el-input>
+      </wd-search-item>
+      <wd-search-item label="开始日期" prop="date_from">
+        <el-date-picker v-model="model.date_from" type="date" value-format="YYYY-MM-DD" placeholder="开始日期" style="width: 150px" ></el-date-picker>
+      </wd-search-item>
+      <wd-search-item label="结束日期" prop="date_to">
+        <el-date-picker v-model="model.date_to" type="date" value-format="YYYY-MM-DD" placeholder="结束日期" style="width: 150px" ></el-date-picker>
+      </wd-search-item>
+    </template>
+  </wd-search-panel>
+</wd-panel>
+
+<wd-panel shadow="never" class="page-card">
+  <wd-data-grid ref="gridRef" api="/api/v1/admin/audit-logs" api-method="get" active row-key="id"
+    :tools="{ refresh: true }">
+    <template #toolbar>
+      <el-button size="small" @click="onExport">导出 CSV</el-button>
+    </template>
+    <el-table-column type="expand">
+      <template #default="{ row }">
+        <div class="audit-expand">
+          <pre>[[ formatDetail(row.detail) ]]</pre>
+          <div class="ua">User-Agent：[[ row.user_agent || '-' ]]</div>
+        </div>
+      </template>
+    </el-table-column>
+    <el-table-column prop="actor_name" label="操作人" width="120" show-overflow-tooltip>
+      <template #default="{ row }">[[ row.actor_name || '-' ]]</template>
+    </el-table-column>
+    <el-table-column prop="action" label="操作类型" min-width="200" show-overflow-tooltip>
+      <template #default="{ row }"><span style="font-family: monospace">[[ row.action ]]</span></template>
+    </el-table-column>
+    <el-table-column label="资源" min-width="150" show-overflow-tooltip>
+      <template #default="{ row }">
+        <template v-if="row.resource_type">[[ row.resource_type ]] #[[ row.resource_id ]]</template>
+        <span v-else>-</span>
+      </template>
+    </el-table-column>
+    <el-table-column prop="ip_address" label="IP 地址" width="130">
+      <template #default="{ row }">[[ row.ip_address || '-' ]]</template>
+    </el-table-column>
+    <el-table-column label="时间" width="160">
+      <template #default="{ row }">[[ fmtTime(row.created_at) ]]</template>
+    </el-table-column>
+  </wd-data-grid>
+</wd-panel>
+{% endblock %}
+
+{% block script %}
+<script>
+AdminUI.start('/admin-panel/audit/', {
+  data: function () {
+    return {
+      lastQuery: {}
+    };
+  },
+  methods: {
+    fmtTime: AdminUI.fmtTime,
+
+    formatDetail: function (detail) {
+      if (!detail) return '-';
+      try {
+        return JSON.stringify(detail, null, 2);
+      } catch (e) {
+        return String(detail);
+      }
+    },
+    onSearch: function (params) {
+      this.lastQuery = params || {};
+    },
+    onResetSearch: function () {
+      this.lastQuery = {};
+    },
+    onExport: function () {
+      AdminUI.downloadCsv('/api/v1/admin/audit-logs/export', this.lastQuery, 'audit_logs.csv');
+    }
+  }
+});
+</script>
+{% endblock %}

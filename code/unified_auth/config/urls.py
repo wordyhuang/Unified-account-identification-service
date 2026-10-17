@@ -5,8 +5,34 @@ from django.http import HttpResponseRedirect
 from apps.admin_panel import views as admin_views
 
 
-def admin_panel_view(request):
-    return render(request, "admin_panel/index.html")
+def admin_panel_index(request):
+    return HttpResponseRedirect("/admin-panel/dashboard/")
+
+
+def admin_panel_page(request, template):
+    """管理后台页面视图：仅渲染模板，认证守卫在前端（common.js requireAuth）"""
+    return render(request, "admin_panel/{}.html".format(template))
+
+
+# 管理后台多页路由：页面路径 → 模板名（不含扩展名）
+ADMIN_PANEL_ROUTES = [
+    ("login/", "login", "admin-panel-login"),
+    ("dashboard/", "dashboard", "admin-panel-dashboard"),
+    ("users/", "users", "admin-panel-users"),
+    ("applications/", "applications", "admin-panel-applications"),
+    ("roles/", "roles", "admin-panel-roles"),
+    ("departments/", "departments", "admin-panel-departments"),
+    ("tags/", "tags", "admin-panel-tags"),
+    ("audit/", "audit", "admin-panel-audit"),
+    ("sms-config/", "sms_config", "admin-panel-sms-config"),
+    ("login-test/", "login_test", "admin-panel-login-test"),
+    ("superadmin/dashboard/", "superadmin_dashboard", "admin-panel-superadmin-dashboard"),
+    ("superadmin/tenants/", "superadmin_tenants", "admin-panel-superadmin-tenants"),
+    ("superadmin/audit/", "superadmin_audit", "admin-panel-superadmin-audit"),
+    ("superadmin/report/", "superadmin_report", "admin-panel-superadmin-report"),
+    ("superadmin/api-stats/", "superadmin_api_stats", "admin-panel-superadmin-api-stats"),
+    ("superadmin/config/", "superadmin_config", "admin-panel-superadmin-config"),
+]
 
 
 def favicon_view(request):
@@ -16,7 +42,11 @@ def favicon_view(request):
 urlpatterns = [
     path('favicon.ico', favicon_view),
     path('admin/', admin.site.urls),
-    path('admin-panel/', admin_panel_view, name="admin-panel"),
+    path('admin-panel/', admin_panel_index, name="admin-panel"),
+] + [
+    path('admin-panel/' + route, admin_panel_page, {"template": template}, name=name)
+    for route, template, name in ADMIN_PANEL_ROUTES
+] + [
     path('api/v1/auth/', include('apps.accounts.urls')),
     path('api/v1/open/', include('apps.openapi.urls')),
     path('oauth/', include('apps.oauth2.urls')),

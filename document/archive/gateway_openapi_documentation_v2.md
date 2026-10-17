@@ -1,5 +1,12 @@
 # 统一账户认证服务 - API对接文档
 
+> **文档创建时间**: 2026-07-01 10:00:00
+> **最后修改时间**: 2026-10-17 10:00:00
+> **当前版本**: V_3.5
+> **适用对象**: 外部应用开发者、集成方、后端维护人员
+> **核心目标**: 提供完整的开放API对接指南，覆盖认证、用户管理、Token验证、微信能力等所有开放接口
+> **文档简略描述**: 本文档为外部应用接入统一账户认证服务提供完整的API规范、请求示例、权限说明和性能指引
+
 ## 概述
 
 欢迎使用统一账户认证服务！本文档为外部开发者提供完整的API对接指南，帮助您快速集成统一认证能力。
@@ -394,6 +401,22 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 
 **功能描述**: 验证用户Token的有效性，常用于单点登录场景
 
+> **性能建议（重要）**
+>
+> 有些应用会有轮询（定时重复请求）的需求。为了避免每次轮询都调用 verify 接口，建议：
+>
+> 1. 用户 Token 本身是 JWT，已包含 `exp` 字段（过期时间），在签发后到过期前都是有效的。
+> 2. 调用方可以在**本地缓存**"这个 token 在过期前是有效的"，无需每次都请求本接口。
+> 3. 只有在首次调用、或本地缓存过期时，才请求本接口验证。
+>
+> 这样做的好处：
+>
+> - 减少网络往返开销
+> - 降低后端请求压力
+> - 轮询场景下响应更快
+>
+> 注意：JWT 是无状态的，一旦签发在 `exp` 之前都是有效的，本接口只做 JWT 解码校验，不查数据库。
+
 **请求体**:
 
 ```json
@@ -672,7 +695,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 
 **access\_token 要求**: ✅ 需要，通过 URL 参数 `?access_token=` 传递
 
-**功能描述**: 通过用户的JWT AccessToken获取其完整资料信息。Token可在 query string 或 request body 中传递。
+**功能描述**: 通过用户的JWT AccessToken获取其完整资料信息。用户Token可在 query string 或 request body 中传递（字段名 `access_token`，此处语义为**用户JWT**，与 URL 参数中应用级 `access_token` 同名但用途不同）。
 
 **权限码**: `user:profile:read`
 
@@ -680,7 +703,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 
 | 参数             | 位置         | 必填 | 说明                         |
 | -------------- | ---------- | -- | -------------------------- |
-| `access_token` | query/body | ✅  | 用户的JWT AccessToken，最大512字符 |
+| `access_token` | query/body | ✅  | **用户**的JWT AccessToken（非应用级），最大512字符 |
 
 **成功响应** (200):
 
@@ -788,6 +811,88 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
     "data": {
         "access_token": ["该字段是必填项。"]
     }
+}
+```
+
+***
+
+### 应用级获取/修改用户资料
+
+**接口地址**: `GET /api/v1/open/users/{user_id}/profile`、`PUT /api/v1/open/users/{user_id}/profile`
+
+**access\_token 要求**: ✅ 需要，通过 URL 参数 `?access_token=` 传递
+
+**功能描述**: 应用按 `user_id` 读取/更新指定用户的完整资料（无需用户Token）。适用于应用侧同步用户资料、代用户完善资料等场景。
+
+**认证方式**: AppKey + Signature 或 URL access\_token（应用级凭证，无需用户 Token）
+
+**权限码**: `user:profile:read_app`（GET）、`user:profile:update_app`（PUT）
+
+**路径参数**:
+
+| 参数        | 必填 | 说明                             |
+| --------- | -- | ------------------------------ |
+| `user_id` | ✅  | 用户ID，必须是当前应用所属租户下的用户，跨租户返回 404 |
+
+**GET 成功响应** (200):
+
+```json
+{
+    "code": 0,
+    "message": "success",
+    "data": {
+        "user_id": 4,
+        "username": "openapi_test_user",
+        "nickname": "张三",
+        "avatar": "https://...",
+        "real_name": "张三",
+        "gender": "male",
+        "birthday": "1990-01-01",
+        "id_card": "110***********1234",
+        "nationality": "中国",
+        "address": "北京市...",
+        "zip_code": "100000",
+        "emergency_contact": "李四",
+        "emergency_phone": "138****0000",
+        "job_title": "工程师",
+        "company": "测试公司",
+        "employee_id": "EMP001",
+        "hire_date": "2020-01-01",
+        "work_email": "zh***@company.com",
+        "work_phone": "138****0000",
+        "wechat": "we***",
+        "qq": "12***",
+        "weibo": "we***",
+        "bio": "个人简介",
+        "interests": "阅读、运动",
+        "tags": ["tag1", "tag2"],
+        "extra_data": {}
+    }
+}
+```
+
+> **说明**：身份证号、手机号、邮箱、微信号、QQ等敏感字段返回时自动脱敏。
+
+**PUT 请求体**: 与「通过Token修改用户资料」一致，字段全部选填（`avatar`、`real_name`、`gender`、`birthday`、`id_card`、`nationality`、`address`、`zip_code`、`emergency_contact`、`emergency_phone`、`job_title`、`company`、`employee_id`、`hire_date`、`work_email`、`work_phone`、`wechat`、`qq`、`weibo`、`bio`、`interests`、`tags`、`extra_data`），仅更新携带的字段。
+
+**PUT 成功响应** (200):
+
+```json
+{
+    "code": 0,
+    "message": "success",
+    "data": {
+        "profile_id": 1
+    }
+}
+```
+
+**失败响应** (404):
+
+```json
+{
+    "code": -10003,
+    "message": "用户不存在"
 }
 ```
 
@@ -1608,15 +1713,11 @@ def get_app_token():
 
 
 def verify_user_token(app_token, user_token):
-    """使用应用 Token 验证用户 Token"""
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {app_token}"
-    }
+    """使用应用 access_token（URL 参数）验证用户 JWT Token（body 字段 token）"""
     response = requests.post(
-        f"{BASE_URL}/api/v1/open/token/verify",
-        headers=headers,
-        json={"access_token": user_token}
+        f"{BASE_URL}/api/v1/open/token/verify?access_token={app_token}",
+        headers={"Content-Type": "application/json"},
+        json={"token": user_token}
     )
     return response.json()
 
@@ -1646,14 +1747,11 @@ async function getAppToken() {
 }
 
 async function verifyUserToken(appToken, userToken) {
-    // ② 使用应用 Token 验证用户 Token
-    const response = await fetch(`${BASE_URL}/api/v1/open/token/verify`, {
+    // ② 应用 access_token 通过 URL 传递，用户 JWT 通过 body 的 token 字段传递
+    const response = await fetch(`${BASE_URL}/api/v1/open/token/verify?access_token=${appToken}`, {
         method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${appToken}`
-        },
-        body: JSON.stringify({ access_token: userToken })
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: userToken })
     });
     return response.json();
 }
@@ -1702,8 +1800,8 @@ console.log(result);
 如有问题或需要帮助，请联系技术支持团队：
 
 - **技术支持邮箱**: <395051729@qq.com>
-- **文档版本**: v3.3
-- **最后更新**: 2026-08-06
+- **文档版本**: v3.5
+- **最后更新**: 2026-10-17
 
 ***
 
@@ -1712,19 +1810,21 @@ console.log(result);
 > 以下为系统预置的 API 权限，通过管理命令 `python manage.py init_data` 初始化。
 > 应用开通时需在管理后台绑定接口权限，未绑定的接口调用会返回 `-10202` 错误。
 
-| 权限编码                  | 权限名称            | 说明                              | 对应接口                                   |
-| --------------------- | --------------- | ------------------------------- | -------------------------------------- |
-| `app:token`           | 获取应用Token       | 使用AppKey+Secret换取应用Access Token | `POST /api/v1/open/token`              |
-| `token:verify`        | 验证Token         | 验证用户身份Token的有效性                 | `POST /api/v1/open/token/verify`       |
-| `user:read`           | 读取用户            | 查询和获取用户的基本信息                    | `GET /api/v1/open/users`               |
-| `user:create`         | 创建用户            | 在指定租户下创建新的用户账号                  | `POST /api/v1/open/users`              |
-| `user:update`         | 修改用户            | 更新现有用户的信息                       | `PUT /api/v1/open/users/:id`           |
-| `user:status`         | 修改用户状态          | 启用/禁用用户账号                       | `PATCH /api/v1/open/users/:id/status`  |
-| `permission:check`    | 校验权限            | 校验用户是否拥有指定权限                    | `POST /api/v1/open/permissions/check`  |
-| `user:profile:read`   | 读取用户资料          | 通过用户Token读取用户的完整资料信息            | `GET /api/v1/open/users/me/profile`    |
-| `user:profile:update` | 修改用户资料          | 通过用户Token更新用户的个人资料信息            | `PUT /api/v1/open/users/me/profile`    |
-| `wechat:access_token` | 获取微信AccessToken | 获取微信小程序接口调用凭证                   | `GET /api/v1/open/wechat/access_token` |
-| `wechat:phone`        | 获取微信用户手机号       | 通过微信小程序临时code获取手机号              | `POST /api/v1/open/wechat/phone`       |
+| 权限编码                      | 权限名称            | 说明                              | 对应接口                                   |
+| ------------------------- | --------------- | ------------------------------- | -------------------------------------- |
+| `token:verify`            | 验证Token         | 验证用户身份Token的有效性                 | `POST /api/v1/open/token/verify`       |
+| `user:read`               | 读取用户列表          | 查询和获取用户的基本信息                    | `GET /api/v1/open/users`               |
+| `user:read_detail`        | 读取用户详情          | 获取单个用户的详细信息                     | `GET /api/v1/open/users/:id`           |
+| `user:create`             | 创建用户            | 在指定租户下创建新的用户账号                  | `POST /api/v1/open/users`              |
+| `user:update`             | 修改用户            | 更新现有用户的信息                       | `PUT /api/v1/open/users/:id`           |
+| `user:status`             | 修改用户状态          | 启用/禁用用户账号                       | `PATCH /api/v1/open/users/:id/status`  |
+| `permission:check`        | 校验权限            | 校验用户是否拥有指定权限                    | `POST /api/v1/open/permissions/check`  |
+| `user:profile:read`       | 读取用户资料          | 通过用户Token读取用户的完整资料信息            | `GET /api/v1/open/users/me/profile`    |
+| `user:profile:update`     | 修改用户资料          | 通过用户Token更新用户的个人资料信息            | `PUT /api/v1/open/users/me/profile`    |
+| `user:profile:read_app`   | 读取用户资料(应用级)     | 应用按user\_id读取指定用户资料，无需用户Token   | `GET /api/v1/open/users/:id/profile`   |
+| `user:profile:update_app` | 修改用户资料(应用级)     | 应用按user\_id更新指定用户资料，无需用户Token   | `PUT /api/v1/open/users/:id/profile`   |
+| `wechat:access_token`     | 获取微信AccessToken | 获取微信小程序接口调用凭证                   | `GET /api/v1/open/wechat/access_token` |
+| `wechat:phone`            | 获取微信用户手机号       | 通过微信小程序临时code获取手机号              | `POST /api/v1/open/wechat/phone`       |
 
 **权限说明**:
 
@@ -1753,4 +1853,12 @@ console.log(result);
 | 飞书       | `feishu`     | 飞书登录     |
 
 ***
+
+## 版本变更记录
+
+| 版本 | 日期 | 变更内容 |
+|------|------|----------|
+| V_1.0 | 2026-07-01 | 初始版本，包含基础认证、用户管理、Token验证接口 |
+| V_2.0 | 2026-08-06 | 新增用户级Token（user_token）接口、应用级用户资料接口（user_id/profile）、verify接口性能缓存指引、权限编码列表补全 |
+| V_3.5 | 2026-10-17 | 与代码实际权限种子及中间件逻辑对齐：权限表移除不存在的 `app:token`、补全 `user:read_detail`；修正 Python/JS verify 示例（body 字段为 `token` 而非 `access_token`，应用 token 走 URL 参数）；澄清 `/users/me/profile` 入参 `access_token` 语义为用户JWT |
 

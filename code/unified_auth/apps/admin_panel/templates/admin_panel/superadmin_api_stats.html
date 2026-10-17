@@ -1,0 +1,129 @@
+{% extends "admin_panel/base.html" %}
+{% load static %}
+
+{% block title %}API 统计{% endblock %}
+
+{% block head %}
+<style>
+  .page-card { margin-bottom: 12px; }
+  .page-card:last-child { margin-bottom: 0; }
+  .chart-wrap { padding: 4px 0 0; }
+  .empty-tip { color: var(--el-text-color-secondary); text-align: center; padding: 32px 0; font-size: 13px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div v-loading="loading">
+  <wd-panel shadow="never" class="page-card" title="全局 API 调用趋势">
+    <template #extra>
+      <el-radio-group v-model="days" size="small" @change="loadStats">
+        <el-radio-button :value="7">近 7 天</el-radio-button>
+        <el-radio-button :value="14">近 14 天</el-radio-button>
+        <el-radio-button :value="30">近 30 天</el-radio-button>
+        <el-radio-button :value="90">近 90 天</el-radio-button>
+      </el-radio-group>
+    </template>
+    <div class="chart-wrap" v-if="dailyTotals.length">
+      <svg viewBox="0 0 1080 220" style="width: 100%; height: 220px">
+        <polyline :points="statsPoints" fill="none" stroke="var(--el-color-primary)" stroke-width="2" />
+        <g v-for="(p, i) in labelPoints" :key="'lb' + i">
+          <text :x="p.x" y="214" text-anchor="middle" font-size="11"
+            fill="var(--el-text-color-secondary)">[[ p.label ]]</text>
+        </g>
+      </svg>
+    </div>
+    <div v-else class="empty-tip">暂无数据</div>
+  </wd-panel>
+
+  <el-row :gutter="12">
+    <el-col :span="14">
+      <wd-panel shadow="never" class="page-card" title="接口调用排行（Top 50）">
+        <el-table :data="appRankings" size="small" max-height="480">
+          <el-table-column type="index" label="#" width="50" align="center" ></el-table-column>
+          <el-table-column prop="app_name" label="应用" min-width="120" show-overflow-tooltip ></el-table-column>
+          <el-table-column prop="api_path" label="接口路径" min-width="180" show-overflow-tooltip>
+            <template #default="{ row }"><code>[[ row.api_path ]]</code></template>
+          </el-table-column>
+          <el-table-column prop="total_calls" label="调用量" width="100" align="right" ></el-table-column>
+        </el-table>
+      </wd-panel>
+    </el-col>
+    <el-col :span="10">
+      <wd-panel shadow="never" class="page-card" title="应用调用 Top 10">
+        <el-table :data="topApps" size="small" max-height="480">
+          <el-table-column type="index" label="#" width="50" align="center" ></el-table-column>
+          <el-table-column prop="app_name" label="应用" min-width="110" show-overflow-tooltip ></el-table-column>
+          <el-table-column prop="api_path" label="热点接口" min-width="140" show-overflow-tooltip>
+            <template #default="{ row }"><code>[[ row.api_path ]]</code></template>
+          </el-table-column>
+          <el-table-column prop="total_calls" label="调用量" width="90" align="right" ></el-table-column>
+        </el-table>
+      </wd-panel>
+    </el-col>
+  </el-row>
+</div>
+{% endblock %}
+
+{% block script %}
+<script>
+AdminUI.start('/admin-panel/superadmin/api-stats/', {
+  data: function () {
+    return {
+      loading: true,
+      days: 30,
+      dailyTotals: [],
+      appRankings: [],
+      topApps: []
+    };
+  },
+  computed: {
+    statsPoints: function () {
+      var trend = this.dailyTotals;
+      if (!trend.length) return '';
+      var max = 1;
+      trend.forEach(function (t) { if ((t.count || 0) > max) max = t.count; });
+      var stepX = 1080 / Math.max(trend.length - 1, 1);
+      return trend.map(function (t, i) {
+        var x = (i * stepX).toFixed(1);
+        var y = (200 - (t.count || 0) / max * 180 - 4).toFixed(1);
+        return x + ',' + y;
+      }).join(' ');
+    },
+    labelPoints: function () {
+      var trend = this.dailyTotals;
+      if (!trend.length) return [];
+      var stepX = 1080 / Math.max(trend.length - 1, 1);
+      var every = Math.ceil(trend.length / 12);
+      var points = [];
+      trend.forEach(function (t, i) {
+        if (i % every === 0) points.push({ x: (i * stepX).toFixed(1), label: String(t.date).slice(5) });
+      });
+      return points;
+    }
+  },
+  methods: {
+    loadStats: function () {
+      var self = this;
+      self.loading = true;
+      Promise.all([
+        WorkDesktop.request.get('/api/v1/superadmin/api-stats', { days: self.days }),
+        WorkDesktop.request.get('/api/v1/superadmin/stats/app-call-ranking', { days: self.days })
+      ]).then(function (r) {
+        if (r[0] && r[0].success) {
+          self.dailyTotals = (r[0].data && r[0].data.daily_totals) || [];
+          self.appRankings = (r[0].data && r[0].data.app_rankings) || [];
+        }
+        if (r[1] && r[1].success) {
+          self.topApps = (r[1].data && r[1].data.rankings) || [];
+        }
+      }).finally(function () {
+        self.loading = false;
+      });
+    }
+  },
+  mounted: function () {
+    this.loadStats();
+  }
+});
+</script>
+{% endblock %}

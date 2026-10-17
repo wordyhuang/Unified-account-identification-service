@@ -1,0 +1,116 @@
+{% extends "admin_panel/base.html" %}
+{% load static %}
+
+{% block title %}登录测试{% endblock %}
+
+{% block head %}
+<style>
+  .page-card { margin-bottom: 12px; max-width: 640px; }
+  .page-card:last-child { margin-bottom: 0; }
+  .token-text { font-family: monospace; font-size: 12px; word-break: break-all; background: var(--el-fill-color-light); padding: 8px 10px; border-radius: 4px; max-height: 90px; overflow: auto; }
+</style>
+{% endblock %}
+
+{% block content %}
+<wd-panel shadow="never" class="page-card" title="用户登录测试">
+  <el-alert type="info" :closable="false" style="margin-bottom: 12px"
+    title="使用租户内用户的账号密码进行登录验证，测试结果不会影响到正式会话" ></el-alert>
+  <el-form label-width="80px" @submit.prevent>
+    <el-form-item label="用户名">
+      <el-input v-model="username" placeholder="租户内用户的用户名" clearable ></el-input>
+    </el-form-item>
+    <el-form-item label="密码">
+      <el-input v-model="password" type="password" show-password placeholder="用户密码"
+        @keyup.enter="onTest" ></el-input>
+    </el-form-item>
+    <el-form-item>
+      <el-button type="primary" :loading="testing" :disabled="!username.trim() || !password" @click="onTest">开始测试</el-button>
+    </el-form-item>
+  </el-form>
+</wd-panel>
+
+<wd-panel v-if="result" shadow="never" class="page-card">
+  <template #title>
+    <el-tag type="success" size="small">登录成功</el-tag>
+  </template>
+  <el-descriptions :column="2" border size="small">
+    <el-descriptions-item label="用户 ID">[[ result.user_id ]]</el-descriptions-item>
+    <el-descriptions-item label="用户名">[[ result.username ]]</el-descriptions-item>
+    <el-descriptions-item label="昵称">[[ result.nickname || '-' ]]</el-descriptions-item>
+    <el-descriptions-item label="用户类型">
+      <el-tag :type="result.user_type === 'internal' ? 'primary' : 'success'" size="small">
+        [[ result.user_type === 'internal' ? '内部' : '外部' ]]
+      </el-tag>
+    </el-descriptions-item>
+    <el-descriptions-item label="员工">[[ result.is_staff ? '是' : '否' ]]</el-descriptions-item>
+    <el-descriptions-item label="标签">
+      <template v-if="result.tags && result.tags.length">
+        <el-tag v-for="t in result.tags" :key="t" size="small" style="margin-right: 4px">[[ t ]]</el-tag>
+      </template>
+      <span v-else>-</span>
+    </el-descriptions-item>
+  </el-descriptions>
+  <el-form label-width="90px" style="margin-top: 12px">
+    <el-form-item label="Access Token">
+      <div class="token-text">[[ result.access_token ]]</div>
+    </el-form-item>
+    <el-form-item label="Refresh Token">
+      <div class="token-text">[[ result.refresh_token ]]</div>
+    </el-form-item>
+    <el-form-item>
+      <el-button size="small" @click="onCopy(result.access_token)">复制 Access Token</el-button>
+      <el-button size="small" @click="onCopy(result.refresh_token)">复制 Refresh Token</el-button>
+    </el-form-item>
+  </el-form>
+</wd-panel>
+{% endblock %}
+
+{% block script %}
+<script>
+AdminUI.start('/admin-panel/login-test/', {
+  data: function () {
+    return {
+      username: '',
+      password: '',
+      testing: false,
+      result: null
+    };
+  },
+  methods: {
+    onTest: function () {
+      var self = this;
+      this.testing = true;
+      this.result = null;
+      WorkDesktop.request.post('/api/v1/admin/login-test', {
+        username: this.username.trim(),
+        password: this.password
+      }).then(function (res) {
+        if (res && res.success) {
+          self.result = res.data;
+          ElementPlus.ElMessage.success('登录验证通过');
+        } else {
+          AdminUI.toastFail(res, '测试失败');
+        }
+      }).finally(function () {
+        self.testing = false;
+      });
+    },
+    onCopy: function (text) {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(function () {
+          ElementPlus.ElMessage.success('已复制');
+        });
+      } else {
+        var ta = document.createElement('textarea');
+        ta.value = text;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        ElementPlus.ElMessage.success('已复制');
+      }
+    }
+  }
+});
+</script>
+{% endblock %}

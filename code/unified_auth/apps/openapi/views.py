@@ -16,6 +16,7 @@ from .serializers import (
     StatusUpdateSerializer, CheckPermissionSerializer,
     WeChatPhoneSerializer, WeChatTokenSerializer,
     ProfileByTokenSerializer, UpdateProfileByTokenSerializer,
+    UpdateUserProfileAppSerializer,
 )
 
 logger = logging.getLogger(__name__)
@@ -77,6 +78,28 @@ def app_token(request):
 
 @api_view(["POST"])
 def verify_token(request):
+    """
+    验证用户Token有效性（用于开放API的Token认证）。
+
+    ────────────────────────────────────────────────────────────────
+    📌 调用方性能指引（重要）
+    ────────────────────────────────────────────────────────────────
+    有些应用会有轮询（定时重复请求）的需求。为了避免每次轮询都调用
+    verify 接口，建议：
+
+    1. Token 本身是 JWT，已包含 exp 字段（过期时间）
+    2. 调用方可以在本地缓存"这个 token 在过期前是有效的"
+    3. 只有在首次调用、或本地缓存过期时，才请求本接口验证
+
+    这样做的好处：
+    - 减少网络往返开销
+    - 降低后端请求压力
+    - 轮询场景下响应更快
+
+    注意：JWT 是无状态的，一旦签发在 exp 之前都是有效的。
+    本接口本身只做 JWT 解码校验，不查数据库，性能已经很高。
+    ────────────────────────────────────────────────────────────────
+    """
     ser = VerifyTokenSerializer(data=request.data)
     if not ser.is_valid():
         return Response(error(ErrorCode.PARAM_INVALID, data=ser.errors), status=400)
@@ -340,6 +363,72 @@ def user_profile_by_token(request):
         }
         return Response(success(profile_data))
 
+    data = ser.validated_data
+    fields = [
+        "avatar", "real_name", "gender", "birthday", "id_card", "nationality",
+        "address", "zip_code", "emergency_contact", "emergency_phone",
+        "job_title", "company", "employee_id", "hire_date", "work_email", "work_phone",
+        "wechat", "qq", "weibo", "bio", "interests", "tags", "extra_data",
+    ]
+    update_fields = []
+    for field in fields:
+        if field in data:
+            setattr(profile, field, data[field])
+            update_fields.append(field)
+
+    if update_fields:
+        profile.save(update_fields=update_fields)
+
+    return Response(success({"profile_id": profile.id}))
+
+
+@api_view(["GET", "PUT"])
+def user_profile_by_app(request, user_id):
+    """应用级用户资料获取/修改（认证方式: AppKey，无需用户Token）
+
+    GET  按 user_id 获取用户资料
+    PUT  按 user_id 修改用户资料
+
+    权限控制由 app_auth 中间件完成（应用需具备对应权限码）
+    """
+    try:
+        user = User.objects.get(id=user_id, tenant_id=request.tenant_id)
+    except User.DoesNotExist:
+        return Response(error(ErrorCode.USER_NOT_FOUND), status=404)
+
+    if request.method == "GET":
+        profile, _ = UserProfile.objects.get_or_create(user=user)
+        from datetime import date as date_type
+        from apps.tags.models import UserTagBinding
+        user_tag_names = [b.tag.name for b in UserTagBinding.objects.filter(user=user)]
+        profile_data = {
+            "user_id": user.id, "username": user.username, "nickname": user.nickname,
+            "avatar": profile.avatar, "real_name": profile.real_name,
+            "gender": profile.gender,
+            "birthday": profile.birthday.isoformat() if profile.birthday else None,
+            "id_card": _mask_sensitive_data("id_card", profile.id_card),
+            "nationality": profile.nationality,
+            "address": _mask_sensitive_data("address", profile.address),
+            "zip_code": profile.zip_code,
+            "emergency_contact": profile.emergency_contact,
+            "emergency_phone": _mask_sensitive_data("emergency_phone", profile.emergency_phone),
+            "job_title": profile.job_title, "company": profile.company, "employee_id": profile.employee_id,
+            "hire_date": profile.hire_date.isoformat() if profile.hire_date else None,
+            "work_email": _mask_sensitive_data("work_email", profile.work_email),
+            "work_phone": _mask_sensitive_data("work_phone", profile.work_phone),
+            "wechat": _mask_sensitive_data("wechat", profile.wechat),
+            "qq": _mask_sensitive_data("qq", profile.qq),
+            "weibo": _mask_sensitive_data("weibo", profile.weibo),
+            "bio": profile.bio, "interests": profile.interests,
+            "tags": user_tag_names, "extra_data": profile.extra_data,
+        }
+        return Response(success(profile_data))
+
+    ser = UpdateUserProfileAppSerializer(data=request.data)
+    if not ser.is_valid():
+        return Response(error(ErrorCode.PARAM_INVALID, data=ser.errors), status=400)
+
+    profile, _ = UserProfile.objects.get_or_create(user=user)
     data = ser.validated_data
     fields = [
         "avatar", "real_name", "gender", "birthday", "id_card", "nationality",

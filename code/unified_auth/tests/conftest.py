@@ -207,6 +207,8 @@ def permissions():
         ("permission:check", "校验权限", "POST", "/api/v1/open/permissions/check", "permission"),
         ("user:profile:read", "读取用户资料", "GET", "/api/v1/open/users/me/profile", "user"),
         ("user:profile:update", "修改用户资料", "PUT", "/api/v1/open/users/me/profile", "user"),
+        ("user:profile:read_app", "读取用户资料(应用级)", "GET", "/api/v1/open/users/:id/profile", "user"),
+        ("user:profile:update_app", "修改用户资料(应用级)", "PUT", "/api/v1/open/users/:id/profile", "user"),
         ("wechat:access_token", "获取微信AccessToken", "GET", "/api/v1/open/wechat/access_token", "wechat"),
         ("wechat:phone", "获取微信用户手机号", "POST", "/api/v1/open/wechat/phone", "wechat"),
     ]

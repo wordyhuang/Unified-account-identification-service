@@ -1,0 +1,179 @@
+{% extends "admin_panel/base.html" %}
+{% load static %}
+
+{% block title %}统计报表{% endblock %}
+
+{% block head %}
+<style>
+  .page-card { margin-bottom: 12px; }
+  .page-card:last-child { margin-bottom: 0; }
+  .sort-bar { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+  .sort-bar .sort-label { font-size: 12px; color: var(--el-text-color-secondary); }
+</style>
+{% endblock %}
+
+{% block content %}
+<wd-panel shadow="never" class="page-card">
+  <el-tabs v-model="activeTab">
+    <!-- ============ 租户报表 ============ -->
+    <el-tab-pane label="租户报表" name="tenants">
+      <wd-search-panel :default-expand="true" label-width="70px"
+        @search="onTenantSearch" @reset="onTenantReset">
+        <template #default="{ model }">
+          <wd-search-item label="关键词" prop="search">
+            <el-input v-model="model.search" placeholder="租户名称 / Slug" clearable style="width: 180px" ></el-input>
+          </wd-search-item>
+          <wd-search-item label="创建从" prop="date_from">
+            <el-date-picker v-model="model.date_from" type="date" value-format="YYYY-MM-DD"
+              placeholder="开始日期" style="width: 140px" ></el-date-picker>
+          </wd-search-item>
+          <wd-search-item label="创建至" prop="date_to">
+            <el-date-picker v-model="model.date_to" type="date" value-format="YYYY-MM-DD"
+              placeholder="结束日期" style="width: 140px" ></el-date-picker>
+          </wd-search-item>
+        </template>
+      </wd-search-panel>
+
+      <wd-data-grid ref="tenantGrid" api="/api/v1/superadmin/report/tenants" api-method="post" active
+        row-key="id" :tools="{ refresh: true }">
+        <template #toolbar>
+          <span class="sort-bar">
+            <span class="sort-label">排序</span>
+            <el-select v-model="tenantSort.sort_by" size="small" style="width: 130px" @change="reloadTenant">
+              <el-option label="创建时间" value="created_at" ></el-option>
+              <el-option label="用户数" value="user_count" ></el-option>
+              <el-option label="活跃用户" value="active_users_30d" ></el-option>
+              <el-option label="应用数" value="app_count" ></el-option>
+              <el-option label="名称" value="name" ></el-option>
+            </el-select>
+            <el-select v-model="tenantSort.sort_order" size="small" style="width: 90px" @change="reloadTenant">
+              <el-option label="降序" value="desc" ></el-option>
+              <el-option label="升序" value="asc" ></el-option>
+            </el-select>
+          </span>
+        </template>
+        <el-table-column prop="name" label="租户名称" min-width="130" show-overflow-tooltip ></el-table-column>
+        <el-table-column prop="slug" label="Slug" min-width="110" show-overflow-tooltip>
+          <template #default="{ row }"><code>[[ row.slug ]]</code></template>
+        </el-table-column>
+        <el-table-column label="状态" width="80" align="center">
+          <template #default="{ row }">
+            <el-tag :type="row.status ? 'success' : 'danger'" size="small">[[ row.status ? '正常' : '停用' ]]</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="user_count" label="用户数" width="90" align="right" ></el-table-column>
+        <el-table-column prop="active_users_30d" label="活跃用户(30d)" width="120" align="right" ></el-table-column>
+        <el-table-column prop="app_count" label="应用数" width="90" align="right" ></el-table-column>
+        <el-table-column prop="total_api_calls" label="API 调用量" width="110" align="right" ></el-table-column>
+        <el-table-column label="创建时间" width="150">
+          <template #default="{ row }">[[ fmtTime(row.created_at) ]]</template>
+        </el-table-column>
+      </wd-data-grid>
+    </el-tab-pane>
+
+    <!-- ============ 应用报表 ============ -->
+    <el-tab-pane label="应用报表" name="apps">
+      <wd-search-panel :default-expand="true" label-width="70px"
+        @search="onAppSearch" @reset="onAppReset">
+        <template #default="{ model }">
+          <wd-search-item label="关键词" prop="search">
+            <el-input v-model="model.search" placeholder="应用名称 / AppKey" clearable style="width: 180px" ></el-input>
+          </wd-search-item>
+          <wd-search-item label="租户" prop="tenant_id">
+            <wd-select v-model="model.tenant_id" placeholder="全部租户" clearable filterable style="width: 170px"
+              api="/api/v1/superadmin/tenants" text-prop="name" value-prop="id" ></wd-select>
+          </wd-search-item>
+          <wd-search-item label="创建从" prop="date_from">
+            <el-date-picker v-model="model.date_from" type="date" value-format="YYYY-MM-DD"
+              placeholder="开始日期" style="width: 140px" ></el-date-picker>
+          </wd-search-item>
+          <wd-search-item label="创建至" prop="date_to">
+            <el-date-picker v-model="model.date_to" type="date" value-format="YYYY-MM-DD"
+              placeholder="结束日期" style="width: 140px" ></el-date-picker>
+          </wd-search-item>
+        </template>
+      </wd-search-panel>
+
+      <wd-data-grid ref="appGrid" api="/api/v1/superadmin/report/apps" api-method="post" active
+        row-key="id" :tools="{ refresh: true }">
+        <template #toolbar>
+          <span class="sort-bar">
+            <span class="sort-label">排序</span>
+            <el-select v-model="appSort.sort_by" size="small" style="width: 120px" @change="reloadApp">
+              <el-option label="创建时间" value="created_at" ></el-option>
+              <el-option label="调用量" value="call_count" ></el-option>
+              <el-option label="名称" value="name" ></el-option>
+            </el-select>
+            <el-select v-model="appSort.sort_order" size="small" style="width: 90px" @change="reloadApp">
+              <el-option label="降序" value="desc" ></el-option>
+              <el-option label="升序" value="asc" ></el-option>
+            </el-select>
+          </span>
+        </template>
+        <el-table-column prop="name" label="应用名称" min-width="130" show-overflow-tooltip ></el-table-column>
+        <el-table-column prop="app_key" label="AppKey" min-width="120" show-overflow-tooltip>
+          <template #default="{ row }"><code>[[ row.app_key ]]</code></template>
+        </el-table-column>
+        <el-table-column prop="tenant_name" label="所属租户" min-width="120" show-overflow-tooltip ></el-table-column>
+        <el-table-column label="状态" width="80" align="center">
+          <template #default="{ row }">
+            <el-tag :type="row.status ? 'success' : 'danger'" size="small">[[ row.status ? '正常' : '停用' ]]</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="call_count" label="调用量(30d)" width="110" align="right" ></el-table-column>
+        <el-table-column label="创建时间" width="150">
+          <template #default="{ row }">[[ fmtTime(row.created_at) ]]</template>
+        </el-table-column>
+      </wd-data-grid>
+    </el-tab-pane>
+  </el-tabs>
+</wd-panel>
+{% endblock %}
+
+{% block script %}
+<script>
+AdminUI.start('/admin-panel/superadmin/report/', {
+  data: function () {
+    return {
+      activeTab: 'tenants',
+      tenantQuery: {},
+      tenantSort: { sort_by: 'created_at', sort_order: 'desc' },
+      appQuery: {},
+      appSort: { sort_by: 'created_at', sort_order: 'desc' }
+    };
+  },
+  methods: {
+    fmtTime: AdminUI.fmtTime,
+    mergeParams: function (query, sort) {
+      var p = Object.assign({}, query || {}, sort || {});
+      Object.keys(p).forEach(function (k) {
+        if (p[k] === '' || p[k] === null || p[k] === undefined) delete p[k];
+      });
+      return p;
+    },
+    reloadTenant: function () {
+      this.$refs.tenantGrid.search(this.mergeParams(this.tenantQuery, this.tenantSort));
+    },
+    onTenantSearch: function (params) {
+      this.tenantQuery = params || {};
+      this.reloadTenant();
+    },
+    onTenantReset: function () {
+      this.tenantQuery = {};
+      this.reloadTenant();
+    },
+    reloadApp: function () {
+      this.$refs.appGrid.search(this.mergeParams(this.appQuery, this.appSort));
+    },
+    onAppSearch: function (params) {
+      this.appQuery = params || {};
+      this.reloadApp();
+    },
+    onAppReset: function () {
+      this.appQuery = {};
+      this.reloadApp();
+    }
+  }
+});
+</script>
+{% endblock %}

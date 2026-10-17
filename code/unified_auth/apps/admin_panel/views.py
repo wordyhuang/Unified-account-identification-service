@@ -522,7 +522,7 @@ def user_profile_view(request, user_id):
         return Response(success({"profile_id": profile.id}))
 
 
-@api_view(["PATCH"])
+@api_view(["PATCH", "POST"])
 def user_status_view(request, user_id):
     try:
         user = User.objects.get(id=user_id, tenant_id=request.tenant_id)
@@ -676,7 +676,7 @@ def app_detail_view(request, app_id):
     return Response(success(_app_serialize(app)))
 
 
-@api_view(["PATCH"])
+@api_view(["PATCH", "POST"])
 def app_status_view(request, app_id):
     try:
         app = Application.objects.get(id=app_id, tenant_id=request.tenant_id)
@@ -753,9 +753,17 @@ def permissions_view(request):
 
 @api_view(["GET", "PUT"])
 def tenant_sms_config_view(request):
-    try:
-        tenant = Tenant.objects.get(id=request.tenant_id)
-    except Tenant.DoesNotExist:
+    tenant = Tenant.objects.filter(id=request.tenant_id).first()
+    if tenant is None:
+        # 纯超管无租户上下文：GET 返回空配置（页面展示"未配置"），PUT 拒绝
+        if request.method == "GET":
+            return Response(success({
+                "sms_provider": "",
+                "sms_access_key_id": "",
+                "sms_access_key_secret": "",
+                "sms_sign_name": "",
+                "sms_template_code": "",
+            }))
         return Response(error(ErrorCode.PARAM_INVALID, message="租户不存在"), status=404)
 
     if request.method == "GET":
@@ -1082,7 +1090,7 @@ def superadmin_tenants_view(request):
     }), status=201)
 
 
-@api_view(["GET", "PUT", "DELETE"])
+@api_view(["GET", "PUT", "DELETE", "POST"])
 def superadmin_tenant_detail_view(request, tenant_id):
     """
     租户详情、更新、删除（超级管理员）
@@ -1830,7 +1838,8 @@ def superadmin_report_apps(request):
         qs = qs.filter(created_at__date__lte=date_to)
 
     total = qs.count()
-    sortable_fields = {"name", "app_key", "status", "created_at", "tenant_id", "call_count"}
+    # call_count 非模型字段（来自调用统计内存聚合），仅走下方内存排序，不进 ORM order_by
+    sortable_fields = {"name", "app_key", "status", "created_at", "tenant_id"}
     if sort_by in sortable_fields:
         order_prefix = "-" if sort_order == "desc" else ""
         qs = qs.order_by(f"{order_prefix}{sort_by}")

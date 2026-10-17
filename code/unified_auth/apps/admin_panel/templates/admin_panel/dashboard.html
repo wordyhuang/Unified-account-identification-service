@@ -1,0 +1,243 @@
+{% extends "admin_panel/base.html" %}
+{% load static %}
+
+{% block title %}工作台{% endblock %}
+
+{% block head %}
+<style>
+  .stat-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; margin-bottom: 12px; }
+  .stat-card { background: var(--el-bg-color); border: 1px solid var(--el-border-color-lighter); border-radius: 8px; padding: 16px; }
+  .stat-card .stat-label { color: var(--el-text-color-secondary); font-size: 13px; margin-bottom: 8px; }
+  .stat-card .stat-value { font-size: 26px; font-weight: 600; line-height: 1.2; }
+  .stat-card .stat-sub { color: var(--el-text-color-secondary); font-size: 12px; margin-top: 6px; }
+  .panel-row { margin-bottom: 12px; }
+  .dist-item { display: flex; align-items: center; margin-bottom: 10px; }
+  .dist-item .dist-label { width: 90px; font-size: 13px; color: var(--el-text-color-regular); flex: none; }
+  .dist-item .dist-bar { flex: 1; height: 10px; background: var(--el-fill-color-light); border-radius: 5px; overflow: hidden; }
+  .dist-item .dist-bar > i { display: block; height: 100%; background: var(--el-color-primary); border-radius: 5px; }
+  .dist-item .dist-num { width: 110px; text-align: right; font-size: 12px; color: var(--el-text-color-secondary); flex: none; }
+  .chart-wrap { padding: 4px 0 0; }
+  .chart-legend { display: flex; gap: 16px; font-size: 12px; color: var(--el-text-color-secondary); margin-bottom: 4px; }
+  .chart-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; }
+  .empty-tip { color: var(--el-text-color-secondary); text-align: center; padding: 32px 0; font-size: 13px; }
+  @media (max-width: 1200px) { .stat-grid { grid-template-columns: repeat(3, 1fr); } }
+</style>
+{% endblock %}
+
+{% block content %}
+<div v-loading="loading">
+  <!-- 指标卡 -->
+  <div class="stat-grid">
+    <div class="stat-card">
+      <div class="stat-label">总用户数</div>
+      <div class="stat-value">[[ stats.total_users || 0 ]]</div>
+      <div class="stat-sub">今日新增 [[ stats.today_new_users || 0 ]]</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">活跃用户</div>
+      <div class="stat-value">[[ stats.active_users || 0 ]]</div>
+      <div class="stat-sub">状态正常的账号</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">应用数</div>
+      <div class="stat-value">[[ stats.total_apps || 0 ]]</div>
+      <div class="stat-sub">已接入应用</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">活跃应用</div>
+      <div class="stat-value">[[ stats.active_apps || 0 ]]</div>
+      <div class="stat-sub">状态正常的应用</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">角色数</div>
+      <div class="stat-value">[[ stats.total_roles || 0 ]]</div>
+      <div class="stat-sub">自定义角色</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">日活跃用户 (DAU)</div>
+      <div class="stat-value">[[ activeUsers.dau ? activeUsers.dau.today : 0 ]]</div>
+      <div class="stat-sub">昨日 [[ activeUsers.dau ? activeUsers.dau.yesterday : 0 ]] · 7日均 [[ activeUsers.dau ? activeUsers.dau.avg_7d : 0 ]]</div>
+    </div>
+  </div>
+
+  <el-row :gutter="12" class="panel-row">
+    <!-- 登录趋势 -->
+    <el-col :span="12">
+      <el-card shadow="never">
+        <template #header><span>近 7 天登录趋势</span></template>
+        <div class="chart-wrap" v-if="loginTrend.length">
+          <div class="chart-legend">
+            <span><i style="background: var(--el-color-primary)"></i>登录总数</span>
+            <span><i style="background: var(--el-color-danger)"></i>失败次数</span>
+          </div>
+          <svg :viewBox="'0 0 560 180'" style="width: 100%; height: 180px">
+            <polyline :points="linePoints(loginTrend, 'total', 560, 160)" fill="none"
+              stroke="var(--el-color-primary)" stroke-width="2" />
+            <polyline :points="linePoints(loginTrend, 'fail', 560, 160)" fill="none"
+              stroke="var(--el-color-danger)" stroke-width="2" />
+            <g v-for="(t, i) in loginTrend" :key="t.date">
+              <text :x="i * (560 / Math.max(loginTrend.length - 1, 1))" y="176" text-anchor="middle"
+                font-size="11" fill="var(--el-text-color-secondary)">[[ shortDate(t.date) ]]</text>
+            </g>
+          </svg>
+        </div>
+        <div v-else class="empty-tip">暂无数据</div>
+      </el-card>
+    </el-col>
+    <!-- 登录方式分布 -->
+    <el-col :span="12">
+      <el-card shadow="never">
+        <template #header><span>登录方式分布</span></template>
+        <template v-if="distList.length">
+          <div v-for="item in distList" :key="item.label" class="dist-item">
+            <span class="dist-label">[[ item.label ]]</span>
+            <span class="dist-bar"><i :style="{ width: item.percentage + '%' }"></i></span>
+            <span class="dist-num">[[ item.count ]] 次 · [[ item.percentage ]]%</span>
+          </div>
+        </template>
+        <div v-else class="empty-tip">暂无数据</div>
+      </el-card>
+    </el-col>
+  </el-row>
+
+  <el-row :gutter="12" class="panel-row">
+    <!-- 用户增长 -->
+    <el-col :span="12">
+      <el-card shadow="never">
+        <template #header><span>近 30 天用户增长（当前总量 [[ userGrowthTotal ]]）</span></template>
+        <div class="chart-wrap" v-if="userGrowth.length">
+          <svg :viewBox="'0 0 560 160'" style="width: 100%; height: 160px">
+            <polyline :points="linePoints(userGrowth, 'new_users', 560, 140)" fill="none"
+              stroke="var(--el-color-success)" stroke-width="2" />
+          </svg>
+        </div>
+        <div v-else class="empty-tip">暂无数据</div>
+      </el-card>
+    </el-col>
+    <!-- 应用调用排行 -->
+    <el-col :span="12">
+      <el-card shadow="never">
+        <template #header><span>应用概况（近 7 天调用）</span></template>
+        <el-table :data="stats.app_stats || []" size="small" max-height="220">
+          <el-table-column prop="name" label="应用" min-width="120" show-overflow-tooltip ></el-table-column>
+          <el-table-column prop="app_key" label="AppKey" min-width="130" show-overflow-tooltip ></el-table-column>
+          <el-table-column label="状态" width="70" align="center">
+            <template #default="{ row }">
+              <el-tag :type="row.status === 1 ? 'success' : 'danger'" size="small">[[ row.status === 1 ? '正常' : '停用' ]]</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="call_count_7d" label="7日调用" width="90" align="right" ></el-table-column>
+        </el-table>
+      </el-card>
+    </el-col>
+  </el-row>
+
+  <!-- 最近动态 -->
+  <el-card shadow="never">
+    <template #header><span>最近动态</span></template>
+    <el-timeline v-if="activities.length" style="padding-left: 4px">
+      <el-timeline-item v-for="act in activities" :key="act.id" :timestamp="fmtTime(act.created_at)" placement="top">
+        <b>[[ act.actor_name || '系统' ]]</b>&nbsp;[[ actionText(act.action) ]]
+        <span v-if="act.resource_id">&nbsp;#[[ act.resource_id ]]</span>
+      </el-timeline-item>
+    </el-timeline>
+    <div v-else class="empty-tip">暂无动态</div>
+  </el-card>
+</div>
+{% endblock %}
+
+{% block script %}
+<script>
+AdminUI.start('/admin-panel/dashboard/', {
+  data: function () {
+    return {
+      loading: true,
+      stats: {},
+      loginTrend: [],
+      loginDist: {},
+      userGrowth: [],
+      userGrowthTotal: 0,
+      activeUsers: {},
+      activities: []
+    };
+  },
+  computed: {
+    distList: function () {
+      var items = this.loginDist || {};
+      return Object.keys(items).map(function (label) {
+        return { label: label, count: items[label].count, percentage: items[label].percentage };
+      }).sort(function (a, b) { return b.count - a.count; });
+    }
+  },
+  methods: {
+    fmtTime: AdminUI.fmtTime,
+    shortDate: function (d) {
+      return d ? String(d).slice(5) : '';
+    },
+    linePoints: function (trend, key, width, height) {
+      if (!trend || !trend.length) return '';
+      var max = 1;
+      trend.forEach(function (t) { if ((t[key] || 0) > max) max = t[key]; });
+      var stepX = width / Math.max(trend.length - 1, 1);
+      return trend.map(function (t, i) {
+        var x = (i * stepX).toFixed(1);
+        var y = (height - (t[key] || 0) / max * (height - 14) - 4).toFixed(1);
+        return x + ',' + y;
+      }).join(' ');
+    },
+    actionText: function (action) {
+      var map = {
+        'admin.login': '登录了管理后台',
+        'admin.user.create': '创建了用户',
+        'admin.user.update': '更新了用户',
+        'admin.user.delete': '删除了用户',
+        'admin.user.batch_delete': '批量删除了用户',
+        'admin.user.batch_status': '批量修改了用户状态',
+        'admin.user.batch_user_type': '批量修改了用户类型',
+        'admin.user.import': '导入了用户',
+        'admin.user.reset_password': '重置了用户密码',
+        'admin.user.profile.update': '更新了用户档案',
+        'admin.app.create': '创建了应用',
+        'admin.app.update': '更新了应用',
+        'admin.app.delete': '删除了应用',
+        'admin.role.create': '创建了角色',
+        'admin.role.update': '更新了角色',
+        'admin.role.delete': '删除了角色',
+        'admin.tag.create': '创建了标签',
+        'admin.tag.update': '更新了标签',
+        'admin.tag.delete': '删除了标签',
+        'admin.department.create': '创建了部门',
+        'admin.department.update': '更新了部门',
+        'admin.department.delete': '删除了部门'
+      };
+      return map[action] || action;
+    }
+  },
+  mounted: function () {
+    var self = this;
+    var get = WorkDesktop.request.get.bind(WorkDesktop.request);
+    Promise.all([
+      get('/api/v1/admin/stats'),
+      get('/api/v1/admin/stats/login-trend', { days: 7 }),
+      get('/api/v1/admin/stats/login-distribution'),
+      get('/api/v1/admin/stats/user-growth', { days: 30 }),
+      get('/api/v1/admin/stats/active-users'),
+      get('/api/v1/admin/recent-activities')
+    ]).then(function (results) {
+      var r = results;
+      if (r[0] && r[0].success) self.stats = r[0].data || {};
+      if (r[1] && r[1].success) self.loginTrend = (r[1].data && r[1].data.trend) || [];
+      if (r[2] && r[2].success) self.loginDist = (r[2].data && r[2].data.items) || {};
+      if (r[3] && r[3].success) {
+        self.userGrowth = (r[3].data && r[3].data.trend) || [];
+        self.userGrowthTotal = (r[3].data && r[3].data.current_total) || 0;
+      }
+      if (r[4] && r[4].success) self.activeUsers = r[4].data || {};
+      if (r[5] && r[5].success) self.activities = (r[5].data && (r[5].data.list || r[5].data.activities)) || [];
+    }).finally(function () {
+      self.loading = false;
+    });
+  }
+});
+</script>
+{% endblock %}

@@ -1,0 +1,228 @@
+{% extends "admin_panel/base.html" %}
+{% load static %}
+
+{% block title %}全局概览{% endblock %}
+
+{% block head %}
+<style>
+  .stat-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 12px; margin-bottom: 12px; }
+  .stat-card { background: var(--el-bg-color); border: 1px solid var(--el-border-color-lighter); border-radius: 8px; padding: 16px; }
+  .stat-card .stat-label { color: var(--el-text-color-secondary); font-size: 13px; margin-bottom: 8px; }
+  .stat-card .stat-value { font-size: 26px; font-weight: 600; line-height: 1.2; }
+  .stat-card .stat-sub { color: var(--el-text-color-secondary); font-size: 12px; margin-top: 6px; }
+  .panel-row { margin-bottom: 12px; }
+  .dist-item { display: flex; align-items: center; margin-bottom: 10px; }
+  .dist-item .dist-label { width: 90px; font-size: 13px; color: var(--el-text-color-regular); flex: none; }
+  .dist-item .dist-bar { flex: 1; height: 10px; background: var(--el-fill-color-light); border-radius: 5px; overflow: hidden; }
+  .dist-item .dist-bar > i { display: block; height: 100%; background: var(--el-color-primary); border-radius: 5px; }
+  .dist-item .dist-num { width: 110px; text-align: right; font-size: 12px; color: var(--el-text-color-secondary); flex: none; }
+  .chart-wrap { padding: 4px 0 0; }
+  .chart-legend { display: flex; gap: 16px; font-size: 12px; color: var(--el-text-color-secondary); margin-bottom: 4px; }
+  .chart-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; }
+  .empty-tip { color: var(--el-text-color-secondary); text-align: center; padding: 32px 0; font-size: 13px; }
+  @media (max-width: 1400px) { .stat-grid { grid-template-columns: repeat(4, 1fr); } }
+</style>
+{% endblock %}
+
+{% block content %}
+<div v-loading="loading">
+  <!-- 全局指标卡 -->
+  <div class="stat-grid">
+    <div class="stat-card">
+      <div class="stat-label">租户总数</div>
+      <div class="stat-value">[[ stats.total_tenants || 0 ]]</div>
+      <div class="stat-sub">正常 [[ stats.active_tenants || 0 ]]</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">用户总数</div>
+      <div class="stat-value">[[ stats.total_users || 0 ]]</div>
+      <div class="stat-sub">正常 [[ stats.active_users || 0 ]]</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">应用总数</div>
+      <div class="stat-value">[[ stats.total_apps || 0 ]]</div>
+      <div class="stat-sub">正常 [[ stats.active_apps || 0 ]]</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">角色总数</div>
+      <div class="stat-value">[[ stats.total_roles || 0 ]]</div>
+      <div class="stat-sub">全部租户合计</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">活跃租户率</div>
+      <div class="stat-value">[[ ratio(stats.active_tenants, stats.total_tenants) ]]%</div>
+      <div class="stat-sub">正常租户占比</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">活跃用户率</div>
+      <div class="stat-value">[[ ratio(stats.active_users, stats.total_users) ]]%</div>
+      <div class="stat-sub">正常用户占比</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">活跃应用率</div>
+      <div class="stat-value">[[ ratio(stats.active_apps, stats.total_apps) ]]%</div>
+      <div class="stat-sub">正常应用占比</div>
+    </div>
+  </div>
+
+  <el-row :gutter="12" class="panel-row">
+    <!-- 全局登录趋势 -->
+    <el-col :span="12">
+      <el-card shadow="never">
+        <template #header><span>近 7 天全局登录趋势</span></template>
+        <div class="chart-wrap" v-if="loginTrend.length">
+          <div class="chart-legend">
+            <span><i style="background: var(--el-color-primary)"></i>登录总数</span>
+            <span><i style="background: var(--el-color-danger)"></i>失败次数</span>
+          </div>
+          <svg viewBox="0 0 560 180" style="width: 100%; height: 180px">
+            <polyline :points="linePoints(loginTrend, 'total', 560, 160)" fill="none"
+              stroke="var(--el-color-primary)" stroke-width="2" />
+            <polyline :points="linePoints(loginTrend, 'fail', 560, 160)" fill="none"
+              stroke="var(--el-color-danger)" stroke-width="2" />
+            <g v-for="(t, i) in loginTrend" :key="t.date">
+              <text :x="i * (560 / Math.max(loginTrend.length - 1, 1))" y="176" text-anchor="middle"
+                font-size="11" fill="var(--el-text-color-secondary)">[[ shortDate(t.date) ]]</text>
+            </g>
+          </svg>
+        </div>
+        <div v-else class="empty-tip">暂无数据</div>
+      </el-card>
+    </el-col>
+    <!-- 全局登录方式分布 -->
+    <el-col :span="12">
+      <el-card shadow="never">
+        <template #header><span>全局登录方式分布</span></template>
+        <template v-if="distList.length">
+          <div v-for="item in distList" :key="item.label" class="dist-item">
+            <span class="dist-label">[[ item.label ]]</span>
+            <span class="dist-bar"><i :style="{ width: item.percentage + '%' }"></i></span>
+            <span class="dist-num">[[ item.count ]] 次 · [[ item.percentage ]]%</span>
+          </div>
+        </template>
+        <div v-else class="empty-tip">暂无数据</div>
+      </el-card>
+    </el-col>
+  </el-row>
+
+  <el-row :gutter="12" class="panel-row">
+    <!-- 全局用户增长 -->
+    <el-col :span="12">
+      <el-card shadow="never">
+        <template #header><span>近 30 天全局用户增长（当前总量 [[ userGrowthTotal ]]）</span></template>
+        <div class="chart-wrap" v-if="userGrowth.length">
+          <svg viewBox="0 0 560 160" style="width: 100%; height: 160px">
+            <polyline :points="linePoints(userGrowth, 'new_users', 560, 140)" fill="none"
+              stroke="var(--el-color-success)" stroke-width="2" />
+          </svg>
+        </div>
+        <div v-else class="empty-tip">暂无数据</div>
+      </el-card>
+    </el-col>
+    <!-- 租户活跃排行 -->
+    <el-col :span="12">
+      <el-card shadow="never">
+        <template #header><span>租户活跃排行（近 30 天活跃用户 Top 10）</span></template>
+        <el-table :data="activityRanking" size="small" max-height="220">
+          <el-table-column type="index" label="#" width="50" align="center" ></el-table-column>
+          <el-table-column prop="tenant_name" label="租户" min-width="120" show-overflow-tooltip ></el-table-column>
+          <el-table-column label="活跃/总用户" width="110" align="right">
+            <template #default="{ row }">[[ row.active_users ]] / [[ row.total_users ]]</template>
+          </el-table-column>
+          <el-table-column prop="app_count" label="应用数" width="80" align="right" ></el-table-column>
+        </el-table>
+      </el-card>
+    </el-col>
+  </el-row>
+
+  <!-- 租户一览 -->
+  <el-card shadow="never">
+    <template #header><span>租户一览</span></template>
+    <el-table :data="stats.tenant_stats || []" size="small" max-height="360">
+      <el-table-column prop="name" label="租户名称" min-width="130" show-overflow-tooltip ></el-table-column>
+      <el-table-column prop="slug" label="Slug" min-width="110" show-overflow-tooltip>
+        <template #default="{ row }"><code>[[ row.slug ]]</code></template>
+      </el-table-column>
+      <el-table-column label="状态" width="80" align="center">
+        <template #default="{ row }">
+          <el-tag :type="row.status ? 'success' : 'danger'" size="small">[[ row.status ? '正常' : '停用' ]]</el-tag>
+        </template>
+      </el-table-column>
+      <el-table-column prop="user_count" label="用户数" width="90" align="right" ></el-table-column>
+      <el-table-column prop="app_count" label="应用数" width="90" align="right" ></el-table-column>
+      <el-table-column label="创建时间" width="150">
+        <template #default="{ row }">[[ fmtTime(row.created_at) ]]</template>
+      </el-table-column>
+    </el-table>
+  </el-card>
+</div>
+{% endblock %}
+
+{% block script %}
+<script>
+AdminUI.start('/admin-panel/superadmin/dashboard/', {
+  data: function () {
+    return {
+      loading: true,
+      stats: {},
+      loginTrend: [],
+      loginDist: {},
+      userGrowth: [],
+      userGrowthTotal: 0,
+      activityRanking: []
+    };
+  },
+  computed: {
+    distList: function () {
+      var items = this.loginDist || {};
+      return Object.keys(items).map(function (label) {
+        return { label: label, count: items[label].count, percentage: items[label].percentage };
+      }).sort(function (a, b) { return b.count - a.count; });
+    }
+  },
+  methods: {
+    fmtTime: AdminUI.fmtTime,
+    shortDate: function (d) {
+      return d ? String(d).slice(5) : '';
+    },
+    ratio: function (part, total) {
+      if (!total) return 0;
+      return Math.round((part || 0) / total * 1000) / 10;
+    },
+    linePoints: function (trend, key, width, height) {
+      if (!trend || !trend.length) return '';
+      var max = 1;
+      trend.forEach(function (t) { if ((t[key] || 0) > max) max = t[key]; });
+      var stepX = width / Math.max(trend.length - 1, 1);
+      return trend.map(function (t, i) {
+        var x = (i * stepX).toFixed(1);
+        var y = (height - (t[key] || 0) / max * (height - 14) - 4).toFixed(1);
+        return x + ',' + y;
+      }).join(' ');
+    }
+  },
+  mounted: function () {
+    var self = this;
+    var get = WorkDesktop.request.get.bind(WorkDesktop.request);
+    Promise.all([
+      get('/api/v1/superadmin/global-stats'),
+      get('/api/v1/superadmin/stats/global-login-trend', { days: 7 }),
+      get('/api/v1/superadmin/stats/global-login-distribution'),
+      get('/api/v1/superadmin/stats/global-user-growth', { days: 30 }),
+      get('/api/v1/superadmin/stats/tenant-activity-ranking')
+    ]).then(function (r) {
+      if (r[0] && r[0].success) self.stats = r[0].data || {};
+      if (r[1] && r[1].success) self.loginTrend = (r[1].data && r[1].data.trend) || [];
+      if (r[2] && r[2].success) self.loginDist = (r[2].data && r[2].data.items) || {};
+      if (r[3] && r[3].success) {
+        self.userGrowth = (r[3].data && r[3].data.trend) || [];
+        self.userGrowthTotal = (r[3].data && r[3].data.current_total) || 0;
+      }
+      if (r[4] && r[4].success) self.activityRanking = (r[4].data && r[4].data.rankings) || [];
+    }).finally(function () {
+      self.loading = false;
+    });
+  }
+});
+</script>
+{% endblock %}

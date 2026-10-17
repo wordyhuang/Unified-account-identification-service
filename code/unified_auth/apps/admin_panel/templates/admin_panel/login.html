@@ -1,0 +1,106 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>登录 · 统一账号识别服务管理后台</title>
+  <link rel="icon" href="{% static 'admin_panel/favicon.svg' %}">
+  <link rel="stylesheet" href="{% static 'admin_panel/vendor/element-plus/index.css' %}">
+  <style>
+    html, body { height: 100%; margin: 0; padding: 0; }
+    #app {
+      height: 100vh; display: flex; align-items: center; justify-content: center;
+      background: linear-gradient(135deg, #1f2d3d 0%, #2b4b6f 100%);
+    }
+    [v-cloak] { display: none; }
+    .login-card { width: 400px; }
+    .login-title { text-align: center; margin: 0 0 8px; font-size: 22px; }
+    .login-sub { text-align: center; color: #909399; margin: 0 0 24px; font-size: 13px; }
+    .login-btn { width: 100%; }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <el-card v-cloak class="login-card">
+      <h1 class="login-title">统一账号识别服务</h1>
+      <p class="login-sub">管理后台登录</p>
+      <el-form ref="formRef" :model="form" :rules="rules" size="large" @keyup.enter="onSubmit">
+        <el-form-item prop="username">
+          <el-input v-model="form.username" placeholder="用户名" prefix-icon="User" autofocus></el-input>
+        </el-form-item>
+        <el-form-item prop="password">
+          <el-input v-model="form.password" type="password" placeholder="密码" prefix-icon="Lock" show-password></el-input>
+        </el-form-item>
+        <el-form-item>
+          <el-button class="login-btn" type="primary" :loading="loading" @click="onSubmit">登 录</el-button>
+        </el-form-item>
+      </el-form>
+    </el-card>
+  </div>
+  <script src="{% static 'admin_panel/vendor/vue/vue.global.prod.js' %}"></script>
+  <script src="{% static 'admin_panel/vendor/element-plus/index.full.min.js' %}"></script>
+  <script src="{% static 'admin_panel/vendor/element-plus/zh-cn.min.js' %}"></script>
+  <script src="{% static 'admin_panel/vendor/icons/index.iife.min.js' %}"></script>
+  <script src="{% static 'admin_panel/js/common.js' %}"></script>
+  <script src="{% static 'admin_panel/vendor/workdesktop-ai/index.umd.js' %}"></script>
+  <script>
+    (function () {
+      // 已登录访问登录页：按身份直接跳工作台
+      var u = AdminAuth.getUser();
+      if (AdminAuth.getToken() && u) {
+        location.href = (u.is_superadmin && !u.impersonated)
+          ? '/admin-panel/superadmin/dashboard/'
+          : '/admin-panel/dashboard/';
+        return;
+      }
+      var app = Vue.createApp({
+        delimiters: ['[[', ']]'],
+        data: function () {
+          return {
+            loading: false,
+            form: { username: '', password: '' },
+            rules: {
+              username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
+              password: [{ required: true, message: '请输入密码', trigger: 'blur' }]
+            }
+          };
+        },
+        methods: {
+          onSubmit: function () {
+            var self = this;
+            this.$refs.formRef.validate(function (valid) {
+              if (!valid) return;
+              self.loading = true;
+              WorkDesktop.request.post('/api/v1/admin/login', {
+                username: self.form.username,
+                password: self.form.password
+              }).then(function (res) {
+                self.loading = false;
+                if (!res) return;
+                if (res.success) {
+                  AdminAuth.setAuth(res.data.access_token, res.data);
+                  ElementPlus.ElMessage.success('登录成功');
+                  location.href = res.data.is_superadmin
+                    ? '/admin-panel/superadmin/dashboard/'
+                    : '/admin-panel/dashboard/';
+                } else if (!AdminAuth.isTokenError(res.code)) {
+                  ElementPlus.ElMessage.error(res.message || '登录失败');
+                }
+              }).catch(function () {
+                // HTTP 异常（如 403 非管理员）已由全局 exception 提示
+                self.loading = false;
+              });
+            });
+          }
+        }
+      });
+      app.use(ElementPlus, { locale: ElementPlusLocaleZhCn });
+      Object.keys(ElementPlusIconsVue).forEach(function (name) {
+        app.component(name, ElementPlusIconsVue[name]);
+      });
+      app.mount('#app');
+    })();
+  </script>
+</body>
+</html>
