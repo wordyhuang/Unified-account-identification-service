@@ -50,3 +50,11 @@ code/unified_auth/test_*.py
 code/unified_auth/unified_auth
 .ai/
 *.zip
+
+# ==================== 文档白名单（仅放行 apis/ 与 archive/） ====================
+# document/ 根目录下的设计文档不进仓库；AI 路由体系只保留 apis/ 与 archive/ 两份主路由
+document/*
+!document/apis/
+!document/apis/**
+!document/archive/
+!document/archive/**
