@@ -584,41 +584,41 @@ python manage.py test
 
 ### 5.1 客户端认证 API `/api/v1/auth/`
 
-| 方法    | 路径                     | 功能                 | 认证方式          |
-| ----- | ---------------------- | ------------------ | ------------- |
-| POST  | `/login`               | 密码登录              | 无             |
-| POST  | `/sms/send`            | 发送短信验证码           | 无             |
-| POST  | `/sms/verify`          | 校验短信验证码           | 无             |
-| POST  | `/sms/login`           | 短信验证码登录           | 无             |
-| POST  | `/sms/send/pwd`        | 发送改密验证码           | Access Token  |
-| POST  | `/social/login`        | 社交登录              | 无             |
-| POST  | `/wechat/login`        | 微信小程序登录           | 无             |
-| POST  | `/token/refresh`       | 刷新 Token          | Refresh Token |
-| POST  | `/logout`              | 登出                | Access Token  |
-| GET   | `/me`                  | 获取当前用户信息          | Access Token  |
-| PUT   | `/me`                  | 修改用户信息            | Access Token  |
-| PATCH | `/me/password`         | 修改密码（原密码校验）       | Access Token  |
-| POST  | `/me/password/reset`   | 短信验证码重置密码（无需原密码）  | Access Token  |
-| GET   | `/me/profile`          | 获取用户资料            | Access Token  |
-| PUT   | `/me/profile`          | 更新用户资料            | Access Token  |
+| 方法    | 路径                   | 功能               | 认证方式          |
+| ----- | -------------------- | ---------------- | ------------- |
+| POST  | `/login`             | 密码登录             | 无             |
+| POST  | `/sms/send`          | 发送短信验证码          | 无             |
+| POST  | `/sms/verify`        | 校验短信验证码          | 无             |
+| POST  | `/sms/login`         | 短信验证码登录          | 无             |
+| POST  | `/sms/send/pwd`      | 发送改密验证码          | Access Token  |
+| POST  | `/social/login`      | 社交登录             | 无             |
+| POST  | `/wechat/login`      | 微信小程序登录          | 无             |
+| POST  | `/token/refresh`     | 刷新 Token         | Refresh Token |
+| POST  | `/logout`            | 登出               | Access Token  |
+| GET   | `/me`                | 获取当前用户信息         | Access Token  |
+| PUT   | `/me`                | 修改用户信息           | Access Token  |
+| PATCH | `/me/password`       | 修改密码（原密码校验）      | Access Token  |
+| POST  | `/me/password/reset` | 短信验证码重置密码（无需原密码） | Access Token  |
+| GET   | `/me/profile`        | 获取用户资料           | Access Token  |
+| PUT   | `/me/profile`        | 更新用户资料           | Access Token  |
 
 ### 5.2 开放 API `/api/v1/open/`
 
 通过 AppKey/AppSecret 签名认证，提供用户管理系统对接接口。
 
-| 方法    | 路径                   | 功能         | 权限码                |
-| ----- | -------------------- | ---------- | ------------------ |
-| POST  | `/verify_token`      | 验证用户 Token | `token:verify`     |
-| GET   | `/users`             | 查询用户列表     | `user:read`        |
-| GET   | `/users/<id>`        | 获取用户详情     | `user:read`        |
-| POST  | `/users`             | 创建用户       | `user:create`      |
-| PUT   | `/users/<id>`        | 修改用户信息     | `user:update`      |
-| PATCH | `/users/<id>/status` | 启用/禁用用户    | `user:update`      |
-| POST  | `/check_permission`  | 检查用户权限      | `permission:check` |
-| GET   | `/user/profile/by_token` | 通过Token获取用户资料 | `user:profile:read` |
-| PUT   | `/user/profile/by_token` | 通过Token修改用户资料 | `user:profile:update` |
-| GET   | `/wechat/access_token` | 获取微信AccessToken（自动缓存） | `wechat:access_token` |
-| POST  | `/wechat/get_phone_number` | 获取微信用户手机号 | `wechat:phone` |
+| 方法    | 路径                         | 功能                    | 权限码                   |
+| ----- | -------------------------- | --------------------- | --------------------- |
+| POST  | `/verify_token`            | 验证用户 Token            | `token:verify`        |
+| GET   | `/users`                   | 查询用户列表                | `user:read`           |
+| GET   | `/users/<id>`              | 获取用户详情                | `user:read`           |
+| POST  | `/users`                   | 创建用户                  | `user:create`         |
+| PUT   | `/users/<id>`              | 修改用户信息                | `user:update`         |
+| PATCH | `/users/<id>/status`       | 启用/禁用用户               | `user:update`         |
+| POST  | `/check_permission`        | 检查用户权限                | `permission:check`    |
+| GET   | `/user/profile/by_token`   | 通过Token获取用户资料         | `user:profile:read`   |
+| PUT   | `/user/profile/by_token`   | 通过Token修改用户资料         | `user:profile:update` |
+| GET   | `/wechat/access_token`     | 获取微信AccessToken（自动缓存） | `wechat:access_token` |
+| POST  | `/wechat/get_phone_number` | 获取微信用户手机号             | `wechat:phone`        |
 
 > 开放 API 通过中间件自动实现租户数据隔离，每个应用只能操作所属租户的数据。
 
