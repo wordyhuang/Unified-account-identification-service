@@ -64,10 +64,10 @@ class AdminUpdateAppSerializer(serializers.Serializer):
         required=False, allow_null=True,
     )
     role_ids = serializers.ListField(child=serializers.IntegerField(), required=False, allow_null=True)
-    wechat_mp_app_id = serializers.CharField(max_length=64, required=False, allow_null=True)
-    wechat_mp_app_secret = serializers.CharField(max_length=256, required=False, allow_null=True)
-    wechat_web_app_id = serializers.CharField(max_length=64, required=False, allow_null=True)
-    wechat_web_app_secret = serializers.CharField(max_length=256, required=False, allow_null=True)
+    wechat_mp_app_id = serializers.CharField(max_length=64, required=False, allow_null=True, allow_blank=True)
+    wechat_mp_app_secret = serializers.CharField(max_length=256, required=False, allow_null=True, allow_blank=True)
+    wechat_web_app_id = serializers.CharField(max_length=64, required=False, allow_null=True, allow_blank=True)
+    wechat_web_app_secret = serializers.CharField(max_length=256, required=False, allow_null=True, allow_blank=True)
 
 
 class AdminTenantSmsConfigSerializer(serializers.Serializer):

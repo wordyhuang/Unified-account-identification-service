@@ -2,8 +2,10 @@ import json
 import csv
 import io
 import os
+import re
 import hashlib
 import secrets
+import urllib.request
 from datetime import datetime, timedelta, timezone
 from django.conf import settings
 from django.db.models import Count, Q, Sum
@@ -650,7 +652,7 @@ def app_detail_view(request, app_id):
     for field, value in data.items():
         if value is None:
             continue
-        if field in ("wechat_mp_app_secret", "wechat_web_app_secret") and value == "***":
+        if field in ("wechat_mp_app_secret", "wechat_web_app_secret") and value in ("", "***"):
             continue
         setattr(app, field, value)
         update_fields.append(field)
@@ -2420,3 +2422,126 @@ def user_tags_set_view(request, user_id):
         "count": len(new_bindings),
         "tag_ids": [b.tag_id for b in new_bindings],
     }))
+
+
+# ======================== workdesktop-ai 版本管理 ========================
+
+WORKDESKTOP_VENDOR_DIR = os.path.join(
+    os.path.dirname(__file__),
+    "static", "admin_panel", "vendor", "workdesktop-ai",
+)
+WORKDESKTOP_VERSION_FILE = os.path.join(WORKDESKTOP_VENDOR_DIR, "VERSION")
+WORKDESKTOP_UMD_FILENAME = "index.umd.js"
+WORKDESKTOP_CSS_FILENAME = "style.css"
+WORKDESKTOP_REGISTRY = "https://registry.npmjs.org/workdesktop-ai"
+WORKDESKTOP_UNPKG_TEMPLATE = "https://unpkg.com/workdesktop-ai@{version}/dist/{filename}"
+WORKDESKTOP_FETCH_TIMEOUT = 15
+_PRERELEASE_MARKERS = ("beta", "alpha", "rc", "canary", "next", "dev", "pre", "-")
+
+
+def _semver_key(version):
+    """返回可降序排序的数值元组（取前 3 个数字段）"""
+    nums = [int(x) for x in re.findall(r"\d+", version)[:3] or [0]]
+    return tuple(nums)
+
+
+def _fetch_workdesktop_versions():
+    """从官方 npm registry 拉取 workdesktop-ai 全部稳定版本（降序），失败抛 RuntimeError"""
+    try:
+        with urllib.request.urlopen(WORKDESKTOP_REGISTRY, timeout=WORKDESKTOP_FETCH_TIMEOUT) as resp:
+            payload = json.loads(resp.read().decode("utf-8"))
+    except Exception as exc:
+        raise RuntimeError("获取 npm 版本列表失败: {}".format(exc))
+    if not isinstance(payload, dict):
+        raise RuntimeError("npm registry 返回数据格式异常")
+    versions = list(payload.get("versions", {}).keys())
+    stable = [v for v in versions if not any(m in v.lower() for m in _PRERELEASE_MARKERS)]
+    stable.sort(key=_semver_key, reverse=True)
+    return stable
+
+
+@api_view(["GET"])
+def workdesktop_version_view(request):
+    """查看当前 workdesktop-ai 版本与官方最近 10 个版本"""
+    if not getattr(request, "is_superadmin", False):
+        return Response(error(ErrorCode.PERMISSION_DENIED), status=403)
+
+    current = None
+    try:
+        with open(WORKDESKTOP_VERSION_FILE, "r", encoding="utf-8") as f:
+            current = f.read().strip() or None
+    except OSError:
+        current = None
+
+    try:
+        versions = _fetch_workdesktop_versions()
+    except RuntimeError as exc:
+        return Response(error(ErrorCode.INTERNAL_ERROR, message=str(exc)))
+
+    recent = versions[:10]
+    latest = versions[0] if versions else None
+    return Response(success({
+        "current": current,
+        "latest": latest,
+        "versions": recent,
+    }))
+
+
+@api_view(["POST"])
+def workdesktop_version_install_view(request):
+    """从官方 npm 地址手动升级：安装或回退到指定版本"""
+    if not getattr(request, "is_superadmin", False):
+        return Response(error(ErrorCode.PERMISSION_DENIED), status=403)
+
+    version = (request.data or {}).get("version")
+    if not version or not re.match(r"^\d+\.\d+\.\d+$", version):
+        return Response(error(ErrorCode.PARAM_INVALID, message="version 参数必须为 x.y.z 格式"))
+
+    try:
+        versions = _fetch_workdesktop_versions()
+    except RuntimeError as exc:
+        return Response(error(ErrorCode.INTERNAL_ERROR, message=str(exc)))
+    if version not in versions:
+        return Response(error(ErrorCode.PARAM_INVALID, message="版本不可用: {}".format(version)))
+
+    # 统一先下载到内存并做内容校验，避免中途失败留下半个坏文件
+    downloads = {}
+    for filename in (WORKDESKTOP_UMD_FILENAME, WORKDESKTOP_CSS_FILENAME):
+        url = WORKDESKTOP_UNPKG_TEMPLATE.format(version=version, filename=filename)
+        try:
+            with urllib.request.urlopen(url, timeout=WORKDESKTOP_FETCH_TIMEOUT) as resp:
+                content = resp.read()
+        except Exception as exc:
+            return Response(error(ErrorCode.INTERNAL_ERROR, message="下载 {} 失败: {}".format(filename, exc)))
+        if not content:
+            return Response(error(ErrorCode.INTERNAL_ERROR, message="下载 {} 内容为空".format(filename)))
+        if filename == WORKDESKTOP_UMD_FILENAME and b"WorkDesktop" not in content:
+            return Response(error(ErrorCode.INTERNAL_ERROR, message="下载的 {} 不是有效的 workdesktop-ai UMD 文件".format(filename)))
+        downloads[filename] = content
+
+    try:
+        with open(WORKDESKTOP_VERSION_FILE, "r", encoding="utf-8") as f:
+            current_before = f.read().strip() or None
+    except OSError:
+        current_before = None
+
+    # 全部校验通过后再落盘（原子替换）
+    for filename, content in downloads.items():
+        target = os.path.join(WORKDESKTOP_VENDOR_DIR, filename)
+        tmp = target + ".tmp"
+        with open(tmp, "wb") as f:
+            f.write(content)
+        os.replace(tmp, target)
+
+    with open(WORKDESKTOP_VERSION_FILE, "w", encoding="utf-8") as f:
+        f.write(version)
+
+    AuditLog.objects.create(
+        tenant=None,
+        actor_name=request.superadmin_username or "system",
+        action="admin.workdesktop.upgrade",
+        resource_type="workdesktop-ai",
+        detail={"from": current_before, "to": version},
+    )
+
+    return Response(success({"version": version}))

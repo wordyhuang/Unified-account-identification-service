@@ -16,6 +16,8 @@ LOG_DIR = BASE_DIR / "scripts" / "package"
 ROUTE_DOCS = [
     DOC_DIR / "archive" / "DEVELOPMENT_ROUTING_GUIDE_v1.0.md",
     DOC_DIR / "archive" / "AI_API_ROUTING_GUIDE_v1.0.md",
+    DOC_DIR / "archive" / "管理员后台操作手册_v1.0.md",
+    DOC_DIR / "archive" / "审计报告_超级管理员后台与全模块完整设计文档_v1.5_20261017.md",
     DOC_DIR / "apis" / "API_01_AUTH_v1.0.md",
     DOC_DIR / "apis" / "API_02_OPEN_v1.0.md",
     DOC_DIR / "apis" / "API_03_ADMIN_v1.0.md",

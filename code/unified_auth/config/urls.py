@@ -32,6 +32,7 @@ ADMIN_PANEL_ROUTES = [
     ("superadmin/report/", "superadmin_report", "admin-panel-superadmin-report"),
     ("superadmin/api-stats/", "superadmin_api_stats", "admin-panel-superadmin-api-stats"),
     ("superadmin/config/", "superadmin_config", "admin-panel-superadmin-config"),
+    ("superadmin/workdesktop-version/", "superadmin_workdesktop_version", "admin-panel-superadmin-workdesktop-version"),
 ]
 
 
@@ -70,4 +71,6 @@ urlpatterns = [
     path('api/v1/superadmin/report/tenants', admin_views.superadmin_report_tenants, name="superadmin-report-tenants"),
     path('api/v1/superadmin/report/apps', admin_views.superadmin_report_apps, name="superadmin-report-apps"),
     path('api/v1/superadmin/report/endpoint-stats', admin_views.superadmin_report_endpoint_stats, name="superadmin-report-endpoint-stats"),
+    path('api/v1/superadmin/workdesktop-version', admin_views.workdesktop_version_view, name="superadmin-workdesktop-version"),
+    path('api/v1/superadmin/workdesktop-version/install', admin_views.workdesktop_version_install_view, name="superadmin-workdesktop-version-install"),
 ]

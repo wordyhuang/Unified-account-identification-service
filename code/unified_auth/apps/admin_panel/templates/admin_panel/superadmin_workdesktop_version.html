@@ -1,0 +1,120 @@
+{% extends "admin_panel/base.html" %}
+{% block title %}组件版本{% endblock %}
+
+{% block head %}
+<style>
+  .ver-tip { margin: 0 0 12px; color: var(--el-text-color-secondary); font-size: 13px; }
+  .ver-current { font-size: 32px; font-weight: 600; color: var(--el-color-primary); line-height: 1.2; }
+  .ver-meta { margin-top: 10px; color: var(--el-text-color-secondary); font-size: 13px; }
+  .ver-card { margin-bottom: 12px; }
+  .ver-card:last-child { margin-bottom: 0; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div v-loading="loading">
+  <p class="ver-tip">
+    管理后台界面组件库 workdesktop-ai 的版本管理与升级。升级/回退会从官方 npm 地址下载组件文件并立即替换，替换后重新刷新页面即可生效。
+  </p>
+
+  <wd-panel class="ver-card" title="当前版本" shadow="never">
+    <div v-if="current">
+      <span class="ver-current">[[ current ]]</span>
+      <span v-if="upgradable" style="margin-left: 12px;">
+        <el-tag type="danger" size="small">可升级到 [[ latest ]]</el-tag>
+      </span>
+      <el-button v-if="upgradable" type="primary" size="small" style="margin-left: 12px;"
+        :loading="installing === latest" @click="doInstall(latest)">升级到最新 [[ latest ]]</el-button>
+      <div class="ver-meta">当前是管理后台实际加载的组件版本。</div>
+    </div>
+    <div v-else class="ver-meta">未记录当前版本，请先执行一次升级。</div>
+  </wd-panel>
+
+  <wd-panel class="ver-card" title="官方历史版本（最近 10 个）" shadow="never">
+    <el-table :data="versions" size="small" v-loading="loadingVersions">
+      <el-table-column label="版本号" min-width="140">
+        <template #default="{ row }">
+          <span :style="{ fontWeight: row.version === current ? 600 : 400 }">[[ row.version ]]</span>
+          <el-tag v-if="row.version === current" type="success" size="small" style="margin-left: 8px;">当前</el-tag>
+          <el-tag v-if="row.version === latest" type="warning" size="small" style="margin-left: 8px;">最新</el-tag>
+        </template>
+      </el-table-column>
+      <el-table-column label="操作" min-width="160">
+        <template #default="{ row }">
+          <el-button size="small" type="primary" plain
+            :disabled="row.version === current || installing"
+            :loading="installing === row.version"
+            @click="doInstall(row.version)">
+            [[ row.version === current ? '已安装' : '安装此版本' ]]
+          </el-button>
+        </template>
+      </el-table-column>
+    </el-table>
+  </wd-panel>
+</div>
+{% endblock %}
+
+{% block script %}
+<script>
+AdminUI.start('/admin-panel/superadmin/workdesktop-version/', {
+  data: function () {
+    return {
+      loading: true,
+      loadingVersions: true,
+      current: null,
+      latest: null,
+      versions: [],
+      installing: null
+    };
+  },
+  computed: {
+    upgradable: function () {
+      return !!this.current && !!this.latest && this.current !== this.latest;
+    }
+  },
+  mounted: function () {
+    this.loadData();
+  },
+  methods: {
+    loadData: function () {
+      var self = this;
+      self.loading = true;
+      WorkDesktop.request.get('/api/v1/superadmin/workdesktop-version').then(function (res) {
+        if (res && res.success) {
+          self.current = (res.data && res.data.current) || null;
+          self.latest = (res.data && res.data.latest) || null;
+          var list = (res.data && res.data.versions) || [];
+          self.versions = list.map(function (v) { return { version: v }; });
+        } else {
+          AdminUI.toastFail(res, '加载版本信息失败');
+        }
+      }).finally(function () {
+        self.loading = false;
+        self.loadingVersions = false;
+      });
+    },
+    doInstall: function (version) {
+      var self = this;
+      var isUpgrade = version === this.latest && version !== this.current;
+      ElementPlus.ElMessageBox.confirm(
+        (isUpgrade ? '确定升级到版本「' : '确定回退并安装到版本「') + version + '」吗？此操作会替换当前组件文件，请在用户量较小时执行。',
+        (isUpgrade ? '升级组件' : '回退组件'),
+        { type: isUpgrade ? 'info' : 'warning', confirmButtonText: '确认', cancelButtonText: '取消' }
+      ).then(function () {
+        self.installing = version;
+        return WorkDesktop.request.post('/api/v1/superadmin/workdesktop-version/install', { version: version });
+      }).then(function (res) {
+        if (res && res.success) {
+          ElementPlus.ElMessage.success('已切换到版本 ' + version + '，请刷新页面查看效果');
+          self.loadData();
+        } else {
+          AdminUI.toastFail(res, '安装失败');
+        }
+      }).catch(function () {}).finally(function () {
+        self.installing = null;
+      });
+    }
+  }
+});
+</script>
+{% endblock %}

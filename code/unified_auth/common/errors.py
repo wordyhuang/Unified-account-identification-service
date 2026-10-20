@@ -29,6 +29,8 @@ class ErrorCode:
     WECHAT_NOT_CONFIGURED = -10801
     WECHAT_API_ERROR = -10802
 
+    INTERNAL_ERROR = -10901
+
 
 ERROR_MESSAGES = {
     ErrorCode.SUCCESS: "success",
@@ -51,4 +53,5 @@ ERROR_MESSAGES = {
     ErrorCode.PARAM_INVALID: "参数格式错误",
     ErrorCode.WECHAT_NOT_CONFIGURED: "微信应用未配置，请联系管理员",
     ErrorCode.WECHAT_API_ERROR: "微信API调用失败",
+    ErrorCode.INTERNAL_ERROR: "服务内部错误",
 }

@@ -61,9 +61,6 @@
     <el-table-column prop="phone" label="手机号" min-width="120">
       <template #default="{ row }">[[ row.phone || '-' ]]</template>
     </el-table-column>
-    <el-table-column prop="email" label="邮箱" min-width="160" show-overflow-tooltip>
-      <template #default="{ row }">[[ row.email || '-' ]]</template>
-    </el-table-column>
     <el-table-column prop="department" label="部门" min-width="110" show-overflow-tooltip>
       <template #default="{ row }">[[ row.department || '-' ]]</template>
     </el-table-column>
@@ -71,6 +68,16 @@
       <template #default="{ row }">
         <template v-if="row.role_names && row.role_names.length">
           <el-tag v-for="name in row.role_names" :key="name" size="small" style="margin-right: 4px">[[ name ]]</el-tag>
+        </template>
+        <span v-else>-</span>
+      </template>
+    </el-table-column>
+    <el-table-column label="标签" min-width="120" show-overflow-tooltip>
+      <template #default="{ row }">
+        <template v-if="row.tags && row.tags.length">
+          <el-tag v-for="t in row.tags" :key="t.id" size="small"
+            :color="t.color || '#f4f4f5'" :style="{ color: t.color ? '#fff' : '#909399' }"
+            style="margin-right: 4px">[[ t.name ]]</el-tag>
         </template>
         <span v-else>-</span>
       </template>
@@ -84,11 +91,12 @@
     <el-table-column label="最后登录" width="150">
       <template #default="{ row }">[[ fmtTime(row.last_login_at) ]]</template>
     </el-table-column>
-    <el-table-column label="操作" width="290" align="center" fixed="right">
+    <el-table-column label="操作" width="350" align="center" fixed="right">
       <template #default="{ row }">
         <el-button-group>
           <el-button size="small" type="primary" plain @click="onRowAction({ command: 'edit', row: row })">编辑</el-button>
           <el-button size="small" type="primary" plain @click="onRowAction({ command: 'roles', row: row })">角色</el-button>
+          <el-button size="small" type="primary" plain @click="onRowAction({ command: 'tags', row: row })">标签</el-button>
           <el-button size="small" type="primary" plain @click="onRowAction({ command: 'profile', row: row })">档案</el-button>
           <el-button size="small" type="warning" plain @click="onRowAction({ command: 'reset', row: row })">重置密码</el-button>
           <el-button size="small" type="danger" plain @click="onRowAction({ command: 'delete', row: row })">删除</el-button>
@@ -152,6 +160,18 @@
   <template #footer>
     <el-button @click="roleVisible = false">取消</el-button>
     <el-button type="primary" :loading="roleSaving" @click="onRoleSave">保存</el-button>
+  </template>
+</el-dialog>
+
+<!-- 标签分配 -->
+<el-dialog v-model="tagVisible" :title="'分配标签 - ' + (tagUser ? tagUser.username : '')" width="480px" destroy-on-close>
+  <div v-loading="tagLoading">
+    <wd-checkbox-list v-model="tagIds"
+      api="/api/v1/admin/tags" text-prop="name" value-prop="id" ></wd-checkbox-list>
+  </div>
+  <template #footer>
+    <el-button @click="tagVisible = false">取消</el-button>
+    <el-button type="primary" :loading="tagSaving" @click="onTagSave">保存</el-button>
   </template>
 </el-dialog>
 
@@ -271,6 +291,11 @@ AdminUI.start('/admin-panel/users/', {
       roleIds: [],
       roleLoading: false,
       roleSaving: false,
+      tagVisible: false,
+      tagUser: null,
+      tagIds: [],
+      tagLoading: false,
+      tagSaving: false,
       profileVisible: false,
       profileUserId: null,
       batchTypeVisible: false,
@@ -299,6 +324,8 @@ AdminUI.start('/admin-panel/users/', {
         this.drawerVisible = true;
       } else if (evt.command === 'roles') {
         this.openRoles(row);
+      } else if (evt.command === 'tags') {
+        this.openTags(row);
       } else if (evt.command === 'profile') {
         this.profileUserId = row.id;
         this.profileVisible = true;
@@ -347,6 +374,38 @@ AdminUI.start('/admin-panel/users/', {
         }
       }).finally(function () {
         self.roleSaving = false;
+      });
+    },
+
+    /* ---------- 标签分配 ---------- */
+    openTags: function (row) {
+      this.tagUser = row;
+      this.tagIds = [];
+      this.tagVisible = true;
+      this.tagLoading = true;
+      var self = this;
+      WorkDesktop.request.get('/api/v1/admin/users/' + row.id + '/tags').then(function (res) {
+        if (res && res.success) self.tagIds = res.data.tags.map(function (t) { return t.id; });
+        else AdminUI.toastFail(res, '加载标签失败');
+      }).finally(function () {
+        self.tagLoading = false;
+      });
+    },
+    onTagSave: function () {
+      var self = this;
+      this.tagSaving = true;
+      WorkDesktop.request.put('/api/v1/admin/users/' + this.tagUser.id + '/tags', {
+        tag_ids: this.tagIds
+      }).then(function (res) {
+        if (res && res.success) {
+          ElementPlus.ElMessage.success('标签已更新');
+          self.tagVisible = false;
+          self.$refs.gridRef.refresh();
+        } else {
+          AdminUI.toastFail(res, '保存失败');
+        }
+      }).finally(function () {
+        self.tagSaving = false;
       });
     },
 

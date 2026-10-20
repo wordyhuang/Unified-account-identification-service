@@ -77,7 +77,8 @@
         { title: '全局审计', path: '/admin-panel/superadmin/audit/', icon: 'Tickets' },
         { title: '统计报表', path: '/admin-panel/superadmin/report/', icon: 'PieChart' },
         { title: 'API统计', path: '/admin-panel/superadmin/api-stats/', icon: 'TrendCharts' },
-        { title: '平台配置', path: '/admin-panel/superadmin/config/', icon: 'Setting' }
+        { title: '平台配置', path: '/admin-panel/superadmin/config/', icon: 'Setting' },
+        { title: '组件版本', path: '/admin-panel/superadmin/workdesktop-version/', icon: 'Refresh' }
       ]
     }
   ];
