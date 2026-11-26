@@ -10,8 +10,11 @@ class Application(models.Model):
     name = models.CharField(max_length=128, verbose_name="应用名称")
     app_key = models.CharField(max_length=64, unique=True, verbose_name="AppKey")
     app_secret = models.CharField(max_length=256, verbose_name="AppSecret")
-    callback_urls = CompatibleJSONField(null=True, blank=True, verbose_name="回调地址列表")
-    # 邀请注册页接入：三个地址的 origin 必须命中 callback_urls 白名单
+    # OAuth2 redirect_uri 白名单（精确 URL 匹配），仅供授权码流程使用
+    callback_urls = CompatibleJSONField(null=True, blank=True, verbose_name="授权回调地址列表")
+    # CORS 与页面对接信任基准（origin 级）：动态跨域放行、注册页/成功页/Webhook 同源校验
+    cors_origins = CompatibleJSONField(null=True, blank=True, verbose_name="跨域/页面对接域列表")
+    # 邀请注册页接入：三个地址的 origin 必须命中 cors_origins 白名单
     registration_page_url = models.URLField(max_length=512, blank=True, default="", verbose_name="邀请注册页地址")
     registration_success_url = models.URLField(max_length=512, blank=True, default="", verbose_name="注册成功跳转地址")
     webhook_url = models.URLField(max_length=512, blank=True, default="", verbose_name="注册事件回调地址")

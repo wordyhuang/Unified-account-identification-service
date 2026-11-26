@@ -40,14 +40,14 @@
         <template #toolbar>
           <span class="sort-bar">
             <span class="sort-label">排序</span>
-            <el-select v-model="tenantSort.sort_by" size="small" style="width: 130px" @change="reloadTenant">
+            <el-select v-model="tenantSort.sort_by" size="default" style="width: 130px" @change="reloadTenant">
               <el-option label="创建时间" value="created_at" ></el-option>
               <el-option label="用户数" value="user_count" ></el-option>
               <el-option label="活跃用户" value="active_users_30d" ></el-option>
               <el-option label="应用数" value="app_count" ></el-option>
               <el-option label="名称" value="name" ></el-option>
             </el-select>
-            <el-select v-model="tenantSort.sort_order" size="small" style="width: 90px" @change="reloadTenant">
+            <el-select v-model="tenantSort.sort_order" size="default" style="width: 90px" @change="reloadTenant">
               <el-option label="降序" value="desc" ></el-option>
               <el-option label="升序" value="asc" ></el-option>
             </el-select>
@@ -59,7 +59,7 @@
         </el-table-column>
         <el-table-column label="状态" width="80" align="center">
           <template #default="{ row }">
-            <el-tag :type="row.status ? 'success' : 'danger'" size="small">[[ row.status ? '正常' : '停用' ]]</el-tag>
+            <el-tag :type="row.status ? 'success' : 'danger'" size="default">[[ row.status ? '正常' : '停用' ]]</el-tag>
           </template>
         </el-table-column>
         <el-table-column prop="user_count" label="用户数" width="90" align="right" ></el-table-column>
@@ -100,12 +100,12 @@
         <template #toolbar>
           <span class="sort-bar">
             <span class="sort-label">排序</span>
-            <el-select v-model="appSort.sort_by" size="small" style="width: 120px" @change="reloadApp">
+            <el-select v-model="appSort.sort_by" size="default" style="width: 120px" @change="reloadApp">
               <el-option label="创建时间" value="created_at" ></el-option>
               <el-option label="调用量" value="call_count" ></el-option>
               <el-option label="名称" value="name" ></el-option>
             </el-select>
-            <el-select v-model="appSort.sort_order" size="small" style="width: 90px" @change="reloadApp">
+            <el-select v-model="appSort.sort_order" size="default" style="width: 90px" @change="reloadApp">
               <el-option label="降序" value="desc" ></el-option>
               <el-option label="升序" value="asc" ></el-option>
             </el-select>
@@ -118,7 +118,7 @@
         <el-table-column prop="tenant_name" label="所属租户" min-width="120" show-overflow-tooltip ></el-table-column>
         <el-table-column label="状态" width="80" align="center">
           <template #default="{ row }">
-            <el-tag :type="row.status ? 'success' : 'danger'" size="small">[[ row.status ? '正常' : '停用' ]]</el-tag>
+            <el-tag :type="row.status ? 'success' : 'danger'" size="default">[[ row.status ? '正常' : '停用' ]]</el-tag>
           </template>
         </el-table-column>
         <el-table-column prop="call_count" label="调用量(30d)" width="110" align="right" ></el-table-column>

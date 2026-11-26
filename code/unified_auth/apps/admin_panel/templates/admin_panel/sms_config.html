@@ -19,7 +19,7 @@
   <wd-data-form mode="edit" api="/api/v1/admin/tenant-sms-config"
     submit-api="/api/v1/admin/tenant-sms-config" submit-method="put"
     submit-keys="sms_provider,sms_access_key_id,sms_access_key_secret,sms_sign_name,sms_template_code"
-    :active="true" label-width="110px"
+    :active="true" label-width="110px" size="default"
     @submit-success="onSaved">
     <template #default="{ model }">
       <el-form-item label="服务商" prop="sms_provider">
@@ -51,8 +51,8 @@
 
 <wd-panel shadow="never" class="page-card sms-form-card" title="发送测试短信">
   <div class="test-row">
-    <el-input v-model="testPhone" placeholder="接收测试短信的手机号" clearable maxlength="11" ></el-input>
-    <el-button size="small" type="primary" :loading="testSending" :disabled="!/^1\d{10}$/.test(testPhone)" @click="onSendTest">发送测试</el-button>
+    <el-input v-model="testPhone" size="default" placeholder="接收测试短信的手机号" clearable maxlength="11" ></el-input>
+    <el-button size="default" type="primary" :loading="testSending" :disabled="!/^1\d{10}$/.test(testPhone)" @click="onSendTest">发送测试</el-button>
   </div>
 </wd-panel>
 {% endblock %}

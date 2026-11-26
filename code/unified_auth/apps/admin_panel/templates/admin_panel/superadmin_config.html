@@ -20,7 +20,7 @@
   <el-row :gutter="12">
     <el-col v-for="group in configs" :key="group.group" :span="12">
       <wd-panel shadow="never" class="page-card" :title="group.group">
-        <el-table :data="group.items" size="small">
+        <el-table :data="group.items" size="default">
           <el-table-column label="配置项" min-width="180">
             <template #default="{ row }"><span class="config-key">[[ row.key ]]</span></template>
           </el-table-column>

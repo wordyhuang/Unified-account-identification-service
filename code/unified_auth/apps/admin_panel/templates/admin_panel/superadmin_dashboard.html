@@ -126,7 +126,7 @@
     <!-- 租户活跃排行 -->
     <el-col :span="12">
       <wd-panel shadow="never" class="page-card" title="租户活跃排行（近 30 天活跃用户 Top 10）">
-        <el-table :data="activityRanking" size="small" max-height="220">
+        <el-table :data="activityRanking" size="default" max-height="220">
           <el-table-column type="index" label="#" width="50" align="center" ></el-table-column>
           <el-table-column prop="tenant_name" label="租户" min-width="120" show-overflow-tooltip ></el-table-column>
           <el-table-column label="活跃/总用户" width="110" align="right">
@@ -140,14 +140,14 @@
 
   <!-- 租户一览 -->
   <wd-panel shadow="never" class="page-card" title="租户一览">
-    <el-table :data="stats.tenant_stats || []" size="small" max-height="360">
+    <el-table :data="stats.tenant_stats || []" size="default" max-height="360">
       <el-table-column prop="name" label="租户名称" min-width="130" show-overflow-tooltip ></el-table-column>
       <el-table-column prop="slug" label="Slug" min-width="110" show-overflow-tooltip>
         <template #default="{ row }"><code>[[ row.slug ]]</code></template>
       </el-table-column>
       <el-table-column label="状态" width="80" align="center">
         <template #default="{ row }">
-          <el-tag :type="row.status ? 'success' : 'danger'" size="small">[[ row.status ? '正常' : '停用' ]]</el-tag>
+          <el-tag :type="row.status ? 'success' : 'danger'" size="default">[[ row.status ? '正常' : '停用' ]]</el-tag>
         </template>
       </el-table-column>
       <el-table-column prop="user_count" label="用户数" width="90" align="right" ></el-table-column>

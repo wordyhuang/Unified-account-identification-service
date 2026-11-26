@@ -29,13 +29,23 @@
     .page-flex > .grid-panel .wd-panel__content,
     .page-flex > .grid-panel .wd-panel__content-inner { flex: 1; min-height: 0; display: flex; flex-direction: column; }
     .page-flex > .grid-panel .wd-panel__body { flex: 1; min-height: 0; }
+    /* el-button-group：相邻按钮紧贴、仅两端保留圆角，兼容组内含 el-dropdown 触发器的情况 */
+    .el-button-group { display: inline-flex; vertical-align: middle; }
+    .el-button-group > .el-button + .el-button,
+    .el-button-group > .el-button + .el-dropdown,
+    .el-button-group > .el-dropdown + .el-button,
+    .el-button-group > .el-dropdown + .el-dropdown { margin-left: -1px; }
+    .el-button-group > .el-button:not(:first-child),
+    .el-button-group > .el-dropdown:not(:first-child) > .el-button { border-top-left-radius: 0; border-bottom-left-radius: 0; }
+    .el-button-group > .el-button:not(:last-child),
+    .el-button-group > .el-dropdown:not(:last-child) > .el-button { border-top-right-radius: 0; border-bottom-right-radius: 0; }
   </style>
   {% block head %}{% endblock %}
 </head>
 <body>
   <div id="app">
-    <!-- 全局组件尺寸 small（EP 支持的最小尺寸）：使 wd-search-panel / wd-data-grid / wd-dataform 内置按钮统一小尺寸 -->
-    <el-config-provider size="small">
+    <!-- 全局组件尺寸 default（Element Plus 默认尺寸）：wd-search-panel / wd-data-grid / wd-dataform 内置按钮与输入框统一为正常尺寸 -->
+    <el-config-provider size="default">
     <wd-station v-cloak
       :title="stationTitle"
       logo="Key"
@@ -56,7 +66,7 @@
       <template #header-center>
         <el-alert v-if="currentUser.impersonated" type="warning" :closable="false" class="impersonate-tip">
           <span>正在模拟租户 <b>[[ currentUser.tenant_name || ('#' + currentUser.tenant_id) ]]</b></span>
-          <el-button size="mini" type="warning" plain @click="onExitImpersonate">退出模拟</el-button>
+          <el-button size="small" type="warning" plain @click="onExitImpersonate">退出模拟</el-button>
         </el-alert>
       </template>
       {% block content %}{% endblock %}

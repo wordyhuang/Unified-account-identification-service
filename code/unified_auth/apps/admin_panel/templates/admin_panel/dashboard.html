@@ -121,12 +121,12 @@
     <!-- 应用调用排行 -->
     <el-col :span="12">
       <wd-panel shadow="never" class="page-card" title="应用概况（近 7 天调用）">
-        <el-table :data="stats.app_stats || []" size="small" max-height="220">
+        <el-table :data="stats.app_stats || []" size="default" max-height="220">
           <el-table-column prop="name" label="应用" min-width="120" show-overflow-tooltip ></el-table-column>
           <el-table-column prop="app_key" label="AppKey" min-width="130" show-overflow-tooltip ></el-table-column>
           <el-table-column label="状态" width="70" align="center">
             <template #default="{ row }">
-              <el-tag :type="row.status === 1 ? 'success' : 'danger'" size="small">[[ row.status === 1 ? '正常' : '停用' ]]</el-tag>
+              <el-tag :type="row.status === 1 ? 'success' : 'danger'" size="default">[[ row.status === 1 ? '正常' : '停用' ]]</el-tag>
             </template>
           </el-table-column>
           <el-table-column prop="call_count_7d" label="7日调用" width="90" align="right" ></el-table-column>

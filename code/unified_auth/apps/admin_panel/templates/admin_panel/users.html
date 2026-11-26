@@ -8,6 +8,7 @@
   .page-card { margin-bottom: 12px; }
   .page-card:last-child { margin-bottom: 0; }
   .import-tip { margin: 0 0 8px; color: var(--el-text-color-secondary); font-size: 12px; }
+  .form-hint { margin-left: 10px; color: var(--el-text-color-secondary); font-size: 12px; }
 </style>
 {% endblock %}
 
@@ -24,9 +25,9 @@
         <wd-select v-model="model.status" placeholder="全部" clearable style="width: 120px"
           :data-source="[{ text: '正常', value: 1 }, { text: '禁用', value: 0 }]" ></wd-select>
       </wd-search-item>
-      <wd-search-item label="员工" prop="is_staff">
+      <wd-search-item label="管理员" prop="is_staff">
         <wd-select v-model="model.is_staff" placeholder="全部" clearable style="width: 120px"
-          :data-source="[{ text: '员工', value: 1 }, { text: '非员工', value: 0 }]" ></wd-select>
+          :data-source="[{ text: '管理员', value: 1 }, { text: '普通用户', value: 0 }]" ></wd-select>
       </wd-search-item>
       <wd-search-item label="标签" prop="tag_id">
         <wd-select v-model="model.tag_id" placeholder="全部" clearable style="width: 150px"
@@ -41,19 +42,22 @@
     row-key="id" :tools="{ add: true, refresh: true }" height="fix"
     @add="openCreate">
     <template #toolbar="{ selection }">
-      <el-button size="small" :disabled="!selection.length" @click="onBatchStatus(1)">批量启用</el-button>
-      <el-button size="small" :disabled="!selection.length" @click="onBatchStatus(0)">批量禁用</el-button>
-      <el-button size="small" :disabled="!selection.length" @click="batchTypeVisible = true">批量类型</el-button>
-      <el-button size="small" type="danger" plain :disabled="!selection.length" @click="onBatchDelete">批量删除</el-button>
-      <el-button size="small" @click="onExport">导出 CSV</el-button>
-      <el-button size="small" @click="openImport">导入</el-button>
+      <el-button-group>
+        <el-button size="small" :disabled="!selection.length" @click="onBatchStatus(1)">批量启用</el-button>
+        <el-button size="small" :disabled="!selection.length" @click="onBatchStatus(0)">批量禁用</el-button>
+        <el-button size="small" :disabled="!selection.length" @click="batchTypeVisible = true">批量类型</el-button>
+        <el-button size="small" type="danger" plain :disabled="!selection.length" @click="onBatchDelete">批量删除</el-button>
+        <el-button size="small" @click="onExport">导出 CSV</el-button>
+        <el-button size="small" @click="openImport">导入</el-button>
+      </el-button-group>
     </template>
 
     <el-table-column prop="username" label="用户名" min-width="140" show-overflow-tooltip>
       <template #default="{ row }">
-        <el-tag :type="row.user_type === 'internal' ? 'primary' : 'success'" size="small" style="margin-right: 4px">
+        <el-tag :type="row.user_type === 'internal' ? 'primary' : 'success'" size="default" style="margin-right: 4px">
           [[ row.user_type === 'internal' ? '内部' : '外部' ]]
-        </el-tag>[[ row.username ]]
+        </el-tag>
+        <el-tag v-if="row.is_staff" type="warning" size="default" style="margin-right: 4px">管理员</el-tag>[[ row.username ]]
       </template>
     </el-table-column>
     <el-table-column prop="nickname" label="昵称" min-width="100" show-overflow-tooltip>
@@ -68,7 +72,7 @@
     <el-table-column label="角色" min-width="140" show-overflow-tooltip>
       <template #default="{ row }">
         <template v-if="row.role_names && row.role_names.length">
-          <el-tag v-for="name in row.role_names" :key="name" size="small" style="margin-right: 4px">[[ name ]]</el-tag>
+          <el-tag v-for="name in row.role_names" :key="name" size="default" style="margin-right: 4px">[[ name ]]</el-tag>
         </template>
         <span v-else>-</span>
       </template>
@@ -76,7 +80,7 @@
     <el-table-column label="标签" min-width="120" show-overflow-tooltip>
       <template #default="{ row }">
         <template v-if="row.tags && row.tags.length">
-          <el-tag v-for="t in row.tags" :key="t.id" size="small"
+          <el-tag v-for="t in row.tags" :key="t.id" size="default"
             :color="t.color || '#f4f4f5'" :style="{ color: t.color ? '#fff' : '#909399' }"
             style="margin-right: 4px">[[ t.name ]]</el-tag>
         </template>
@@ -94,19 +98,21 @@
     </el-table-column>
     <el-table-column label="操作" width="150" align="center" fixed="right">
       <template #default="{ row }">
-        <el-button size="small" type="primary" plain @click="onRowAction({ command: 'edit', row: row })">编辑</el-button>
-        <el-dropdown trigger="click" @command="function(cmd) { onRowAction({ command: cmd, row: row }) }" style="margin-left: 8px">
-          <el-button size="small" plain>更多</el-button>
-          <template #dropdown>
-            <el-dropdown-menu>
-              <el-dropdown-item command="roles">角色</el-dropdown-item>
-              <el-dropdown-item command="tags">标签</el-dropdown-item>
-              <el-dropdown-item command="profile">档案</el-dropdown-item>
-              <el-dropdown-item command="reset">重置密码</el-dropdown-item>
-              <el-dropdown-item command="delete" divided style="color: var(--el-color-danger)">删除</el-dropdown-item>
-            </el-dropdown-menu>
-          </template>
-        </el-dropdown>
+        <el-button-group>
+          <el-button size="small" type="primary" plain @click="onRowAction({ command: 'edit', row: row })">编辑</el-button>
+          <el-dropdown trigger="click" @command="function(cmd) { onRowAction({ command: cmd, row: row }) }">
+            <el-button size="small" plain>更多</el-button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="roles">角色</el-dropdown-item>
+                <el-dropdown-item command="tags">标签</el-dropdown-item>
+                <el-dropdown-item command="profile">档案</el-dropdown-item>
+                <el-dropdown-item command="reset">重置密码</el-dropdown-item>
+                <el-dropdown-item command="delete" divided style="color: var(--el-color-danger)">删除</el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
+        </el-button-group>
       </template>
     </el-table-column>
   </wd-data-grid>
@@ -151,8 +157,9 @@
         <wd-select v-model="model.dept_id" placeholder="选择部门" clearable style="width: 100%"
           api="/api/v1/admin/departments" text-prop="name" value-prop="id" ></wd-select>
       </el-form-item>
-      <el-form-item label="员工" prop="is_staff">
+      <el-form-item label="管理员" prop="is_staff">
         <el-switch v-model="model.is_staff" active-text="是" inactive-text="否" ></el-switch>
+        <span class="form-hint">开启后该用户可登录管理后台</span>
       </el-form-item>
     </template>
   </wd-data-form>
@@ -165,8 +172,8 @@
       api="/api/v1/admin/roles" text-prop="name" value-prop="id" ></wd-checkbox-list>
   </div>
   <template #footer>
-    <el-button size="small" @click="roleVisible = false">取消</el-button>
-    <el-button size="small" type="primary" :loading="roleSaving" @click="onRoleSave">保存</el-button>
+    <el-button size="default" @click="roleVisible = false">取消</el-button>
+    <el-button size="default" type="primary" :loading="roleSaving" @click="onRoleSave">保存</el-button>
   </template>
 </el-dialog>
 
@@ -177,8 +184,8 @@
       api="/api/v1/admin/tags" text-prop="name" value-prop="id" ></wd-checkbox-list>
   </div>
   <template #footer>
-    <el-button size="small" @click="tagVisible = false">取消</el-button>
-    <el-button size="small" type="primary" :loading="tagSaving" @click="onTagSave">保存</el-button>
+    <el-button size="default" @click="tagVisible = false">取消</el-button>
+    <el-button size="default" type="primary" :loading="tagSaving" @click="onTagSave">保存</el-button>
   </template>
 </el-dialog>
 
@@ -210,8 +217,8 @@
     </el-form>
   </template>
   <template #footer>
-    <el-button size="small" @click="pwdVisible = false">[[ pwdResult ? '关闭' : '取消' ]]</el-button>
-    <el-button v-if="!pwdResult" size="small" type="primary" :loading="pwdSaving" @click="onPwdSave">重置并生成随机密码</el-button>
+    <el-button size="default" @click="pwdVisible = false">[[ pwdResult ? '关闭' : '取消' ]]</el-button>
+    <el-button v-if="!pwdResult" size="default" type="primary" :loading="pwdSaving" @click="onPwdSave">重置并生成随机密码</el-button>
   </template>
 </el-dialog>
 
@@ -280,8 +287,8 @@
     <el-radio value="external">外部用户</el-radio>
   </el-radio-group>
   <template #footer>
-    <el-button size="small" @click="batchTypeVisible = false">取消</el-button>
-    <el-button size="small" type="primary" :loading="batchSaving" @click="onBatchTypeSave">确定</el-button>
+    <el-button size="default" @click="batchTypeVisible = false">取消</el-button>
+    <el-button size="default" type="primary" :loading="batchSaving" @click="onBatchTypeSave">确定</el-button>
   </template>
 </el-dialog>
 
@@ -290,8 +297,8 @@
   <p class="import-tip">CSV 表头：用户名,密码,用户类型,昵称,邮箱,手机号,部门（用户类型取 internal / external，密码留空默认 12345678）</p>
   <input ref="importFile" type="file" accept=".csv,text/csv" style="display: none" @change="onImportFile">
   <div style="margin-bottom: 8px">
-    <el-button size="small" @click="$refs.importFile.click()">选择 CSV 文件</el-button>
-    <el-button size="small" text type="primary" @click="fillImportSample">填入示例</el-button>
+    <el-button size="default" @click="$refs.importFile.click()">选择 CSV 文件</el-button>
+    <el-button size="default" text type="primary" @click="fillImportSample">填入示例</el-button>
   </div>
   <el-input v-model="importContent" type="textarea" :rows="8" placeholder="粘贴 CSV 内容，或点击上方按钮选择文件" ></el-input>
   <template v-if="importResult">
@@ -299,14 +306,14 @@
       :closable="false" style="margin-top: 8px"
       :title="'成功导入 ' + importResult.created + ' 条，失败 ' + (importResult.errors ? importResult.errors.length : 0) + ' 条'" ></el-alert>
     <el-table v-if="importResult.errors && importResult.errors.length" :data="importResult.errors"
-      size="small" border style="margin-top: 8px" max-height="200">
+      size="default" border style="margin-top: 8px" max-height="200">
       <el-table-column prop="row" label="行号" width="80" ></el-table-column>
       <el-table-column prop="message" label="错误原因" ></el-table-column>
     </el-table>
   </template>
   <template #footer>
-    <el-button size="small" @click="importVisible = false">关闭</el-button>
-    <el-button size="small" type="primary" :loading="importSaving" :disabled="!importContent.trim()" @click="onImportSubmit">开始导入</el-button>
+    <el-button size="default" @click="importVisible = false">关闭</el-button>
+    <el-button size="default" type="primary" :loading="importSaving" :disabled="!importContent.trim()" @click="onImportSubmit">开始导入</el-button>
   </template>
 </el-dialog>
 {% endblock %}

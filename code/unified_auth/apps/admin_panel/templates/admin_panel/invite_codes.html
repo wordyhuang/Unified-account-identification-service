@@ -24,7 +24,7 @@
 <div class="page-flex">
 <div class="tips-row">
   <wd-tips type="box" class="page-tips">邀请码用于自助注册：生成后通过链接或二维码发给用户，用户扫码填写白名单内手机号即可注册。</wd-tips>
-  <el-button size="small" @click="openBrand">注册页外观</el-button>
+  <el-button size="default" @click="openBrand">注册页外观</el-button>
 </div>
 <wd-panel shadow="never" class="page-card grid-panel">
   <wd-data-grid ref="gridRef" api="/api/v1/admin/invite-codes" api-method="get" active row-key="id"
@@ -40,7 +40,7 @@
     </el-table-column>
     <el-table-column label="用户类型" width="90" align="center">
       <template #default="{ row }">
-        <el-tag size="small" :type="row.user_type === 'internal' ? 'warning' : 'info'">[[ row.user_type === 'internal' ? '内部' : '外部' ]]</el-tag>
+        <el-tag size="default" :type="row.user_type === 'internal' ? 'warning' : 'info'">[[ row.user_type === 'internal' ? '内部' : '外部' ]]</el-tag>
       </template>
     </el-table-column>
     <el-table-column label="手机白名单" width="100" align="center">
@@ -59,13 +59,13 @@
     </el-table-column>
     <el-table-column label="注册页" width="110" align="center">
       <template #default="{ row }">
-        <el-tag v-if="row.registration_mode === 'app'" size="small" type="warning">[[ row.app_name || '接入应用' ]]</el-tag>
+        <el-tag v-if="row.registration_mode === 'app'" size="default" type="warning">[[ row.app_name || '接入应用' ]]</el-tag>
         <span v-else style="color: var(--el-text-color-secondary)">内置</span>
       </template>
     </el-table-column>
     <el-table-column label="状态" width="80" align="center">
       <template #default="{ row }">
-        <el-tag size="small" :type="row.status === 1 ? 'success' : 'danger'">[[ row.status === 1 ? '启用' : '停用' ]]</el-tag>
+        <el-tag size="default" :type="row.status === 1 ? 'success' : 'danger'">[[ row.status === 1 ? '启用' : '停用' ]]</el-tag>
       </template>
     </el-table-column>
     <el-table-column label="创建时间" width="150">
@@ -73,10 +73,12 @@
     </el-table-column>
     <el-table-column label="操作" width="260" align="center" fixed="right">
       <template #default="{ row }">
-        <el-button size="small" type="primary" plain @click="openEdit(row)">编辑</el-button>
-        <el-button size="small" type="primary" plain @click="openQr(row)">二维码</el-button>
-        <el-button size="small" :type="row.status === 1 ? 'warning' : 'success'" plain @click="onToggleStatus(row)">[[ row.status === 1 ? '停用' : '启用' ]]</el-button>
-        <el-button size="small" type="danger" plain @click="onDelete(row)">删除</el-button>
+        <el-button-group>
+          <el-button size="small" type="primary" plain @click="openEdit(row)">编辑</el-button>
+          <el-button size="small" type="primary" plain @click="openQr(row)">二维码</el-button>
+          <el-button size="small" :type="row.status === 1 ? 'warning' : 'success'" plain @click="onToggleStatus(row)">[[ row.status === 1 ? '停用' : '启用' ]]</el-button>
+          <el-button size="small" type="danger" plain @click="onDelete(row)">删除</el-button>
+        </el-button-group>
       </template>
     </el-table-column>
   </wd-data-grid>
@@ -130,7 +132,7 @@
             <div v-for="f in inviteFields" :key="f.key" class="field-row">
               <el-checkbox v-model="form.fieldKeys" :value="f.key">[[ f.label ]]</el-checkbox>
               <el-switch v-model="form.fieldRequired[f.key]" :disabled="form.fieldKeys.indexOf(f.key) === -1"
-                active-text="必填" size="small" ></el-switch>
+                active-text="必填" size="default" ></el-switch>
             </div>
             <div class="field-hint">用户名、密码恒必填；启用手机白名单时手机号强制必填</div>
           </div>
@@ -153,8 +155,8 @@
               <div v-else class="brand-logo-empty">留空则使用租户默认 Logo</div>
               <div style="margin-top: 8px">
                 <input ref="codeLogoInput" type="file" accept="image/*" style="display: none" @change="onCodeLogoPick">
-                <el-button size="small" @click="$refs.codeLogoInput.click()">选择图片</el-button>
-                <el-button v-if="form.appearance.logo" size="small" type="danger" plain @click="form.appearance.logo = ''">移除</el-button>
+                <el-button size="default" @click="$refs.codeLogoInput.click()">选择图片</el-button>
+                <el-button v-if="form.appearance.logo" size="default" type="danger" plain @click="form.appearance.logo = ''">移除</el-button>
               </div>
             </div>
           </el-form-item>
@@ -193,7 +195,7 @@
                 title="外观预览" sandbox="allow-same-origin"></iframe>
               <div v-else class="brand-logo-empty">输入外观配置后自动生成预览…</div>
               <div style="margin-top: 8px" v-if="previewUrl">
-                <el-button size="small" type="primary" plain @click="openFullPreview">新窗口打开完整预览</el-button>
+                <el-button size="default" type="primary" plain @click="openFullPreview">新窗口打开完整预览</el-button>
               </div>
             </div>
           </el-form-item>
@@ -202,8 +204,8 @@
     </el-tab-pane>
   </el-tabs>
   <template #footer>
-    <el-button size="small" @click="createVisible = false">取消</el-button>
-    <el-button size="small" type="primary" :loading="saving" @click="onSubmit">[[ editId ? '保存' : '生成' ]]</el-button>
+    <el-button size="default" @click="createVisible = false">取消</el-button>
+    <el-button size="default" type="primary" :loading="saving" @click="onSubmit">[[ editId ? '保存' : '生成' ]]</el-button>
   </template>
 </el-drawer>
 
@@ -211,11 +213,11 @@
 <el-dialog v-model="qrVisible" title="邀请码链接与二维码" width="420px" destroy-on-close @opened="renderQr">
   <div class="link-row">
     <el-input :model-value="qrRow ? qrRow.short_url : ''" readonly ></el-input>
-    <el-button size="small" type="primary" plain @click="copyText(qrRow.short_url)">复制</el-button>
+    <el-button size="default" type="primary" plain @click="copyText(qrRow.short_url)">复制</el-button>
   </div>
   <div class="link-row">
     <el-input :model-value="qrRow ? qrRow.page_url : ''" readonly ></el-input>
-    <el-button size="small" plain @click="copyText(qrRow.page_url)">复制</el-button>
+    <el-button size="default" plain @click="copyText(qrRow.page_url)">复制</el-button>
   </div>
   <div style="display: flex; justify-content: center; padding: 8px 0">
     <div id="invite-qr-box"></div>
@@ -245,8 +247,8 @@
         <div v-else class="brand-logo-empty">未上传，使用默认信封图标</div>
         <div style="margin-top: 8px">
           <input ref="logoInput" type="file" accept="image/*" style="display: none" @change="onLogoPick">
-          <el-button size="small" @click="$refs.logoInput.click()">选择图片</el-button>
-          <el-button v-if="brandForm.logo" size="small" type="danger" plain @click="brandForm.logo = ''">移除</el-button>
+          <el-button size="default" @click="$refs.logoInput.click()">选择图片</el-button>
+          <el-button v-if="brandForm.logo" size="default" type="danger" plain @click="brandForm.logo = ''">移除</el-button>
         </div>
       </div>
     </el-form-item>
@@ -255,7 +257,7 @@
       <div v-for="f in inviteFields" :key="f.key" class="field-row">
         <el-checkbox v-model="brandFieldKeys" :value="f.key">[[ f.label ]]</el-checkbox>
         <el-switch v-model="brandFieldRequired[f.key]" :disabled="brandFieldKeys.indexOf(f.key) === -1"
-          active-text="必填" size="small" ></el-switch>
+          active-text="必填" size="default" ></el-switch>
       </div>
       <div class="field-hint">本租户默认采集字段，未单独覆盖的邀请码全部继承；用户名、密码恒必填</div>
     </div>
@@ -286,8 +288,8 @@
     </el-form-item>
   </el-form>
   <template #footer>
-    <el-button size="small" @click="brandVisible = false">取消</el-button>
-    <el-button size="small" type="primary" :loading="brandSaving" @click="onBrandSave">保存</el-button>
+    <el-button size="default" @click="brandVisible = false">取消</el-button>
+    <el-button size="default" type="primary" :loading="brandSaving" @click="onBrandSave">保存</el-button>
   </template>
 </el-drawer>
 {% endblock %}

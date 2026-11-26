@@ -22,7 +22,7 @@
 <div class="page-flex">
 <div class="tips-row">
   <wd-tips type="box" class="page-tips">资料补全码用于引导用户自助补全资料：单人模式绑定指定用户直接补全；多人通用模式先短信验证身份再补全。</wd-tips>
-  <el-button size="small" @click="openBrand">页面外观</el-button>
+  <el-button size="default" @click="openBrand">页面外观</el-button>
 </div>
 <wd-panel shadow="never" class="page-card grid-panel">
   <wd-data-grid ref="gridRef" api="/api/v1/admin/profile-completion-codes" api-method="get" active row-key="id"
@@ -30,7 +30,7 @@
     @add="openCreate">
     <el-table-column label="模式" width="100" align="center">
       <template #default="{ row }">
-        <el-tag size="small" :type="row.mode === 'shared' ? 'warning' : 'info'">[[ row.mode === 'shared' ? '多人通用' : '单人' ]]</el-tag>
+        <el-tag size="default" :type="row.mode === 'shared' ? 'warning' : 'info'">[[ row.mode === 'shared' ? '多人通用' : '单人' ]]</el-tag>
       </template>
     </el-table-column>
     <el-table-column label="短码" width="130">
@@ -47,7 +47,7 @@
     <el-table-column label="可重复" width="80" align="center">
       <template #default="{ row }">
         <span v-if="row.mode === 'shared'" style="color: var(--el-text-color-secondary)">—</span>
-        <el-tag v-else size="small" :type="row.allow_repeated ? 'success' : 'info'">[[ row.allow_repeated ? '是' : '否' ]]</el-tag>
+        <el-tag v-else size="default" :type="row.allow_repeated ? 'success' : 'info'">[[ row.allow_repeated ? '是' : '否' ]]</el-tag>
       </template>
     </el-table-column>
     <el-table-column label="使用次数" width="100" align="center">
@@ -60,7 +60,7 @@
     </el-table-column>
     <el-table-column label="状态" width="80" align="center">
       <template #default="{ row }">
-        <el-tag size="small" :type="row.status === 1 ? 'success' : 'danger'">[[ row.status === 1 ? '启用' : '停用' ]]</el-tag>
+        <el-tag size="default" :type="row.status === 1 ? 'success' : 'danger'">[[ row.status === 1 ? '启用' : '停用' ]]</el-tag>
       </template>
     </el-table-column>
     <el-table-column label="创建时间" width="150">
@@ -68,10 +68,12 @@
     </el-table-column>
     <el-table-column label="操作" width="230" align="center" fixed="right">
       <template #default="{ row }">
-        <el-button size="small" type="primary" plain @click="openEdit(row)">编辑</el-button>
-        <el-button size="small" type="primary" plain @click="openQr(row)">二维码</el-button>
-        <el-button size="small" :type="row.status === 1 ? 'warning' : 'success'" plain @click="onToggleStatus(row)">[[ row.status === 1 ? '停用' : '启用' ]]</el-button>
-        <el-button size="small" type="danger" plain @click="onDelete(row)">删除</el-button>
+        <el-button-group>
+          <el-button size="small" type="primary" plain @click="openEdit(row)">编辑</el-button>
+          <el-button size="small" type="primary" plain @click="openQr(row)">二维码</el-button>
+          <el-button size="small" :type="row.status === 1 ? 'warning' : 'success'" plain @click="onToggleStatus(row)">[[ row.status === 1 ? '停用' : '启用' ]]</el-button>
+          <el-button size="small" type="danger" plain @click="onDelete(row)">删除</el-button>
+        </el-button-group>
       </template>
     </el-table-column>
   </wd-data-grid>
@@ -105,7 +107,7 @@
         </el-form-item>
         <el-form-item v-if="form.mode === 'shared' || form.allow_repeated" label="使用次数上限">
           <el-input-number v-model="form.max_uses" :min="1" :max="100000" style="width: 160px" ></el-input-number>
-          <el-button size="small" link @click="form.max_uses = null" style="margin-left: 8px">不限</el-button>
+          <el-button size="default" link @click="form.max_uses = null" style="margin-left: 8px">不限</el-button>
         </el-form-item>
         <el-form-item label="有效期至">
           <el-date-picker v-model="form.expires_at" type="datetime" placeholder="留空为永久有效"
@@ -129,8 +131,8 @@
               <div v-else class="brand-logo-empty">留空则使用租户默认 Logo</div>
               <div style="margin-top: 8px">
                 <input ref="codeLogoInput" type="file" accept="image/*" style="display: none" @change="onCodeLogoPick">
-                <el-button size="small" @click="$refs.codeLogoInput.click()">选择图片</el-button>
-                <el-button v-if="form.appearance.logo" size="small" type="danger" plain @click="form.appearance.logo = ''">移除</el-button>
+                <el-button size="default" @click="$refs.codeLogoInput.click()">选择图片</el-button>
+                <el-button v-if="form.appearance.logo" size="default" type="danger" plain @click="form.appearance.logo = ''">移除</el-button>
               </div>
             </div>
           </el-form-item>
@@ -169,7 +171,7 @@
                 title="外观预览" sandbox="allow-same-origin"></iframe>
               <div v-else class="brand-logo-empty">输入外观配置后自动生成预览…</div>
               <div style="margin-top: 8px" v-if="previewUrl">
-                <el-button size="small" type="primary" plain @click="openFullPreview">新窗口打开完整预览</el-button>
+                <el-button size="default" type="primary" plain @click="openFullPreview">新窗口打开完整预览</el-button>
               </div>
             </div>
           </el-form-item>
@@ -178,8 +180,8 @@
     </el-tab-pane>
   </el-tabs>
   <template #footer>
-    <el-button size="small" @click="createVisible = false">取消</el-button>
-    <el-button size="small" type="primary" :loading="saving" @click="onSubmit">[[ editId ? '保存' : '生成' ]]</el-button>
+    <el-button size="default" @click="createVisible = false">取消</el-button>
+    <el-button size="default" type="primary" :loading="saving" @click="onSubmit">[[ editId ? '保存' : '生成' ]]</el-button>
   </template>
 </el-drawer>
 
@@ -187,11 +189,11 @@
 <el-dialog v-model="qrVisible" title="补全码链接与二维码" width="420px" destroy-on-close @opened="renderQr">
   <div class="link-row">
     <el-input :model-value="qrRow ? qrRow.short_url : ''" readonly ></el-input>
-    <el-button size="small" type="primary" plain @click="copyText(qrRow.short_url)">复制</el-button>
+    <el-button size="default" type="primary" plain @click="copyText(qrRow.short_url)">复制</el-button>
   </div>
   <div class="link-row">
     <el-input :model-value="qrRow ? qrRow.page_url : ''" readonly ></el-input>
-    <el-button size="small" plain @click="copyText(qrRow.page_url)">复制</el-button>
+    <el-button size="default" plain @click="copyText(qrRow.page_url)">复制</el-button>
   </div>
   <div style="display: flex; justify-content: center; padding: 8px 0">
     <div id="completion-qr-box"></div>
@@ -207,8 +209,8 @@
         <div v-else class="brand-logo-empty">未上传，使用默认图标</div>
         <div style="margin-top: 8px">
           <input ref="brandLogoInput" type="file" accept="image/*" style="display: none" @change="onBrandLogoPick">
-          <el-button size="small" @click="$refs.brandLogoInput.click()">选择图片</el-button>
-          <el-button v-if="brandForm.logo" size="small" type="danger" plain @click="brandForm.logo = ''">移除</el-button>
+          <el-button size="default" @click="$refs.brandLogoInput.click()">选择图片</el-button>
+          <el-button v-if="brandForm.logo" size="default" type="danger" plain @click="brandForm.logo = ''">移除</el-button>
         </div>
       </div>
     </el-form-item>
@@ -245,7 +247,7 @@
           title="外观预览" sandbox="allow-same-origin"></iframe>
         <div v-else class="brand-logo-empty">输入外观配置后自动生成预览…</div>
         <div style="margin-top: 8px" v-if="brandPreviewUrl">
-          <el-button size="small" type="primary" plain @click="openBrandFullPreview">新窗口打开完整预览</el-button>
+          <el-button size="default" type="primary" plain @click="openBrandFullPreview">新窗口打开完整预览</el-button>
         </div>
       </div>
     </el-form-item>
@@ -254,8 +256,8 @@
     </div>
   </el-form>
   <template #footer>
-    <el-button size="small" @click="brandVisible = false">取消</el-button>
-    <el-button size="small" type="primary" :loading="brandSaving" @click="saveBrand">保存</el-button>
+    <el-button size="default" @click="brandVisible = false">取消</el-button>
+    <el-button size="default" type="primary" :loading="brandSaving" @click="saveBrand">保存</el-button>
   </template>
 </el-drawer>
 {% endblock %}

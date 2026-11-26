@@ -15,8 +15,8 @@
 <wd-tips type="box" class="page-tips">部门管理用于维护组织架构树，支持新增子部门、编辑与删除。</wd-tips>
 <wd-panel shadow="never" class="page-card">
   <div class="dept-toolbar">
-    <el-button size="small" type="primary" @click="openCreate(null)">新增部门</el-button>
-    <el-button size="small" @click="loadDepartments">刷新</el-button>
+    <el-button size="default" type="primary" @click="openCreate(null)">新增部门</el-button>
+    <el-button size="default" @click="loadDepartments">刷新</el-button>
   </div>
   <el-table v-loading="loading" :data="deptTree" row-key="id" default-expand-all border>
     <el-table-column prop="name" label="部门名称" min-width="200" ></el-table-column>

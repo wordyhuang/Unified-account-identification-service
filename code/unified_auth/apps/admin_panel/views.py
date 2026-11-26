@@ -78,8 +78,8 @@ def _user_serialize(u):
     }
 
 
-def _check_registration_urls(callback_urls, payload):
-    """校验邀请注册页三个地址：必须与回调白名单同源，且不得指向内网。"""
+def _check_registration_urls(cors_origins, payload):
+    """校验邀请注册页三个地址：必须与跨域/页面对接域白名单同源，且不得指向内网。"""
     from apps.invites.services import url_allowed_for_origins
 
     labels = (
@@ -89,8 +89,8 @@ def _check_registration_urls(callback_urls, payload):
     )
     for key, label in labels:
         value = payload.get(key)
-        if value and not url_allowed_for_origins(callback_urls, value):
-            return f"{label}必须与回调地址白名单同源，且不能指向内网地址"
+        if value and not url_allowed_for_origins(cors_origins, value):
+            return f"{label}必须与跨域/页面对接域白名单同源，且不能指向内网地址"
     return None
 
 
@@ -103,6 +103,7 @@ def _app_serialize(a):
         "id": a.id, "uuid": str(a.uuid), "tenant_id": a.tenant_id,
         "name": a.name, "app_key": a.app_key,
         "callback_urls": a.callback_urls or [],
+        "cors_origins": a.cors_origins or [],
         "registration_page_url": a.registration_page_url or "",
         "registration_success_url": a.registration_success_url or "",
         "webhook_url": a.webhook_url or "",
@@ -648,7 +649,7 @@ def apps_view(request):
     app_key = hashlib.sha256(secrets.token_bytes(32)).hexdigest()[:32]
     app_secret = secrets.token_hex(32)
 
-    url_err = _check_registration_urls(data.get("callback_urls"), data)
+    url_err = _check_registration_urls(data.get("cors_origins"), data)
     if url_err:
         return Response(error(ErrorCode.PARAM_INVALID, message=url_err), status=400)
 
@@ -658,6 +659,7 @@ def apps_view(request):
         app_key=app_key,
         app_secret=app_secret,
         callback_urls=data.get("callback_urls") or [],
+        cors_origins=data.get("cors_origins") or [],
         default_access_user_types=data.get("default_access_user_types"),
         registration_page_url=data.get("registration_page_url") or "",
         registration_success_url=data.get("registration_success_url") or "",
@@ -695,9 +697,9 @@ def app_detail_view(request, app_id):
     data = ser.validated_data
     role_ids = data.pop("role_ids", None)
 
-    # 三个注册页地址：以合并后的白名单校验（本次未传 callback_urls 则用现有值）
-    merged_callback_urls = data.get("callback_urls") if "callback_urls" in data else app.callback_urls
-    url_err = _check_registration_urls(merged_callback_urls, data)
+    # 三个注册页地址：以合并后的跨域/页面对接域白名单校验（本次未传 cors_origins 则用现有值）
+    merged_cors_origins = data.get("cors_origins") if "cors_origins" in data else app.cors_origins
+    url_err = _check_registration_urls(merged_cors_origins, data)
     if url_err:
         return Response(error(ErrorCode.PARAM_INVALID, message=url_err), status=400)
 

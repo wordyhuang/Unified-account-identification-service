@@ -17,7 +17,7 @@
 
 {% block content %}
 <div class="page-flex">
-<wd-tips type="box" class="page-tips">应用管理用于接入第三方应用，维护应用信息与回调地址；密钥、权限与调用统计在行内操作中查看。</wd-tips>
+<wd-tips type="box" class="page-tips">应用管理用于接入第三方应用，维护授权回调地址（OAuth2）与跨域/页面对接域白名单；密钥、权限与调用统计在行内操作中查看。</wd-tips>
 <wd-panel shadow="never" class="page-card">
   <wd-search-panel head-refresh-datagrid="true" :default-expand="true" label-width="70px">
     <template #default="{ model }">
@@ -43,7 +43,7 @@
     <el-table-column label="默认用户类型" min-width="130">
       <template #default="{ row }">
         <template v-if="row.default_access_user_types && row.default_access_user_types.length">
-          <el-tag v-for="t in row.default_access_user_types" :key="t" size="small"
+          <el-tag v-for="t in row.default_access_user_types" :key="t" size="default"
             :type="t === 'internal' ? 'primary' : 'success'" style="margin-right: 4px">
             [[ t === 'internal' ? '内部' : '外部' ]]
           </el-tag>
@@ -54,7 +54,7 @@
     <el-table-column label="角色" min-width="140" show-overflow-tooltip>
       <template #default="{ row }">
         <template v-if="row.roles && row.roles.length">
-          <el-tag v-for="r in row.roles" :key="r.id" size="small" style="margin-right: 4px">[[ r.name ]]</el-tag>
+          <el-tag v-for="r in row.roles" :key="r.id" size="default" style="margin-right: 4px">[[ r.name ]]</el-tag>
         </template>
         <span v-else>-</span>
       </template>
@@ -70,17 +70,19 @@
     </el-table-column>
     <el-table-column label="操作" width="130" align="center" fixed="right">
       <template #default="{ row }">
-        <el-button size="small" type="primary" plain @click="onRowAction({ command: 'edit', row: row })">编辑</el-button>
-        <el-dropdown trigger="click" @command="function(cmd) { onRowAction({ command: cmd, row: row }) }" style="margin-left: 8px">
-          <el-button size="small" plain>更多</el-button>
-          <template #dropdown>
-            <el-dropdown-menu>
-              <el-dropdown-item command="secret">密钥</el-dropdown-item>
-              <el-dropdown-item command="perms">权限</el-dropdown-item>
-              <el-dropdown-item command="stats">统计</el-dropdown-item>
-            </el-dropdown-menu>
-          </template>
-        </el-dropdown>
+        <el-button-group>
+          <el-button size="small" type="primary" plain @click="onRowAction({ command: 'edit', row: row })">编辑</el-button>
+          <el-dropdown trigger="click" @command="function(cmd) { onRowAction({ command: cmd, row: row }) }">
+            <el-button size="small" plain>更多</el-button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="secret">密钥</el-dropdown-item>
+                <el-dropdown-item command="perms">权限</el-dropdown-item>
+                <el-dropdown-item command="stats">统计</el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
+        </el-button-group>
       </template>
     </el-table-column>
   </wd-data-grid>
@@ -93,62 +95,84 @@
     :api="formMode === 'edit' ? '/api/v1/admin/applications/' + formAppId : ''"
     :submit-api="formMode === 'edit' ? '/api/v1/admin/applications/' + formAppId : '/api/v1/admin/applications'"
     :submit-method="formMode === 'edit' ? 'put' : 'post'"
-    :submit-keys="formMode === 'edit' ? 'name,callback_urls,default_access_user_types,registration_page_url,registration_success_url,webhook_url,role_ids,wechat_mp_app_id,wechat_mp_app_secret,wechat_web_app_id,wechat_web_app_secret' : 'name,callback_urls,default_access_user_types,registration_page_url,registration_success_url,webhook_url'"
-    :data="{ callback_urls: [], default_access_user_types: [], registration_page_url: '', registration_success_url: '', webhook_url: '' }"
+    :submit-keys="formMode === 'edit' ? 'name,callback_urls,cors_origins,default_access_user_types,registration_page_url,registration_success_url,webhook_url,role_ids,wechat_mp_app_id,wechat_mp_app_secret,wechat_web_app_id,wechat_web_app_secret' : 'name,callback_urls,cors_origins,default_access_user_types,registration_page_url,registration_success_url,webhook_url'"
+    :data="{ callback_urls: [], cors_origins: [], default_access_user_types: [], registration_page_url: '', registration_success_url: '', webhook_url: '' }"
     :active="true" :rules="formRules" head-refresh-datagrid
     @submit-success="onFormSuccess" @close="drawerVisible = false">
     <template #default="{ model }">
-      <el-form-item label="应用名称" prop="name">
-        <el-input v-model="model.name" clearable ></el-input>
-      </el-form-item>
-      <el-form-item label="回调地址" prop="callback_urls">
-        <div style="width: 100%">
-          <div v-for="(url, idx) in (model.callback_urls || [])" :key="idx" class="url-row">
-            <el-input v-model="model.callback_urls[idx]" placeholder="https://example.com/callback" clearable ></el-input>
-            <el-button size="small" type="danger" plain @click="model.callback_urls.splice(idx, 1)">删除</el-button>
+      <el-tabs v-model="formTab">
+        <el-tab-pane label="基础配置" name="basic">
+          <el-form-item label="应用名称" prop="name">
+            <el-input v-model="model.name" clearable ></el-input>
+          </el-form-item>
+          <el-form-item label="授权回调地址" prop="callback_urls">
+            <div style="width: 100%">
+              <div v-for="(url, idx) in (model.callback_urls || [])" :key="idx" class="url-row">
+                <el-input v-model="model.callback_urls[idx]" placeholder="https://example.com/callback" clearable ></el-input>
+                <el-button size="default" type="danger" plain @click="model.callback_urls.splice(idx, 1)">删除</el-button>
+              </div>
+              <el-button size="default" @click="onAddCallbackUrl(model)">添加地址</el-button>
+            </div>
+            <div style="width: 100%; margin-top: 4px; color: var(--el-text-color-secondary); font-size: 12px">
+              OAuth2 授权码 redirect_uri 白名单（精确地址匹配），仅授权登录流程使用
+            </div>
+          </el-form-item>
+          <el-form-item label="跨域/页面对接域" prop="cors_origins">
+            <div style="width: 100%">
+              <div v-for="(url, idx) in (model.cors_origins || [])" :key="idx" class="url-row">
+                <el-input v-model="model.cors_origins[idx]" placeholder="https://app.example.com" clearable ></el-input>
+                <el-button size="default" type="danger" plain @click="model.cors_origins.splice(idx, 1)">删除</el-button>
+              </div>
+              <el-button size="default" @click="onAddCorsOrigin(model)">添加域</el-button>
+            </div>
+            <div style="width: 100%; margin-top: 4px; color: var(--el-text-color-secondary); font-size: 12px">
+              应用前端的跨域访问白名单（按域名放行），同时作为注册页/Webhook 地址的同源信任基准
+            </div>
+          </el-form-item>
+          <el-form-item label="默认用户类型" prop="default_access_user_types">
+            <el-checkbox-group v-model="model.default_access_user_types">
+              <el-checkbox value="internal">内部用户</el-checkbox>
+              <el-checkbox value="external">外部用户</el-checkbox>
+            </el-checkbox-group>
+          </el-form-item>
+          <el-form-item v-if="formMode === 'edit'" label="绑定角色" prop="role_ids">
+            <wd-checkbox-list v-model="model.role_ids"
+              api="/api/v1/admin/roles" text-prop="name" value-prop="id" ></wd-checkbox-list>
+          </el-form-item>
+        </el-tab-pane>
+
+        <el-tab-pane label="注册页接入" name="register">
+          <el-form-item label="注册页地址" prop="registration_page_url">
+            <el-input v-model="model.registration_page_url" placeholder="https://example.com/register" clearable ></el-input>
+          </el-form-item>
+          <el-form-item label="成功跳转地址" prop="registration_success_url">
+            <el-input v-model="model.registration_success_url" placeholder="https://example.com/registered" clearable ></el-input>
+          </el-form-item>
+          <el-form-item label="Webhook 地址" prop="webhook_url">
+            <el-input v-model="model.webhook_url" placeholder="https://example.com/api/uais-hook" clearable ></el-input>
+          </el-form-item>
+          <div style="padding-left: 100px; color: var(--el-text-color-secondary); font-size: 12px; line-height: 1.5">
+            三个地址均为选填，域名必须已在「基础配置」的跨域/页面对接域白名单中；留空表示不启用对应能力。绑定本应用的邀请码将跳转到注册页地址。
           </div>
-          <el-button size="small" @click="onAddCallbackUrl(model)">添加地址</el-button>
-        </div>
-      </el-form-item>
-      <el-form-item label="默认用户类型" prop="default_access_user_types">
-        <el-checkbox-group v-model="model.default_access_user_types">
-          <el-checkbox value="internal">内部用户</el-checkbox>
-          <el-checkbox value="external">外部用户</el-checkbox>
-        </el-checkbox-group>
-      </el-form-item>
-      <el-divider content-position="left">邀请注册页接入（选填）</el-divider>
-      <el-form-item label="注册页地址" prop="registration_page_url">
-        <el-input v-model="model.registration_page_url" placeholder="https://example.com/register" clearable ></el-input>
-      </el-form-item>
-      <el-form-item label="成功跳转地址" prop="registration_success_url">
-        <el-input v-model="model.registration_success_url" placeholder="https://example.com/registered" clearable ></el-input>
-      </el-form-item>
-      <el-form-item label="Webhook 地址" prop="webhook_url">
-        <el-input v-model="model.webhook_url" placeholder="https://example.com/api/uais-hook" clearable ></el-input>
-      </el-form-item>
-      <div style="padding-left: 100px; margin-bottom: 12px; color: var(--el-text-color-secondary); font-size: 12px; line-height: 1.5">
-        三个地址的域名必须已在「回调地址」白名单中；留空表示不启用对应能力。绑定本应用的邀请码将跳转到注册页地址。
-      </div>
-      <template v-if="formMode === 'edit'">
-        <el-form-item label="绑定角色" prop="role_ids">
-          <wd-checkbox-list v-model="model.role_ids"
-            api="/api/v1/admin/roles" text-prop="name" value-prop="id" ></wd-checkbox-list>
-        </el-form-item>
-        <el-divider content-position="left">微信公众号（选填）</el-divider>
-        <el-form-item label="AppID" prop="wechat_mp_app_id">
-          <el-input v-model="model.wechat_mp_app_id" clearable ></el-input>
-        </el-form-item>
-        <el-form-item label="AppSecret" prop="wechat_mp_app_secret">
-          <el-input v-model="model.wechat_mp_app_secret" placeholder="*** 表示保持不变，清空则不设置" clearable ></el-input>
-        </el-form-item>
-        <el-divider content-position="left">微信开放平台（选填）</el-divider>
-        <el-form-item label="AppID" prop="wechat_web_app_id">
-          <el-input v-model="model.wechat_web_app_id" clearable ></el-input>
-        </el-form-item>
-        <el-form-item label="AppSecret" prop="wechat_web_app_secret">
-          <el-input v-model="model.wechat_web_app_secret" placeholder="*** 表示保持不变，清空则不设置" clearable ></el-input>
-        </el-form-item>
-      </template>
+        </el-tab-pane>
+
+        <el-tab-pane v-if="formMode === 'edit'" label="微信配置" name="advanced">
+          <el-divider content-position="left">微信公众号（选填）</el-divider>
+          <el-form-item label="AppID" prop="wechat_mp_app_id">
+            <el-input v-model="model.wechat_mp_app_id" clearable ></el-input>
+          </el-form-item>
+          <el-form-item label="AppSecret" prop="wechat_mp_app_secret">
+            <el-input v-model="model.wechat_mp_app_secret" placeholder="*** 表示保持不变，清空则不设置" clearable ></el-input>
+          </el-form-item>
+          <el-divider content-position="left">微信开放平台（选填）</el-divider>
+          <el-form-item label="AppID" prop="wechat_web_app_id">
+            <el-input v-model="model.wechat_web_app_id" clearable ></el-input>
+          </el-form-item>
+          <el-form-item label="AppSecret" prop="wechat_web_app_secret">
+            <el-input v-model="model.wechat_web_app_secret" placeholder="*** 表示保持不变，清空则不设置" clearable ></el-input>
+          </el-form-item>
+        </el-tab-pane>
+      </el-tabs>
     </template>
   </wd-data-form>
 </el-drawer>
@@ -167,13 +191,13 @@
         </el-descriptions-item>
       </el-descriptions>
       <div style="margin-top: 12px">
-        <el-button size="small" @click="onCopySecret">复制 Secret</el-button>
-        <el-button size="small" type="danger" plain :loading="secretRegenerating" @click="onRegenerateSecret">重新生成</el-button>
+        <el-button size="default" @click="onCopySecret">复制 Secret</el-button>
+        <el-button size="default" type="danger" plain :loading="secretRegenerating" @click="onRegenerateSecret">重新生成</el-button>
       </div>
     </template>
   </div>
   <template #footer>
-    <el-button size="small" @click="secretVisible = false">关闭</el-button>
+    <el-button size="default" @click="secretVisible = false">关闭</el-button>
   </template>
 </el-dialog>
 
@@ -181,7 +205,7 @@
 <el-dialog v-model="permVisible" :title="'角色权限 - ' + (permApp ? permApp.name : '')" width="720px" destroy-on-close>
   <div v-loading="permLoading">
     <el-alert type="info" :closable="false" title="以下为该应用绑定角色所拥有的全部接口权限（只读，权限调整请在角色管理中操作）" style="margin-bottom: 12px" ></el-alert>
-    <el-table :data="permList" size="small" border max-height="420">
+    <el-table :data="permList" size="default" border max-height="420">
       <el-table-column prop="name" label="权限名称" min-width="130" show-overflow-tooltip ></el-table-column>
       <el-table-column prop="code" label="编码" min-width="160" show-overflow-tooltip ></el-table-column>
       <el-table-column prop="method" label="方法" width="70" align="center" ></el-table-column>
@@ -190,7 +214,7 @@
     </el-table>
   </div>
   <template #footer>
-    <el-button size="small" @click="permVisible = false">关闭</el-button>
+    <el-button size="default" @click="permVisible = false">关闭</el-button>
   </template>
 </el-dialog>
 
@@ -212,14 +236,14 @@
       <el-empty v-else description="暂无调用数据" :image-size="60" ></el-empty>
     </wd-panel>
     <wd-panel shadow="never" title="接口调用排行">
-      <el-table :data="statsData ? statsData.path_totals : []" size="small" border max-height="260">
+      <el-table :data="statsData ? statsData.path_totals : []" size="default" border max-height="260">
         <el-table-column prop="api_path" label="接口路径" min-width="220" show-overflow-tooltip ></el-table-column>
         <el-table-column prop="count" label="调用次数" width="110" align="right" ></el-table-column>
       </el-table>
     </wd-panel>
   </div>
   <template #footer>
-    <el-button size="small" @click="statsVisible = false">关闭</el-button>
+    <el-button size="default" @click="statsVisible = false">关闭</el-button>
   </template>
 </el-dialog>
 {% endblock %}
@@ -232,12 +256,22 @@ AdminUI.start('/admin-panel/applications/', {
       drawerVisible: false,
       formMode: 'create',
       formAppId: null,
+      formTab: 'basic',
       formRules: {
         name: [{ required: true, message: '请输入应用名称', trigger: 'blur' }],
         callback_urls: [{
           validator: function (rule, value, cb) {
             if (value && value.some(function (u) { return !u || !u.trim(); })) {
               cb(new Error('存在空的回调地址，请填写完整或删除该行'));
+            } else {
+              cb();
+            }
+          }, trigger: 'blur'
+        }],
+        cors_origins: [{
+          validator: function (rule, value, cb) {
+            if (value && value.some(function (u) { return !u || !u.trim(); })) {
+              cb(new Error('存在空的跨域域，请填写完整或删除该行'));
             } else {
               cb();
             }
@@ -292,6 +326,7 @@ AdminUI.start('/admin-panel/applications/', {
     openCreate: function () {
       this.formMode = 'create';
       this.formAppId = null;
+      this.formTab = 'basic';
       this.drawerVisible = true;
     },
     /** 回调地址数组兜底：历史数据 callback_urls 可能为 null */
@@ -299,11 +334,17 @@ AdminUI.start('/admin-panel/applications/', {
       if (!Array.isArray(model.callback_urls)) model.callback_urls = [];
       model.callback_urls.push('');
     },
+    /** 跨域/页面对接域数组兜底：历史数据 cors_origins 可能为 null */
+    onAddCorsOrigin: function (model) {
+      if (!Array.isArray(model.cors_origins)) model.cors_origins = [];
+      model.cors_origins.push('');
+    },
     onRowAction: function (evt) {
       var row = evt.row;
       if (evt.command === 'edit') {
         this.formMode = 'edit';
         this.formAppId = row.id;
+        this.formTab = 'basic';
         this.drawerVisible = true;
       } else if (evt.command === 'secret') {
         this.openSecret(row);

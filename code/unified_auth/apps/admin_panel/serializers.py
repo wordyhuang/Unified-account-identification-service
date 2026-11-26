@@ -50,6 +50,7 @@ class AdminResetPasswordSerializer(serializers.Serializer):
 class AdminCreateAppSerializer(serializers.Serializer):
     name = serializers.CharField(max_length=128)
     callback_urls = serializers.ListField(child=serializers.URLField(), required=False, allow_null=True)
+    cors_origins = serializers.ListField(child=serializers.URLField(), required=False, allow_null=True)
     default_access_user_types = serializers.ListField(
         child=serializers.ChoiceField(choices=["internal", "external"]),
         required=False, allow_null=True,
@@ -62,6 +63,7 @@ class AdminCreateAppSerializer(serializers.Serializer):
 class AdminUpdateAppSerializer(serializers.Serializer):
     name = serializers.CharField(max_length=128, required=False)
     callback_urls = serializers.ListField(child=serializers.URLField(), required=False, allow_null=True)
+    cors_origins = serializers.ListField(child=serializers.URLField(), required=False, allow_null=True)
     default_access_user_types = serializers.ListField(
         child=serializers.ChoiceField(choices=["internal", "external"]),
         required=False, allow_null=True,

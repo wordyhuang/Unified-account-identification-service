@@ -54,12 +54,12 @@ def _is_blocked_host(hostname):
     return False
 
 
-def url_allowed_for_origins(callback_urls, url):
+def url_allowed_for_origins(allowed_origins, url):
     """校验目标地址：协议、同源白名单、SSRF（不依赖 Application 实例）。"""
     parsed = urlparse(str(url or ""))
     if parsed.scheme not in ("http", "https") or not parsed.hostname:
         return False
-    allowed = {_origin(u) for u in (callback_urls or [])}
+    allowed = {_origin(u) for u in (allowed_origins or [])}
     allowed.discard("")
     if _origin(url) not in allowed:
         return False
@@ -67,8 +67,8 @@ def url_allowed_for_origins(callback_urls, url):
 
 
 def url_allowed_for_app(app, url):
-    """校验目标地址：协议、同源白名单、SSRF。"""
-    return url_allowed_for_origins(app.callback_urls, url)
+    """校验目标地址：协议、同源白名单（cors_origins）、SSRF。"""
+    return url_allowed_for_origins(app.cors_origins, url)
 
 
 def _append_params(url, params):

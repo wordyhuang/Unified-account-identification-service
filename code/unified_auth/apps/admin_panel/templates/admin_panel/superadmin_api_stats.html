@@ -17,7 +17,7 @@
   <wd-tips type="box" class="page-tips">API 统计展示平台接口调用量趋势与排行，可切换统计周期（7 / 14 / 30 / 90 天）。</wd-tips>
   <wd-panel shadow="never" class="page-card" title="全局 API 调用趋势">
     <template #extra>
-      <el-radio-group v-model="days" size="small" @change="loadStats">
+      <el-radio-group v-model="days" size="default" @change="loadStats">
         <el-radio-button :value="7">近 7 天</el-radio-button>
         <el-radio-button :value="14">近 14 天</el-radio-button>
         <el-radio-button :value="30">近 30 天</el-radio-button>
@@ -39,7 +39,7 @@
   <el-row :gutter="12">
     <el-col :span="14">
       <wd-panel shadow="never" class="page-card" title="接口调用排行（Top 50）">
-        <el-table :data="appRankings" size="small" max-height="480">
+        <el-table :data="appRankings" size="default" max-height="480">
           <el-table-column type="index" label="#" width="50" align="center" ></el-table-column>
           <el-table-column prop="app_name" label="应用" min-width="120" show-overflow-tooltip ></el-table-column>
           <el-table-column prop="api_path" label="接口路径" min-width="180" show-overflow-tooltip>
@@ -51,7 +51,7 @@
     </el-col>
     <el-col :span="10">
       <wd-panel shadow="never" class="page-card" title="应用调用 Top 10">
-        <el-table :data="topApps" size="small" max-height="480">
+        <el-table :data="topApps" size="default" max-height="480">
           <el-table-column type="index" label="#" width="50" align="center" ></el-table-column>
           <el-table-column prop="app_name" label="应用" min-width="110" show-overflow-tooltip ></el-table-column>
           <el-table-column prop="api_path" label="热点接口" min-width="140" show-overflow-tooltip>

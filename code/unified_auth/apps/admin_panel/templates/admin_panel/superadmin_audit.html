@@ -46,7 +46,9 @@
   <wd-data-grid ref="gridRef" api="/api/v1/superadmin/audit-logs" api-method="get" active
     row-key="id" :tools="{ refresh: true }" height="fix">
     <template #toolbar>
-      <el-button size="small" @click="onExport">导出 CSV</el-button>
+      <el-button-group>
+        <el-button size="small" @click="onExport">导出 CSV</el-button>
+      </el-button-group>
     </template>
     <el-table-column type="expand">
       <template #default="{ row }">

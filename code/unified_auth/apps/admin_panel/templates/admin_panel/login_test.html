@@ -25,28 +25,28 @@
         @keyup.enter="onTest" ></el-input>
     </el-form-item>
     <el-form-item>
-      <el-button size="small" type="primary" :loading="testing" :disabled="!username.trim() || !password" @click="onTest">开始测试</el-button>
+      <el-button size="default" type="primary" :loading="testing" :disabled="!username.trim() || !password" @click="onTest">开始测试</el-button>
     </el-form-item>
   </el-form>
 </wd-panel>
 
 <wd-panel v-if="result" shadow="never" class="page-card">
   <template #title>
-    <el-tag type="success" size="small">登录成功</el-tag>
+    <el-tag type="success" size="default">登录成功</el-tag>
   </template>
-  <el-descriptions :column="2" border size="small">
+  <el-descriptions :column="2" border size="default">
     <el-descriptions-item label="用户 ID">[[ result.user_id ]]</el-descriptions-item>
     <el-descriptions-item label="用户名">[[ result.username ]]</el-descriptions-item>
     <el-descriptions-item label="昵称">[[ result.nickname || '-' ]]</el-descriptions-item>
     <el-descriptions-item label="用户类型">
-      <el-tag :type="result.user_type === 'internal' ? 'primary' : 'success'" size="small">
+      <el-tag :type="result.user_type === 'internal' ? 'primary' : 'success'" size="default">
         [[ result.user_type === 'internal' ? '内部' : '外部' ]]
       </el-tag>
     </el-descriptions-item>
     <el-descriptions-item label="员工">[[ result.is_staff ? '是' : '否' ]]</el-descriptions-item>
     <el-descriptions-item label="标签">
       <template v-if="result.tags && result.tags.length">
-        <el-tag v-for="t in result.tags" :key="t" size="small" style="margin-right: 4px">[[ t ]]</el-tag>
+        <el-tag v-for="t in result.tags" :key="t" size="default" style="margin-right: 4px">[[ t ]]</el-tag>
       </template>
       <span v-else>-</span>
     </el-descriptions-item>
@@ -59,8 +59,8 @@
       <div class="token-text">[[ result.refresh_token ]]</div>
     </el-form-item>
     <el-form-item>
-      <el-button size="small" @click="onCopy(result.access_token)">复制 Access Token</el-button>
-      <el-button size="small" @click="onCopy(result.refresh_token)">复制 Refresh Token</el-button>
+      <el-button size="default" @click="onCopy(result.access_token)">复制 Access Token</el-button>
+      <el-button size="default" @click="onCopy(result.refresh_token)">复制 Refresh Token</el-button>
     </el-form-item>
   </el-form>
 </wd-panel>

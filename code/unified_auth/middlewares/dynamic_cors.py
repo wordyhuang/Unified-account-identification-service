@@ -18,7 +18,7 @@ def _origin(url):
 
 
 def allowed_origins():
-    """汇总启用应用的注册页相关 origin；结果缓存 60 秒。"""
+    """汇总启用应用的跨域/页面对接域与注册页地址 origin；结果缓存 60 秒。"""
     cached = cache.get(CACHE_KEY)
     if cached is not None:
         return cached
@@ -26,9 +26,9 @@ def allowed_origins():
 
     origins = set()
     for app in Application.objects.filter(status=True).only(
-        "callback_urls", "registration_page_url", "registration_success_url"
+        "cors_origins", "registration_page_url", "registration_success_url"
     ):
-        urls = list(app.callback_urls or [])
+        urls = list(app.cors_origins or [])
         urls.extend([app.registration_page_url, app.registration_success_url])
         for raw in urls:
             origin = _origin(raw)

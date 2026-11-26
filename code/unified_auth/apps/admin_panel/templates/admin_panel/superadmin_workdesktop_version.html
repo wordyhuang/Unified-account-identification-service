@@ -20,9 +20,9 @@
     <div v-if="current">
       <span class="ver-current">[[ current ]]</span>
       <span v-if="upgradable" style="margin-left: 12px;">
-        <el-tag type="danger" size="small">可升级到 [[ latest ]]</el-tag>
+        <el-tag type="danger" size="default">可升级到 [[ latest ]]</el-tag>
       </span>
-      <el-button v-if="upgradable" type="primary" size="small" style="margin-left: 12px;"
+      <el-button v-if="upgradable" type="primary" size="default" style="margin-left: 12px;"
         :loading="installing === latest" @click="doInstall(latest)">升级到最新 [[ latest ]]</el-button>
       <div class="ver-meta">当前是管理后台实际加载的组件版本。</div>
     </div>
@@ -30,22 +30,24 @@
   </wd-panel>
 
   <wd-panel class="ver-card" title="官方历史版本（最近 10 个）" shadow="never">
-    <el-table :data="versions" size="small" v-loading="loadingVersions">
+    <el-table :data="versions" size="default" v-loading="loadingVersions">
       <el-table-column label="版本号" min-width="140">
         <template #default="{ row }">
           <span :style="{ fontWeight: row.version === current ? 600 : 400 }">[[ row.version ]]</span>
-          <el-tag v-if="row.version === current" type="success" size="small" style="margin-left: 8px;">当前</el-tag>
-          <el-tag v-if="row.version === latest" type="warning" size="small" style="margin-left: 8px;">最新</el-tag>
+          <el-tag v-if="row.version === current" type="success" size="default" style="margin-left: 8px;">当前</el-tag>
+          <el-tag v-if="row.version === latest" type="warning" size="default" style="margin-left: 8px;">最新</el-tag>
         </template>
       </el-table-column>
       <el-table-column label="操作" min-width="160">
         <template #default="{ row }">
-          <el-button size="small" type="primary" plain
-            :disabled="row.version === current || installing"
-            :loading="installing === row.version"
-            @click="doInstall(row.version)">
-            [[ row.version === current ? '已安装' : '安装此版本' ]]
-          </el-button>
+          <el-button-group>
+            <el-button size="small" type="primary" plain
+              :disabled="row.version === current || installing"
+              :loading="installing === row.version"
+              @click="doInstall(row.version)">
+              [[ row.version === current ? '已安装' : '安装此版本' ]]
+            </el-button>
+          </el-button-group>
         </template>
       </el-table-column>
     </el-table>

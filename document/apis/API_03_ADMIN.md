@@ -1,9 +1,9 @@
 > **文档创建时间**: 2026-10-17 14:10:00
-> **最后修改时间**: 2026-11-26 12:50:00
-> **当前版本**: V_1.3
+> **最后修改时间**: 2026-11-26 15:10:00
+> **当前版本**: V_1.4
 > **适用对象**: 对接本服务的 AI Agent、Web 管理后台前端开发者、企业管理员
 > **核心目标**: 提供 `/api/v1/admin/*` 全部企业管理后台接口的完整清单与认证要求
-> **文档简略描述**: 在 V_1.2 基础上补充：资料补全页租户级默认外观接口（completion-brand），明确补全页外观与邀请页品牌字段的回退关系
+> **文档简略描述**: 在 V_1.3 基础上更新：应用地址白名单按用途拆分——`callback_urls` 收窄为 OAuth2 redirect_uri 白名单，新增 `cors_origins` 管 CORS 与注册页/Webhook 同源信任基准（§2.3）
 
 ---
 
@@ -70,6 +70,15 @@
 
 > 权限配置链路: `应用 → 角色（AppRoleBinding）→ 权限`。绑定入口在 `PUT /applications/<id>` 时传入 `role_ids`。
 
+**两个地址白名单 ✅ V_1.2 更新（原共用 callback_urls，现已按用途分离）**：
+
+| 字段 | 类型 | 语义 | 消费方 |
+|---|---|---|---|
+| `callback_urls` | URL 列表 | **授权回调地址**（精确 URL 匹配） | 仅 OAuth2 授权码流程的 `redirect_uri` 白名单 |
+| `cors_origins` | URL/域 列表 | **跨域/页面对接域**（origin 级匹配） | 动态 CORS 放行；`registration_page_url` / `registration_success_url` / `webhook_url` 的同源信任基准 |
+
+> 存量数据：迁移 0010 已自动把原 `callback_urls` 的 origin 复制到 `cors_origins`，存量应用行为不变。创建/编辑时两个字段均可独立传参，应用序列化同时返回两者。
+
 **邀请注册页接入（✅ V_1.2 新增）**：创建/编辑应用可直接传以下三个字段，序列化同样返回：
 
 | 字段 | 类型 | 说明 |
@@ -78,7 +87,7 @@
 | `registration_success_url` | URL(512) | 注册成功后浏览器跳转地址 |
 | `webhook_url` | URL(512) | 注册成功事件回调地址 |
 
-校验规则：三个地址非空时，其 origin 必须命中该应用 `callback_urls` 白名单（否则 400「…必须与回调地址白名单同源，且不能指向内网地址」）；生产环境（DEBUG=False）拒绝内网/回环地址。
+校验规则：三个地址非空时，其 origin 必须命中该应用 `cors_origins` 白名单（否则 400「…必须与跨域/页面对接域白名单同源，且不能指向内网地址」）；生产环境（DEBUG=False）拒绝内网/回环地址。
 
 ### 2.4 角色管理
 
@@ -243,3 +252,4 @@
 | V_1.1 | 2026-11-25 | reset-password 改为服务端随机密码（仅响应返回一次+强制改密）；用户序列化加 must_change_password；新增 §2.7 邀请码/资料补全码管理与字段白名单接口 |
 | V_1.2 | 2026-11-25 | 应用管理新增注册页三个地址；邀请码支持 `fields` 覆盖与 `app_id` 绑定，序列化加 registration_mode；新增 §2.8 `invite-brand` / `invite-fields` |
 | V_1.3 | 2026-11-26 | 新增 `completion-brand` 接口（资料补全页租户级默认外观）；明确外观回退链：码级 > 补全页租户默认 > 邀请品牌字段 > 系统默认 |
+| V_1.4 | 2026-11-26 | 回调地址按用途拆分：`callback_urls` 收窄为 OAuth2 redirect_uri 白名单；新增 `cors_origins` 管 CORS 与注册页/Webhook 同源信任基准（§2.3）；迁移 0010 自动复制存量 origin |

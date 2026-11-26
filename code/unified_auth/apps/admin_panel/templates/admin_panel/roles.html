@@ -25,7 +25,7 @@
       <template #default="{ row }">
         <div class="perm-expand">
           <template v-if="row.permissions && row.permissions.length">
-            <el-tag v-for="p in row.permissions" :key="p.id" size="small" effect="plain"
+            <el-tag v-for="p in row.permissions" :key="p.id" size="default" effect="plain"
               :title="p.method + ' ' + p.path">[[ p.name ]]</el-tag>
           </template>
           <span v-else style="color: var(--el-text-color-secondary)">未分配权限</span>
@@ -76,7 +76,7 @@
           <div v-for="group in permGroups" :key="group.category" class="perm-group">
             <div class="perm-group-title">
               <span>[[ group.category || '未分类' ]]（[[ group.items.length ]]）</span>
-              <el-checkbox size="small" :model-value="isGroupChecked(group, model.permission_ids)"
+              <el-checkbox size="default" :model-value="isGroupChecked(group, model.permission_ids)"
                 :indeterminate="isGroupIndeterminate(group, model.permission_ids)"
                 @change="function (val) { toggleGroup(group, val, model.permission_ids); }">全选</el-checkbox>
             </div>
@@ -104,8 +104,8 @@
   </el-form>
   <el-alert type="info" :closable="false" title="将复制源角色的全部权限到新角色" ></el-alert>
   <template #footer>
-    <el-button size="small" @click="copyVisible = false">取消</el-button>
-    <el-button size="small" type="primary" :loading="copySaving" :disabled="!copyName.trim() || !copyCode.trim()" @click="onCopySave">确定</el-button>
+    <el-button size="default" @click="copyVisible = false">取消</el-button>
+    <el-button size="default" type="primary" :loading="copySaving" :disabled="!copyName.trim() || !copyCode.trim()" @click="onCopySave">确定</el-button>
   </template>
 </el-dialog>
 {% endblock %}
