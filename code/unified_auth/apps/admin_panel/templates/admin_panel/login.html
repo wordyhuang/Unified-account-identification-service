@@ -19,8 +19,11 @@
     .login-title { text-align: center; margin: 0 0 8px; font-size: 22px; }
     .login-sub { text-align: center; color: #909399; margin: 0 0 24px; font-size: 13px; }
     .login-btn { width: 100%; }
-    .tenant-tip { margin-bottom: 12px; color: var(--el-text-color-secondary); font-size: 13px; }
-    .tenant-option { display: block; width: 100%; margin: 0 0 8px 0; }
+    .tenant-tip { margin-bottom: 14px; color: var(--el-text-color-secondary); font-size: 13px; line-height: 1.5; }
+    .tenant-group { display: flex; flex-direction: column; gap: 8px; width: 100%; }
+    .tenant-option.el-radio { width: 100%; height: 44px; margin: 0; }
+    .tenant-option .el-radio__label { font-size: 14px; }
+    .tenant-option.is-checked { background: var(--el-color-primary-light-9); }
   </style>
 </head>
 <body>
@@ -43,9 +46,9 @@
     </el-card>
 
     <!-- 同名用户分属多个租户时，由用户选择要登录的租户 -->
-    <el-dialog v-model="tenantVisible" title="选择租户" width="360px" :close-on-click-modal="false">
+    <el-dialog v-model="tenantVisible" title="选择租户" width="420px" :close-on-click-modal="false">
       <div class="tenant-tip">该用户名在多个租户中存在，请选择要登录的租户</div>
-      <el-radio-group v-model="selectedTenantId">
+      <el-radio-group v-model="selectedTenantId" class="tenant-group">
         <el-radio v-for="t in tenantOptions" :key="t.tenant_id" :value="t.tenant_id" border class="tenant-option">
           [[ t.tenant_name ]]
         </el-radio>

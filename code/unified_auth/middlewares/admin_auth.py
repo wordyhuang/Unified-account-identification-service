@@ -71,6 +71,15 @@ class AdminAuthenticationMiddleware(MiddlewareMixin):
                 request.tenant_id = None
                 request.user = None
                 request.user_id = None
+                # 超管未模拟租户时没有租户上下文，直接拒绝租户级接口，避免空列表或写入 500
+                if is_admin_api:
+                    return JsonResponse(
+                        api_response(
+                            ErrorCode.PERMISSION_DENIED,
+                            message="超级管理员请先在租户管理中模拟一个租户后再操作",
+                        ),
+                        status=403,
+                    )
             return None
 
         user_id = payload.get("user_id")

@@ -9,6 +9,7 @@
   .page-card:last-child { margin-bottom: 0; }
   .import-tip { margin: 0 0 8px; color: var(--el-text-color-secondary); font-size: 12px; }
   .form-hint { margin-left: 10px; color: var(--el-text-color-secondary); font-size: 12px; }
+  .tab-footer { display: flex; justify-content: flex-end; margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--el-border-color-lighter); }
 </style>
 {% endblock %}
 
@@ -106,22 +107,11 @@
     <el-table-column label="最后登录" width="150">
       <template #default="{ row }">[[ fmtTime(row.last_login_at) ]]</template>
     </el-table-column>
-    <el-table-column label="操作" width="150" align="center" fixed="right">
+    <el-table-column label="操作" width="120" align="center" fixed="right">
       <template #default="{ row }">
         <el-button-group size="default">
-          <el-button type="primary" plain @click="onRowAction({ command: 'edit', row: row })">编辑</el-button>
-          <el-dropdown trigger="click" @command="function(cmd) { onRowAction({ command: cmd, row: row }) }">
-            <el-button plain>更多</el-button>
-            <template #dropdown>
-              <el-dropdown-menu>
-                <el-dropdown-item command="roles">角色</el-dropdown-item>
-                <el-dropdown-item command="tags">标签</el-dropdown-item>
-                <el-dropdown-item command="profile">档案</el-dropdown-item>
-                <el-dropdown-item command="reset">重置密码</el-dropdown-item>
-                <el-dropdown-item command="delete" divided style="color: var(--el-color-danger)">删除</el-dropdown-item>
-              </el-dropdown-menu>
-            </template>
-          </el-dropdown>
+          <el-button type="primary" plain @click="openEdit(row)">编辑</el-button>
+          <el-button type="danger" plain @click="onDelete(row)">删除</el-button>
         </el-button-group>
       </template>
     </el-table-column>
@@ -130,7 +120,10 @@
 </div>
 
 <!-- 新增 / 编辑用户 -->
-<el-drawer v-model="drawerVisible" :title="formMode === 'create' ? '新增用户' : '编辑用户'" size="480px" destroy-on-close>
+<el-drawer v-model="drawerVisible" :title="formMode === 'create' ? '新增用户' : '编辑用户'" size="600px"
+  destroy-on-close @closed="onDrawerClosed">
+  <el-tabs v-model="editTab">
+    <el-tab-pane label="基础信息" name="basic">
   <wd-data-form v-if="drawerVisible" size="default" :mode="formMode"
     :api="formMode === 'edit' ? '/api/v1/admin/users/' + formUserId : ''"
     :submit-api="formMode === 'edit' ? '/api/v1/admin/users/' + formUserId : '/api/v1/admin/users'"
@@ -173,73 +166,33 @@
       </el-form-item>
     </template>
   </wd-data-form>
-</el-drawer>
+    </el-tab-pane>
 
-<!-- 角色分配 -->
-<el-dialog v-model="roleVisible" :title="'分配角色 - ' + (roleUser ? roleUser.username : '')" width="480px" destroy-on-close>
-  <div v-loading="roleLoading">
-    <wd-checkbox-list v-model="roleIds"
-      api="/api/v1/admin/roles" text-prop="name" value-prop="id" ></wd-checkbox-list>
-  </div>
-  <template #footer>
-    <el-button size="default" @click="roleVisible = false">取消</el-button>
-    <el-button size="default" type="primary" :loading="roleSaving" @click="onRoleSave">保存</el-button>
-  </template>
-</el-dialog>
+    <el-tab-pane v-if="formMode === 'edit'" label="角色" name="roles">
+      <div v-loading="roleLoading">
+        <wd-checkbox-list v-model="roleIds" api="/api/v1/admin/roles" text-prop="name" value-prop="id"></wd-checkbox-list>
+      </div>
+      <div class="tab-footer">
+        <el-button type="primary" :loading="roleSaving" @click="onRoleSave">保存角色</el-button>
+      </div>
+    </el-tab-pane>
 
-<!-- 标签分配 -->
-<el-dialog v-model="tagVisible" :title="'分配标签 - ' + (tagUser ? tagUser.username : '')" width="480px" destroy-on-close>
-  <div v-loading="tagLoading">
-    <wd-checkbox-list v-model="tagIds"
-      api="/api/v1/admin/tags" text-prop="name" value-prop="id" ></wd-checkbox-list>
-  </div>
-  <template #footer>
-    <el-button size="default" @click="tagVisible = false">取消</el-button>
-    <el-button size="default" type="primary" :loading="tagSaving" @click="onTagSave">保存</el-button>
-  </template>
-</el-dialog>
+    <el-tab-pane v-if="formMode === 'edit'" label="标签" name="tags">
+      <div v-loading="tagLoading">
+        <wd-checkbox-list v-model="tagIds" api="/api/v1/admin/tags" text-prop="name" value-prop="id"></wd-checkbox-list>
+      </div>
+      <div class="tab-footer">
+        <el-button type="primary" :loading="tagSaving" @click="onTagSave">保存标签</el-button>
+      </div>
+    </el-tab-pane>
 
-<!-- 重置密码：服务端生成随机密码，本次响应展示一次，用户登录后必须修改 -->
-<el-dialog v-model="pwdVisible" :title="'重置密码 - ' + (pwdUser ? pwdUser.username : '')" width="480px" destroy-on-close>
-  <template v-if="!pwdResult">
-    <el-alert type="warning" :closable="false"
-      title="重置将由服务端生成随机密码，仅展示一次；该用户下次登录后将被强制要求修改密码。"></el-alert>
-    <el-form label-width="90px" style="margin-top: 12px">
-      <el-form-item label="登录名">
-        <span>[[ pwdUser ? pwdUser.username : '' ]]</span>
-      </el-form-item>
-    </el-form>
-  </template>
-  <template v-else>
-    <el-alert type="success" :closable="false"
-      title="密码已重置，请立即复制并发送给用户（关闭弹窗后不再显示）。"></el-alert>
-    <el-form label-width="90px" style="margin-top: 12px">
-      <el-form-item label="新密码">
-        <el-input :model-value="pwdResult.password" readonly class="pwd-result-input">
-          <template #append>
-            <el-button @click="copyPassword">复制</el-button>
-          </template>
-        </el-input>
-      </el-form-item>
-      <el-form-item label="后续策略">
-        <span style="color: var(--el-text-color-secondary)">用户首次登录后必须修改密码，修改前仅可访问个人信息与改密接口</span>
-      </el-form-item>
-    </el-form>
-  </template>
-  <template #footer>
-    <el-button size="default" @click="pwdVisible = false">[[ pwdResult ? '关闭' : '取消' ]]</el-button>
-    <el-button v-if="!pwdResult" size="default" type="primary" :loading="pwdSaving" @click="onPwdSave">重置并生成随机密码</el-button>
-  </template>
-</el-dialog>
-
-<!-- 档案编辑 -->
-<el-dialog v-model="profileVisible" title="编辑档案" width="640px" destroy-on-close>
-  <wd-data-form v-if="profileVisible" mode="edit"
-    :api="'/api/v1/admin/users/' + profileUserId + '/profile'"
-    :submit-api="'/api/v1/admin/users/' + profileUserId + '/profile'"
+    <el-tab-pane v-if="formMode === 'edit'" label="档案" name="profile">
+<wd-data-form v-if="drawerVisible" mode="edit"
+    :api="'/api/v1/admin/users/' + formUserId + '/profile'"
+    :submit-api="'/api/v1/admin/users/' + formUserId + '/profile'"
     submit-method="put"
     submit-keys="real_name,gender,birthday,job_title,company,employee_id,work_email,work_phone,wechat,qq,address,bio"
-    :active="true" label-width="90px" @close="profileVisible = false">
+    :active="true" label-width="90px">
     <template #default="{ model }">
       <el-row :gutter="12">
         <el-col :span="12">
@@ -288,7 +241,26 @@
       </el-row>
     </template>
   </wd-data-form>
-</el-dialog>
+    </el-tab-pane>
+
+    <el-tab-pane v-if="formMode === 'edit'" label="安全" name="security">
+      <el-alert type="warning" :closable="false"
+        title="重置将由服务端生成随机密码，仅展示一次；该用户下次登录后将被强制要求修改密码。"></el-alert>
+      <div v-if="pwdResult" style="margin-top: 12px">
+        <el-alert type="success" :closable="false"
+          title="密码已重置，请立即复制并发送给用户（关闭抽屉后不再显示）。"></el-alert>
+        <el-input :model-value="pwdResult.password" readonly style="margin-top: 12px">
+          <template #append>
+            <el-button @click="copyPassword">复制</el-button>
+          </template>
+        </el-input>
+      </div>
+      <div class="tab-footer">
+        <el-button type="warning" :loading="pwdSaving" @click="onPwdSave">重置并生成随机密码</el-button>
+      </div>
+    </el-tab-pane>
+  </el-tabs>
+</el-drawer>
 
 <!-- 批量修改类型 -->
 <el-dialog v-model="batchTypeVisible" title="批量修改用户类型" width="420px" destroy-on-close>
@@ -343,22 +315,15 @@ AdminUI.start('/admin-panel/users/', {
         email: [{ type: 'email', message: '邮箱格式不正确', trigger: 'blur' }],
         phone: [{ pattern: /^1\d{10}$/, message: '手机号格式不正确', trigger: 'blur' }]
       },
-      roleVisible: false,
-      roleUser: null,
+      editTab: 'basic',
       roleIds: [],
       roleLoading: false,
       roleSaving: false,
-      tagVisible: false,
-      tagUser: null,
       tagIds: [],
       tagLoading: false,
       tagSaving: false,
-      pwdVisible: false,
-      pwdUser: null,
       pwdResult: null,
       pwdSaving: false,
-      profileVisible: false,
-      profileUserId: null,
       batchTypeVisible: false,
       batchType: 'internal',
       batchSaving: false,
@@ -375,26 +340,24 @@ AdminUI.start('/admin-panel/users/', {
     openCreate: function () {
       this.formMode = 'create';
       this.formUserId = null;
+      this.editTab = 'basic';
+      this.pwdResult = null;
       this.drawerVisible = true;
     },
-    onRowAction: function (evt) {
-      var row = evt.row;
-      if (evt.command === 'edit') {
-        this.formMode = 'edit';
-        this.formUserId = row.id;
-        this.drawerVisible = true;
-      } else if (evt.command === 'roles') {
-        this.openRoles(row);
-      } else if (evt.command === 'tags') {
-        this.openTags(row);
-      } else if (evt.command === 'profile') {
-        this.profileUserId = row.id;
-        this.profileVisible = true;
-      } else if (evt.command === 'reset') {
-        this.onResetPassword(row);
-      } else if (evt.command === 'delete') {
-        this.onDelete(row);
-      }
+    openEdit: function (row) {
+      this.formMode = 'edit';
+      this.formUserId = row.id;
+      this.editTab = 'basic';
+      this.pwdResult = null;
+      this.drawerVisible = true;
+      this.loadRoles(row.id);
+      this.loadTags(row.id);
+    },
+    onDrawerClosed: function () {
+      this.editTab = 'basic';
+      this.pwdResult = null;
+      this.roleIds = [];
+      this.tagIds = [];
     },
     onFormSuccess: function (data) {
       if (data && data._generated_username) {
@@ -407,13 +370,11 @@ AdminUI.start('/admin-panel/users/', {
     },
 
     /* ---------- 角色分配 ---------- */
-    openRoles: function (row) {
-      this.roleUser = row;
+    loadRoles: function (userId) {
       this.roleIds = [];
-      this.roleVisible = true;
       this.roleLoading = true;
       var self = this;
-      WorkDesktop.request.get('/api/v1/admin/users/' + row.id + '/roles').then(function (res) {
+      WorkDesktop.request.get('/api/v1/admin/users/' + userId + '/roles').then(function (res) {
         if (res && res.success) self.roleIds = res.data.role_ids || [];
         else AdminUI.toastFail(res, '加载角色失败');
       }).finally(function () {
@@ -423,12 +384,11 @@ AdminUI.start('/admin-panel/users/', {
     onRoleSave: function () {
       var self = this;
       this.roleSaving = true;
-      WorkDesktop.request.put('/api/v1/admin/users/' + this.roleUser.id + '/roles', {
+      WorkDesktop.request.put('/api/v1/admin/users/' + this.formUserId + '/roles', {
         role_ids: this.roleIds
       }).then(function (res) {
         if (res && res.success) {
           ElementPlus.ElMessage.success('角色已更新');
-          self.roleVisible = false;
           self.$refs.gridRef.refresh();
         } else {
           AdminUI.toastFail(res, '保存失败');
@@ -439,13 +399,11 @@ AdminUI.start('/admin-panel/users/', {
     },
 
     /* ---------- 标签分配 ---------- */
-    openTags: function (row) {
-      this.tagUser = row;
+    loadTags: function (userId) {
       this.tagIds = [];
-      this.tagVisible = true;
       this.tagLoading = true;
       var self = this;
-      WorkDesktop.request.get('/api/v1/admin/users/' + row.id + '/tags').then(function (res) {
+      WorkDesktop.request.get('/api/v1/admin/users/' + userId + '/tags').then(function (res) {
         if (res && res.success) self.tagIds = res.data.tags.map(function (t) { return t.id; });
         else AdminUI.toastFail(res, '加载标签失败');
       }).finally(function () {
@@ -455,12 +413,11 @@ AdminUI.start('/admin-panel/users/', {
     onTagSave: function () {
       var self = this;
       this.tagSaving = true;
-      WorkDesktop.request.put('/api/v1/admin/users/' + this.tagUser.id + '/tags', {
+      WorkDesktop.request.put('/api/v1/admin/users/' + this.formUserId + '/tags', {
         tag_ids: this.tagIds
       }).then(function (res) {
         if (res && res.success) {
           ElementPlus.ElMessage.success('标签已更新');
-          self.tagVisible = false;
           self.$refs.gridRef.refresh();
         } else {
           AdminUI.toastFail(res, '保存失败');
@@ -471,25 +428,22 @@ AdminUI.start('/admin-panel/users/', {
     },
 
     /* ---------- 重置密码 / 删除 ---------- */
-    onResetPassword: function (row) {
-      this.pwdUser = row;
-      this.pwdResult = null;
-      this.pwdVisible = true;
-    },
     onPwdSave: function () {
       var self = this;
-      self.pwdSaving = true;
-      WorkDesktop.request.post('/api/v1/admin/users/' + self.pwdUser.id + '/reset-password', {})
-        .then(function (res) {
-          if (res && res.success) {
-            self.pwdResult = res.data;
-            self.$refs.gridRef.refresh();
-          } else {
-            AdminUI.toastFail(res, '重置失败');
-          }
-        }).catch(function () {}).finally(function () {
-          self.pwdSaving = false;
-        });
+      ElementPlus.ElMessageBox.confirm('重置后将生成新的随机密码，原密码立即失效，是否继续？', '重置密码', {
+        type: 'warning', confirmButtonText: '重置', cancelButtonText: '取消'
+      }).then(function () {
+        self.pwdSaving = true;
+        return WorkDesktop.request.post('/api/v1/admin/users/' + self.formUserId + '/reset-password', {});
+      }).then(function (res) {
+        if (res && res.success) {
+          self.pwdResult = res.data;
+        } else {
+          AdminUI.toastFail(res, '重置失败');
+        }
+      }).catch(function () {}).finally(function () {
+        self.pwdSaving = false;
+      });
     },
     copyPassword: function () {
       if (!this.pwdResult) return;

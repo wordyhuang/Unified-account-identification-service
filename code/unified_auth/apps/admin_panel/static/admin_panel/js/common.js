@@ -195,6 +195,12 @@
     start: function (activePath, pageOptions) {
       var user = AdminAuth.requireAuth();
       if (!user) return null;
+      // 未模拟租户的超级管理员只能访问平台管理页，直接输入租户页 URL 时重定向
+      if (user.is_superadmin && !user.impersonated &&
+          window.location.pathname.indexOf('/admin-panel/superadmin/') !== 0) {
+        location.href = '/admin-panel/superadmin/dashboard/';
+        return null;
+      }
       pageOptions = pageOptions || {};
       var pageData = typeof pageOptions.data === 'function' ? pageOptions.data() : {};
       var pageMounted = pageOptions.mounted;
