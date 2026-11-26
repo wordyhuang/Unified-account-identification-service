@@ -9,6 +9,7 @@ urlpatterns = [
     path("profile-completion-codes/<int:code_id>", admin_views.completion_code_detail_view, name="admin-completion-code-detail"),
     path("profile-completion-fields", admin_views.completion_fields_view, name="admin-completion-fields"),
     path("invite-brand", admin_views.invite_brand_view, name="admin-invite-brand"),
+    path("completion-brand", admin_views.completion_brand_view, name="admin-completion-brand"),
     path("invite-fields", admin_views.invite_fields_registry_view, name="admin-invite-fields"),
     path("invite-appearance/preview", admin_views.appearance_preview_view, name="admin-invite-appearance-preview"),
 ]

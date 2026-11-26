@@ -63,3 +63,4 @@ token_req.json
 document/*
 !document/apis/
 !document/apis/**
+memory.md

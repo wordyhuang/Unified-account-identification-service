@@ -35,6 +35,12 @@ class Tenant(models.Model):
     invite_success_text = models.CharField(max_length=255, blank=True, default="", verbose_name="注册成功提示")
     invite_agreement = models.CharField(max_length=255, blank=True, default="", verbose_name="协议勾选文案")
 
+    # 资料补全页租户级默认外观（null/空表示逐项回退邀请品牌字段与系统默认）
+    completion_appearance = CompatibleJSONField(
+        null=True, blank=True, verbose_name="资料补全页默认外观",
+        help_text="仅存显式配置项，合法键见 invites.appearance.APPEARANCE_KEYS",
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

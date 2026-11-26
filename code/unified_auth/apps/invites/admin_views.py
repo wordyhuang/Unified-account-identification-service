@@ -12,6 +12,7 @@ from apps.accounts.models import Tenant, User
 from apps.audit.models import AuditLog
 from apps.invites.appearance import (
     PAGE_TYPES, appearance_changed_detail, normalize_appearance, resolve_appearance,
+    tenant_appearance_defaults,
 )
 from apps.invites.fields import FIELD_REGISTRY
 from apps.invites.models import (
@@ -706,6 +707,48 @@ def invite_brand_view(request):
         "agreement": agreement,
         "background": background,
         "footer_text": footer_text,
+    }))
+
+
+@api_view(["GET", "PUT"])
+def completion_brand_view(request):
+    """当前租户的资料补全页默认外观（租户级，逐项回退邀请品牌与系统默认）。"""
+    tenant = Tenant.objects.filter(id=request.tenant_id).first()
+    if tenant is None:
+        if request.method == "GET":
+            return Response(success({"appearance": {}, "appearance_effective": {}}))
+        return Response(error(ErrorCode.PARAM_INVALID, message="租户不存在"), status=404)
+
+    if request.method == "GET":
+        return Response(success({
+            "appearance": tenant.completion_appearance or {},
+            "appearance_effective": tenant_appearance_defaults(tenant, "completion"),
+        }))
+
+    body = request.data if isinstance(request.data, dict) else {}
+    appearance, err = normalize_appearance(body.get("appearance"))
+    if err:
+        return Response(error(ErrorCode.PARAM_INVALID, message=err), status=400)
+
+    # 传 null 或 {} 均表示清除租户级覆盖，回退邀请品牌与系统默认
+    tenant.completion_appearance = appearance if appearance else None
+    tenant.save(update_fields=["completion_appearance"])
+
+    changed = appearance_changed_detail(
+        {}, tenant.completion_appearance or {}
+    )
+    AuditLog.objects.create(
+        tenant_id=request.tenant_id,
+        actor_id=request.user_id,
+        actor_name=request.user.username if request.user else "",
+        action="admin.completion_brand.update",
+        resource_type="tenant",
+        resource_id=tenant.id,
+        detail={"appearance_fields": list((tenant.completion_appearance or {}).keys()), "changed": changed},
+    )
+    return Response(success({
+        "appearance": tenant.completion_appearance or {},
+        "appearance_effective": tenant_appearance_defaults(tenant, "completion"),
     }))
 
 

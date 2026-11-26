@@ -121,27 +121,43 @@ def normalize_appearance(raw):
 
 
 def tenant_appearance_defaults(tenant, page_type):
-    """租户级默认外观（映射现有品牌/文案字段，含系统内置兜底）。"""
+    """租户级默认外观（补全页独立配置 > 邀请品牌字段回退 > 系统内置）。"""
     defaults = dict(SYSTEM_DEFAULTS.get(page_type, SYSTEM_DEFAULTS[PAGE_TYPE_INVITE]))
-    if tenant is not None:
-        # 页面标题：邀请页兼容存量行为（品牌名称 > 企业名称 > 系统默认）；
-        # 补全页不回退企业名称（存量行为为固定文案）
-        if page_type == PAGE_TYPE_INVITE:
-            defaults["title"] = tenant.invite_brand_name or tenant.name or defaults["title"]
-        elif tenant.invite_brand_name:
-            defaults["title"] = tenant.invite_brand_name
-        if tenant.invite_welcome:
-            defaults["welcome"] = tenant.invite_welcome
-        if tenant.invite_theme_color:
-            defaults["theme_color"] = tenant.invite_theme_color
-        if tenant.invite_logo:
-            defaults["logo"] = tenant.invite_logo
-        if tenant.invite_background:
-            defaults["background"] = tenant.invite_background
-        if tenant.invite_submit_text:
-            defaults["button_text"] = tenant.invite_submit_text
-        if tenant.invite_footer_text:
-            defaults["footer_text"] = tenant.invite_footer_text
+    if tenant is None:
+        return defaults
+
+    # 补全页独立的租户级配置（邀请页不读取）
+    completion_cfg = {}
+    if page_type == PAGE_TYPE_COMPLETION and isinstance(
+        getattr(tenant, "completion_appearance", None), dict
+    ):
+        completion_cfg = {
+            key: value
+            for key, value in tenant.completion_appearance.items()
+            if key in APPEARANCE_KEYS and value
+        }
+
+    # 存量回退：邀请品牌字段对两个页面都生效（补全页保持原有表现）
+    if page_type == PAGE_TYPE_INVITE:
+        defaults["title"] = tenant.invite_brand_name or tenant.name or defaults["title"]
+    elif tenant.invite_brand_name:
+        defaults["title"] = tenant.invite_brand_name
+    if tenant.invite_welcome:
+        defaults["welcome"] = tenant.invite_welcome
+    if tenant.invite_theme_color:
+        defaults["theme_color"] = tenant.invite_theme_color
+    if tenant.invite_logo:
+        defaults["logo"] = tenant.invite_logo
+    if tenant.invite_background:
+        defaults["background"] = tenant.invite_background
+    if tenant.invite_submit_text:
+        defaults["button_text"] = tenant.invite_submit_text
+    if tenant.invite_footer_text:
+        defaults["footer_text"] = tenant.invite_footer_text
+
+    # 补全页独立配置逐项覆盖
+    for key, value in completion_cfg.items():
+        defaults[key] = value
     return defaults
 
 

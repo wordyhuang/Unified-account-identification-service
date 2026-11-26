@@ -1,9 +1,9 @@
 > **文档创建时间**: 2026-10-17 14:10:00
-> **最后修改时间**: 2026-11-25 23:50:00
-> **当前版本**: V_1.2
+> **最后修改时间**: 2026-11-26 12:50:00
+> **当前版本**: V_1.3
 > **适用对象**: 对接本服务的 AI Agent、Web 管理后台前端开发者、企业管理员
 > **核心目标**: 提供 `/api/v1/admin/*` 全部企业管理后台接口的完整清单与认证要求
-> **文档简略描述**: 在 V_1.1 基础上补充：邀请注册页外观与字段配置接口（invite-brand / invite-fields）、邀请码字段覆盖与接入应用绑定、应用侧注册页三个地址配置
+> **文档简略描述**: 在 V_1.2 基础上补充：资料补全页租户级默认外观接口（completion-brand），明确补全页外观与邀请页品牌字段的回退关系
 
 ---
 
@@ -160,6 +160,7 @@
 | 方法 | 路径 | 功能 |
 |---|---|---|
 | GET/PUT | `/invite-brand` | 读取/保存当前租户的注册页品牌、默认字段与文案 |
+| GET/PUT | `/completion-brand` | 读取/保存资料补全页租户级默认外观（7 项，逐项回退） |
 | GET | `/invite-fields` | 可配置字段注册表（含手机号），供前端渲染多选项 |
 
 **GET/PUT `/invite-brand`**
@@ -190,6 +191,30 @@
 
 保存会写审计日志 `admin.invite_brand.update`。
 
+**GET/PUT `/completion-brand`**
+
+```json
+{
+  "appearance": {
+    "logo": "", "title": "资料完善", "welcome": "",
+    "theme_color": "#FF6600", "background": "",
+    "button_text": "提交资料", "footer_text": ""
+  },
+  "appearance_effective": {
+    "logo": "", "title": "资料完善", "welcome": "",
+    "theme_color": "#FF6600", "background": "",
+    "button_text": "提交资料", "footer_text": ""
+  }
+}
+```
+
+- 语义：资料补全页的**租户级默认外观**。生效优先级为 码级 `appearance` > 本租户 `completion_appearance` > 邀请品牌字段（存量回退）> 系统内置默认，字段级回退
+- `PUT` 只存显式配置项；传 `{}` 或 `null` 表示清除租户级覆盖，回到邀请品牌字段与系统默认
+- 合法键 7 个：`logo` / `title` / `welcome` / `theme_color` / `background` / `button_text` / `footer_text`，校验规则与码级 `appearance` 完全一致（非法键忽略、空值删除）
+- 校验：`theme_color` 必须 `#RRGGBB`；`background` 为 `#RRGGBB` 或 https 图片 / data URI；图片长度 ≤ 300000（约 220KB）；`title` ≤50、`welcome` ≤100、`button_text` ≤20、`footer_text` ≤100 字
+- `GET` 额外返回 `appearance_effective`，即当前合并后的最终生效值，供前端回显
+- 保存写审计日志 `admin.completion_brand.update`
+
 **GET `/invite-fields`**
 
 ```json
@@ -217,3 +242,4 @@
 | V_1.0 | 2026-10-17 | 从原 README 概览拆出独立子文档              |
 | V_1.1 | 2026-11-25 | reset-password 改为服务端随机密码（仅响应返回一次+强制改密）；用户序列化加 must_change_password；新增 §2.7 邀请码/资料补全码管理与字段白名单接口 |
 | V_1.2 | 2026-11-25 | 应用管理新增注册页三个地址；邀请码支持 `fields` 覆盖与 `app_id` 绑定，序列化加 registration_mode；新增 §2.8 `invite-brand` / `invite-fields` |
+| V_1.3 | 2026-11-26 | 新增 `completion-brand` 接口（资料补全页租户级默认外观）；明确外观回退链：码级 > 补全页租户默认 > 邀请品牌字段 > 系统默认 |
