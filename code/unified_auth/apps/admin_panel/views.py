@@ -32,13 +32,21 @@ from .serializers import (
     AdminUserImportSerializer, AdminImpersonateSerializer,
     SuperAdminCreateTenantSerializer, SuperAdminUpdateTenantSerializer,
     AdminTenantSmsConfigSerializer,
+    AdminUserGroupSerializer, AdminUserGroupUpdateSerializer,
+    AdminUserGroupMembersSerializer, AdminAppGroupsSerializer,
 )
 
 
 def _user_serialize(u):
     role_ids = list(u.roles.values_list("id", flat=True))
     role_names = list(u.roles.values_list("name", flat=True))
-    
+
+    groups = [
+        {"id": m.group_id, "name": m.group.name}
+        for m in u.group_memberships.all()
+        if m.group.status
+    ]
+
     profile = {}
     try:
         p = u.profile
@@ -71,6 +79,7 @@ def _user_serialize(u):
         "tenant_id": u.tenant_id,
         "role_ids": role_ids,
         "role_names": role_names,
+        "groups": groups,
         "tags": tags,
         "last_login_at": u.last_login_at.isoformat() if u.last_login_at else None,
         "created_at": u.created_at.isoformat() if u.created_at else None,
@@ -99,6 +108,8 @@ def _app_serialize(a):
     bindings = AppRoleBinding.objects.filter(app=a).select_related("role")
     role_ids = [b.role_id for b in bindings]
     roles = [{"id": b.role_id, "name": b.role.name, "code": b.role.code} for b in bindings]
+    group_bindings = list(a.group_bindings.all())
+    group_ids = [b.group_id for b in group_bindings]
     return {
         "id": a.id, "uuid": str(a.uuid), "tenant_id": a.tenant_id,
         "name": a.name, "app_key": a.app_key,
@@ -110,6 +121,12 @@ def _app_serialize(a):
         "default_access_user_types": a.default_access_user_types or [],
         "role_ids": role_ids,
         "roles": roles,
+        # 准入用户组：勾选外部用户（开放应用）时用户组不生效
+        "group_ids": group_ids,
+        "group_names": [b.group.name for b in group_bindings],
+        "group_mode": (
+            "external" not in (a.default_access_user_types or [])
+        ) and bool(group_ids),
         "wechat_mp_app_id": a.wechat_mp_app_id or "",
         "wechat_mp_app_secret": "***" if a.wechat_mp_app_secret else "",
         "wechat_web_app_id": a.wechat_web_app_id or "",
@@ -343,7 +360,7 @@ def users_view(request):
             qs = qs.filter(tag_bindings__tag_id=tag_id)
 
         total = qs.count()
-        users = qs.order_by("-created_at")[(page - 1) * page_size:page * page_size]
+        users = qs.prefetch_related("group_memberships__group").order_by("-created_at")[(page - 1) * page_size:page * page_size]
         return Response(success({
             "users": [_user_serialize(u) for u in users],
             "total": total,
@@ -633,7 +650,7 @@ def apps_view(request):
             qs = qs.filter(status=(status_filter == "true"))
 
         total = qs.count()
-        apps = qs.order_by("-created_at")[(page - 1) * page_size:page * page_size]
+        apps = qs.prefetch_related("group_bindings__group").order_by("-created_at")[(page - 1) * page_size:page * page_size]
         return Response(success({
             "apps": [_app_serialize(a) for a in apps],
             "total": total,
@@ -717,6 +734,14 @@ def app_detail_view(request, app_id):
 
     if role_ids is not None:
         from apps.rbac.models import AppRoleBinding
+        # 角色必须属于当前租户，避免跨租户绑定带来权限提升
+        valid_ids = set(Role.objects.filter(id__in=role_ids, tenant_id=request.tenant_id).values_list("id", flat=True))
+        invalid_ids = [rid for rid in role_ids if rid not in valid_ids]
+        if invalid_ids:
+            return Response(
+                error(ErrorCode.PARAM_INVALID, message="以下角色不存在或不属于当前租户：%s" % invalid_ids),
+                status=400,
+            )
         AppRoleBinding.objects.filter(app=app).delete()
         for rid in role_ids:
             AppRoleBinding.objects.create(app=app, role_id=rid)
@@ -788,6 +813,353 @@ def app_regenerate_secret_view(request, app_id):
         resource_id=app_id,
     )
     return Response(success({"app_id": app.id, "app_secret": app_secret}))
+
+
+# ======================== 用户组与准入 ========================
+
+MAX_APP_GROUPS = 20
+
+
+def _user_group_serialize(group, member_count=None, app_count=None):
+    return {
+        "id": group.id,
+        "uuid": str(group.uuid),
+        "name": group.name,
+        "code": group.code,
+        "description": group.description,
+        "status": group.status,
+        "member_count": (
+            member_count if member_count is not None
+            else group.members.count()
+        ),
+        "app_count": (
+            app_count if app_count is not None
+            else group.app_bindings.count()
+        ),
+        "created_at": group.created_at.isoformat() if group.created_at else None,
+        "updated_at": group.updated_at.isoformat() if group.updated_at else None,
+    }
+
+
+@api_view(["GET", "POST"])
+def user_groups_view(request):
+    from apps.users.models import UserGroup
+
+    if request.method == "GET":
+        keyword = (request.GET.get("keyword") or request.GET.get("search") or "").strip()
+        status_filter = request.GET.get("status", "")
+        page = max(int(request.GET.get("page", 1) or 1), 1)
+        page_size = min(max(int(request.GET.get("page_size", 20) or 20), 1), 100)
+
+        qs = UserGroup.objects.filter(tenant_id=request.tenant_id)
+        if keyword:
+            qs = qs.filter(Q(name__icontains=keyword) | Q(code__icontains=keyword))
+        if status_filter in ("true", "false"):
+            qs = qs.filter(status=(status_filter == "true"))
+
+        total = qs.count()
+        groups = qs.annotate(
+            member_count=Count("members", distinct=True),
+            app_count=Count("app_bindings", distinct=True),
+        ).order_by("-created_at")[(page - 1) * page_size:page * page_size]
+        return Response(success({
+            "items": [
+                _user_group_serialize(g, g.member_count, g.app_count) for g in groups
+            ],
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+        }))
+
+    ser = AdminUserGroupSerializer(data=request.data)
+    if not ser.is_valid():
+        return Response(error(ErrorCode.PARAM_INVALID, data=ser.errors), status=400)
+
+    data = ser.validated_data
+    name = data["name"].strip()
+    if not name:
+        return Response(error(ErrorCode.PARAM_INVALID, message="组名称不能为空"), status=400)
+    if UserGroup.objects.filter(tenant_id=request.tenant_id, name=name).exists():
+        return Response(error(ErrorCode.PARAM_INVALID, message="同一租户下组名称已存在"), status=400)
+
+    group = UserGroup.objects.create(
+        tenant_id=request.tenant_id,
+        name=name,
+        code=(data.get("code") or "").strip(),
+        description=(data.get("description") or "").strip(),
+        status=data.get("status", True),
+    )
+    AuditLog.objects.create(
+        tenant_id=request.tenant_id,
+        actor_id=request.user_id,
+        actor_name=request.user.username,
+        action="admin.user_group.create",
+        resource_type="user_group",
+        resource_id=group.id,
+        detail={"name": group.name},
+    )
+    return Response(success(_user_group_serialize(group, 0, 0)), status=201)
+
+
+@api_view(["GET", "PATCH", "DELETE"])
+def user_group_detail_view(request, group_id):
+    from apps.users.models import UserGroup
+
+    group = UserGroup.objects.filter(id=group_id, tenant_id=request.tenant_id).first()
+    if group is None:
+        return Response(error(ErrorCode.USER_NOT_FOUND, message="用户组不存在"), status=404)
+
+    if request.method == "GET":
+        return Response(success(_user_group_serialize(group)))
+
+    if request.method == "DELETE":
+        detail = {
+            "name": group.name,
+            "member_count": group.members.count(),
+            "bound_app_ids": list(group.app_bindings.values_list("app_id", flat=True)),
+        }
+        group.delete()
+        AuditLog.objects.create(
+            tenant_id=request.tenant_id,
+            actor_id=request.user_id,
+            actor_name=request.user.username,
+            action="admin.user_group.delete",
+            resource_type="user_group",
+            resource_id=group_id,
+            detail=detail,
+        )
+        return Response(success())
+
+    ser = AdminUserGroupUpdateSerializer(data=request.data)
+    if not ser.is_valid():
+        return Response(error(ErrorCode.PARAM_INVALID, data=ser.errors), status=400)
+
+    data = ser.validated_data
+    changed = []
+    if "name" in data:
+        name = data["name"].strip()
+        if not name:
+            return Response(error(ErrorCode.PARAM_INVALID, message="组名称不能为空"), status=400)
+        if UserGroup.objects.filter(
+            tenant_id=request.tenant_id, name=name
+        ).exclude(id=group.id).exists():
+            return Response(error(ErrorCode.PARAM_INVALID, message="同一租户下组名称已存在"), status=400)
+        group.name = name
+        changed.append("name")
+    if "code" in data:
+        group.code = (data.get("code") or "").strip()
+        changed.append("code")
+    if "description" in data:
+        group.description = (data.get("description") or "").strip()
+        changed.append("description")
+    if "status" in data:
+        group.status = data["status"]
+        changed.append("status")
+
+    if not changed:
+        return Response(error(ErrorCode.PARAM_MISSING, message="缺少需要修改的配置项"), status=400)
+
+    group.save(update_fields=changed + ["updated_at"])
+    AuditLog.objects.create(
+        tenant_id=request.tenant_id,
+        actor_id=request.user_id,
+        actor_name=request.user.username,
+        action="admin.user_group.update",
+        resource_type="user_group",
+        resource_id=group.id,
+        detail={"changed": changed},
+    )
+    return Response(success(_user_group_serialize(group)))
+
+
+@api_view(["GET", "PUT"])
+def user_group_members_view(request, group_id):
+    from apps.users.models import UserGroup, UserGroupMember
+
+    group = UserGroup.objects.filter(id=group_id, tenant_id=request.tenant_id).first()
+    if group is None:
+        return Response(error(ErrorCode.USER_NOT_FOUND, message="用户组不存在"), status=404)
+
+    if request.method == "GET":
+        keyword = (request.GET.get("keyword") or "").strip()
+        page = max(int(request.GET.get("page", 1) or 1), 1)
+        page_size = min(max(int(request.GET.get("page_size", 20) or 20), 1), 100)
+
+        bindings = UserGroupMember.objects.filter(group=group).select_related("user")
+        if keyword:
+            bindings = bindings.filter(
+                Q(user__username__icontains=keyword)
+                | Q(user__nickname__icontains=keyword)
+                | Q(user__phone__icontains=keyword)
+            )
+        total = bindings.count()
+        items = bindings.order_by("-created_at")[(page - 1) * page_size:page * page_size]
+        return Response(success({
+            "items": [
+                {
+                    "user_id": b.user_id,
+                    "username": b.user.username,
+                    "nickname": b.user.nickname,
+                    "user_type": b.user.user_type,
+                    "phone": b.user.phone,
+                    "status": b.user.status,
+                    "joined_at": b.created_at.isoformat() if b.created_at else None,
+                }
+                for b in items
+            ],
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+        }))
+
+    ser = AdminUserGroupMembersSerializer(data=request.data)
+    if not ser.is_valid():
+        return Response(error(ErrorCode.PARAM_INVALID, data=ser.errors), status=400)
+
+    user_ids = list(dict.fromkeys(ser.validated_data["user_ids"]))
+    valid_users = User.objects.filter(id__in=user_ids, tenant_id=request.tenant_id)
+    valid_ids = set(valid_users.values_list("id", flat=True))
+    invalid_ids = [uid for uid in user_ids if uid not in valid_ids]
+    if invalid_ids:
+        return Response(
+            error(ErrorCode.PARAM_INVALID, message="以下用户不存在或不属于当前租户：%s" % invalid_ids),
+            status=400,
+        )
+
+    old_ids = set(group.members.values_list("user_id", flat=True))
+    new_ids = set(user_ids)
+    added = sorted(new_ids - old_ids)
+    removed = sorted(old_ids - new_ids)
+
+    UserGroupMember.objects.filter(group=group).exclude(user_id__in=new_ids).delete()
+    for uid in added:
+        UserGroupMember.objects.create(group=group, user_id=uid)
+
+    AuditLog.objects.create(
+        tenant_id=request.tenant_id,
+        actor_id=request.user_id,
+        actor_name=request.user.username,
+        action="admin.user_group.members_update",
+        resource_type="user_group",
+        resource_id=group.id,
+        detail={"added": added, "removed": removed},
+    )
+    return Response(success({
+        "group_id": group.id,
+        "member_count": len(new_ids),
+        "added": added,
+        "removed": removed,
+    }))
+
+
+@api_view(["GET", "PUT"])
+def app_groups_view(request, app_id):
+    from apps.users.access import is_open_app
+    from apps.users.models import AppGroupBinding, UserGroup
+
+    app = Application.objects.filter(id=app_id, tenant_id=request.tenant_id).first()
+    if app is None:
+        return Response(error(ErrorCode.APP_KEY_INVALID), status=404)
+
+    if request.method == "GET":
+        group_ids = list(app.group_bindings.values_list("group_id", flat=True))
+        return Response(success({
+            "app_id": app.id,
+            "group_ids": group_ids,
+            "group_mode": ("external" not in (app.default_access_user_types or [])) and bool(group_ids),
+            "open_app": is_open_app(app),
+        }))
+
+    ser = AdminAppGroupsSerializer(data=request.data)
+    if not ser.is_valid():
+        return Response(error(ErrorCode.PARAM_INVALID, data=ser.errors), status=400)
+
+    group_ids = list(dict.fromkeys(ser.validated_data["group_ids"]))
+    if len(group_ids) > MAX_APP_GROUPS:
+        return Response(
+            error(ErrorCode.PARAM_INVALID, message="单个应用最多绑定 %d 个用户组" % MAX_APP_GROUPS),
+            status=400,
+        )
+
+    valid_ids = set(
+        UserGroup.objects.filter(
+            id__in=group_ids, tenant_id=request.tenant_id
+        ).values_list("id", flat=True)
+    )
+    invalid_ids = [gid for gid in group_ids if gid not in valid_ids]
+    if invalid_ids:
+        return Response(
+            error(ErrorCode.PARAM_INVALID, message="以下用户组不存在或不属于当前租户：%s" % invalid_ids),
+            status=400,
+        )
+
+    old_ids = set(app.group_bindings.values_list("group_id", flat=True))
+    new_ids = set(group_ids)
+    added = sorted(new_ids - old_ids)
+    removed = sorted(old_ids - new_ids)
+
+    AppGroupBinding.objects.filter(app=app).exclude(group_id__in=new_ids).delete()
+    for gid in added:
+        AppGroupBinding.objects.create(app=app, group_id=gid)
+
+    AuditLog.objects.create(
+        tenant_id=request.tenant_id,
+        actor_id=request.user_id,
+        actor_name=request.user.username,
+        action="admin.app.groups_update",
+        resource_type="application",
+        resource_id=app.id,
+        detail={"added": added, "removed": removed},
+    )
+    final_group_ids = list(app.group_bindings.values_list("group_id", flat=True))
+    return Response(success({
+        "app_id": app.id,
+        "group_ids": final_group_ids,
+        "group_mode": ("external" not in (app.default_access_user_types or [])) and bool(final_group_ids),
+        "open_app": is_open_app(app),
+    }))
+
+
+@api_view(["GET"])
+def app_access_diagnosis_view(request, app_id):
+    """准入诊断：回答某用户能否访问该应用、原因与命中的组。"""
+    from apps.users.access import evaluate_app_access, is_group_mode
+    from apps.users.models import UserGroupMember
+
+    app = Application.objects.filter(id=app_id, tenant_id=request.tenant_id).first()
+    if app is None:
+        return Response(error(ErrorCode.APP_KEY_INVALID), status=404)
+
+    user_id = request.GET.get("user_id")
+    if not user_id:
+        return Response(error(ErrorCode.PARAM_MISSING, message="缺少 user_id"), status=400)
+    user = User.objects.filter(id=user_id, tenant_id=request.tenant_id).first()
+    if user is None:
+        return Response(error(ErrorCode.USER_NOT_FOUND), status=404)
+
+    allowed, reason, matched_group_id = evaluate_app_access(user, app)
+    matched_group_data = None
+    if matched_group_id:
+        from apps.users.models import UserGroup
+        group = UserGroup.objects.filter(id=matched_group_id).first()
+        if group is not None:
+            matched_group_data = {"id": group.id, "name": group.name}
+
+    return Response(success({
+        "app_id": app.id,
+        "user_id": user.id,
+        "username": user.username,
+        "user_type": user.user_type,
+        "allowed": allowed,
+        "reason": reason,
+        "group_mode": is_group_mode(app),
+        "matched_group": matched_group_data,
+        "user_group_ids": list(
+            UserGroupMember.objects.filter(
+                user=user, group__tenant_id=user.tenant_id
+            ).values_list("group_id", flat=True)
+        ),
+    }))
 
 
 # ======================== 角色权限 ========================
@@ -1626,11 +1998,19 @@ def app_roles_view(request, app_id):
         return Response(error(ErrorCode.PARAM_INVALID, data=ser.errors), status=400)
 
     role_ids = ser.validated_data["role_ids"]
+    # 角色必须属于当前租户，避免跨租户绑定带来权限提升
+    valid_ids = set(Role.objects.filter(id__in=role_ids, tenant_id=request.tenant_id).values_list("id", flat=True))
+    invalid_ids = [rid for rid in role_ids if rid not in valid_ids]
+    if invalid_ids:
+        return Response(
+            error(ErrorCode.PARAM_INVALID, message="以下角色不存在或不属于当前租户：%s" % invalid_ids),
+            status=400,
+        )
     AppRoleBinding.objects.filter(app=app).delete()
     for rid in role_ids:
         AppRoleBinding.objects.create(app=app, role_id=rid)
 
-    role_names = list(Role.objects.filter(id__in=role_ids).values_list("name", flat=True))
+    role_names = list(Role.objects.filter(id__in=role_ids, tenant_id=request.tenant_id).values_list("name", flat=True))
     AuditLog.objects.create(
         tenant_id=request.tenant_id,
         actor_id=request.user_id,
@@ -2291,20 +2671,44 @@ def admin_login_view(request):
             "is_staff": True,
         }))
 
-    # 租户管理员登录（username 仅租户内唯一，同名时无法确定归属租户）
-    users = list(User.objects.filter(username=username))
+    # 租户管理员登录（username 仅租户内唯一，跨租户可能同名）
+    # 1) 先用密码收窄候选；2) 命中多个租户时返回候选租户，前端选择后带 tenant_id 重试
+    tenant_id = request.data.get("tenant_id")
+    users = list(User.objects.filter(username=username).select_related("tenant"))
+    if tenant_id not in (None, ""):
+        users = [u for u in users if str(u.tenant_id) == str(tenant_id)]
     if not users:
         return Response(error(ErrorCode.USER_NOT_FOUND), status=404)
-    if len(users) > 1:
-        return Response(
-            error(ErrorCode.PARAM_INVALID, message="存在多个同名用户，请使用手机号登录"),
-            status=400,
-        )
-    user = users[0]
-    if user.status == 0:
-        return Response(error(ErrorCode.PARAM_INVALID, message="用户已禁用"), status=400)
-    if not user.check_password(password):
-        return Response(error(ErrorCode.PASSWORD_ERROR), status=400)
+
+    if len(users) == 1:
+        user = users[0]
+        if user.status == 0:
+            return Response(error(ErrorCode.PARAM_INVALID, message="用户已禁用"), status=400)
+        if not user.check_password(password):
+            return Response(error(ErrorCode.PASSWORD_ERROR), status=400)
+    else:
+        matched = [u for u in users if u.check_password(password)]
+        if not matched:
+            return Response(error(ErrorCode.PASSWORD_ERROR), status=400)
+        enabled = [u for u in matched if u.status == 1]
+        if not enabled:
+            return Response(error(ErrorCode.PARAM_INVALID, message="用户已禁用"), status=400)
+        if len(enabled) == 1:
+            user = enabled[0]
+        else:
+            admin_users = [u for u in enabled if u.is_staff or u.is_superuser]
+            if not admin_users:
+                return Response(error(ErrorCode.PERMISSION_DENIED, message="非管理员无权登录管理后台"), status=403)
+            if len(admin_users) == 1:
+                user = admin_users[0]
+            else:
+                return Response(error(
+                    ErrorCode.TENANT_SELECT_REQUIRED,
+                    message="该用户名在多个租户中存在，请选择租户后登录",
+                    data={"tenants": [
+                        {"tenant_id": u.tenant_id, "tenant_name": u.tenant.name} for u in admin_users
+                    ]},
+                ), status=200)
 
     # 非管理员用户不允许登录管理后台
     if not user.is_staff and not user.is_superuser:

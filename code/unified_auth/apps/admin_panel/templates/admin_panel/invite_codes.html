@@ -73,11 +73,11 @@
     </el-table-column>
     <el-table-column label="操作" width="260" align="center" fixed="right">
       <template #default="{ row }">
-        <el-button-group>
-          <el-button size="small" type="primary" plain @click="openEdit(row)">编辑</el-button>
-          <el-button size="small" type="primary" plain @click="openQr(row)">二维码</el-button>
-          <el-button size="small" :type="row.status === 1 ? 'warning' : 'success'" plain @click="onToggleStatus(row)">[[ row.status === 1 ? '停用' : '启用' ]]</el-button>
-          <el-button size="small" type="danger" plain @click="onDelete(row)">删除</el-button>
+        <el-button-group size="default">
+          <el-button type="primary" plain @click="openEdit(row)">编辑</el-button>
+          <el-button type="primary" plain @click="openQr(row)">二维码</el-button>
+          <el-button :type="row.status === 1 ? 'warning' : 'success'" plain @click="onToggleStatus(row)">[[ row.status === 1 ? '停用' : '启用' ]]</el-button>
+          <el-button type="danger" plain @click="onDelete(row)">删除</el-button>
         </el-button-group>
       </template>
     </el-table-column>
@@ -121,6 +121,15 @@
               <el-option v-for="app in appOptions" :key="app.id" :label="app.name" :value="app.id"></el-option>
             </el-select>
             <div class="field-hint">短链将 302 到该应用配置的注册页地址</div>
+            <div v-if="form.user_type === 'internal' && selectedAppGroupMode()" style="margin-top: 12px">
+              <el-select v-model="form.auto_group_ids" multiple filterable
+                placeholder="选择注册后自动加入的用户组" style="width: 100%">
+                <el-option v-for="g in selectedAppGroups()" :key="g.id" :label="g.name" :value="g.id"></el-option>
+              </el-select>
+              <div class="field-hint">
+                该应用已启用用户组准入：内部用户注册成功后自动加入所选组，未配置将无法保存。
+              </div>
+            </div>
           </div>
         </el-form-item>
         <el-form-item label="注册字段">
@@ -309,6 +318,7 @@ AdminUI.start('/admin-panel/invite-codes/', {
       form: {
         remark: '', user_type: 'external', allowed_phones_text: '', max_uses: 10, expires_at: null,
         source: 'builtin', app_id: null, fields_mode: 'inherit', fieldKeys: [], fieldRequired: {},
+        auto_group_ids: [],
         appearance_mode: 'default',
         appearance: { logo: '', title: '', welcome: '', theme_color: '', background: '', button_text: '', footer_text: '' }
       },
@@ -348,6 +358,18 @@ AdminUI.start('/admin-panel/invite-codes/', {
       WorkDesktop.request.get('/api/v1/admin/applications?page=1&page_size=100').then(function (res) {
         if (res && res.success && res.data) self.appOptions = res.data.apps || [];
       }).catch(function () {});
+    },
+    /** 当前选中应用绑定且生效的准入组（用于自动入组下拉） */
+    selectedAppGroups: function () {
+      var self = this;
+      var app = (this.appOptions || []).filter(function (a) { return a.id === self.form.app_id; })[0];
+      if (!app || !app.group_mode) return [];
+      return (app.group_ids || []).map(function (id, idx) {
+        return { id: id, name: (app.group_names || [])[idx] || ('组' + id) };
+      });
+    },
+    selectedAppGroupMode: function () {
+      return this.selectedAppGroups().length > 0;
     },
     applyBrandFields: function (fields) {
       // null 表示系统默认（昵称 + 手机号），与后端 DEFAULT_INVITE_FIELDS 保持一致
@@ -465,6 +487,7 @@ AdminUI.start('/admin-panel/invite-codes/', {
       this.form = {
         remark: '', user_type: 'external', allowed_phones_text: '', max_uses: 10, expires_at: null,
         source: 'builtin', app_id: null, fields_mode: 'inherit', fieldKeys: [], fieldRequired: {},
+        auto_group_ids: [],
         appearance_mode: 'default',
         appearance: { logo: '', title: '', welcome: '', theme_color: '', background: '', button_text: '', footer_text: '' }
       };
@@ -484,6 +507,7 @@ AdminUI.start('/admin-panel/invite-codes/', {
       this.form = {
         remark: row.remark || '',
         user_type: row.user_type,
+        auto_group_ids: row.auto_group_ids || [],
         allowed_phones_text: (row.allowed_phones || []).join('\n'),
         max_uses: row.max_uses || 10,
         expires_at: row.expires_at,
@@ -595,6 +619,9 @@ AdminUI.start('/admin-panel/invite-codes/', {
         max_uses: this.form.max_uses,
         expires_at: this.form.expires_at,
         app_id: this.form.source === 'app' ? this.form.app_id : null,
+        auto_group_ids: (this.form.source === 'app' && this.form.user_type === 'internal')
+          ? (this.form.auto_group_ids || [])
+          : [],
         fields: this.form.fields_mode === 'custom'
           ? this.collectFieldConfig(this.form.fieldKeys, this.form.fieldRequired)
           : null,

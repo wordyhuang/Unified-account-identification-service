@@ -146,3 +146,25 @@ class AdminUserImportSerializer(serializers.Serializer):
 
 class AdminImpersonateSerializer(serializers.Serializer):
     tenant_id = serializers.IntegerField()
+
+
+class AdminUserGroupSerializer(serializers.Serializer):
+    name = serializers.CharField(max_length=64)
+    code = serializers.CharField(max_length=64, required=False, allow_blank=True)
+    description = serializers.CharField(max_length=256, required=False, allow_blank=True)
+    status = serializers.BooleanField(required=False, default=True)
+
+
+class AdminUserGroupUpdateSerializer(serializers.Serializer):
+    name = serializers.CharField(max_length=64, required=False)
+    code = serializers.CharField(max_length=64, required=False, allow_blank=True)
+    description = serializers.CharField(max_length=256, required=False, allow_blank=True)
+    status = serializers.BooleanField(required=False)
+
+
+class AdminUserGroupMembersSerializer(serializers.Serializer):
+    user_ids = serializers.ListField(child=serializers.IntegerField(), allow_empty=True)
+
+
+class AdminAppGroupsSerializer(serializers.Serializer):
+    group_ids = serializers.ListField(child=serializers.IntegerField(), allow_empty=True)

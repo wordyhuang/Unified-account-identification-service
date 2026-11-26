@@ -1,9 +1,10 @@
 from urllib.parse import urlencode
 from django.shortcuts import redirect, render
 from django.urls import reverse
-from django.http import HttpResponseBadRequest, JsonResponse
+from django.http import HttpResponseBadRequest, HttpResponseForbidden, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
-from django.contrib.auth import authenticate, login as django_login
+from django.contrib.auth import login as django_login
+from apps.accounts.models import User
 from apps.applications.models import Application
 from common.response import success, error
 from common.errors import ErrorCode
@@ -40,6 +41,13 @@ def authorize(request):
         })
         return redirect(f"{login_url}?{params}")
 
+    # 已登录但不属于应用所属租户：回到登录页换账号，避免跨租户授权
+    if request.user.tenant_id != app.tenant_id:
+        return render(request, "oauth2/login.html", {
+            "error": "当前账号不属于该应用所属租户，请使用本租户账号登录",
+            "next": request.get_full_path(),
+        })
+
     return render(request, "oauth2/confirm.html", {
         "app": app,
         "user": request.user,
@@ -62,6 +70,10 @@ def authorize_confirm(request):
         app = Application.objects.get(id=app_id, status=True)
     except Application.DoesNotExist:
         return HttpResponseBadRequest("应用不存在或已禁用")
+
+    # 兜底：授权确认阶段再次校验账号与应用租户一致
+    if request.user.tenant_id != app.tenant_id:
+        return HttpResponseForbidden("当前账号不属于该应用所属租户")
 
     auth_code = generate_auth_code(app, request.user, redirect_uri, state)
 
@@ -87,16 +99,49 @@ def authorize_deny(request):
 
 def oauth_login_page(request):
     if request.method == "POST":
-        username = request.POST.get("username")
-        password = request.POST.get("password")
-        user = authenticate(request, username=username, password=password)
-        if user is not None and user.status == 1:
+        next_url = request.GET.get("next") or request.POST.get("next") or reverse("oauth_authorize")
+
+        # 第二步：用户名在多个租户命中，已由用户选定租户（候选用户保存在会话中，无需再次提交密码）
+        if request.POST.get("select_tenant"):
+            tenant_id = (request.POST.get("tenant_id") or "").strip()
+            candidate_ids = request.session.pop("oauth_login_candidate_ids", [])
+            user = User.objects.filter(id__in=candidate_ids, tenant_id=tenant_id, status=1).first()
+            if user is None:
+                return render(request, "oauth2/login.html", {
+                    "error": "租户选择已失效，请重新输入用户名和密码",
+                    "next": next_url,
+                })
             django_login(request, user)
-            next_url = request.GET.get("next", reverse("oauth_authorize"))
             return redirect(next_url)
+
+        username = (request.POST.get("username") or "").strip()
+        password = request.POST.get("password") or ""
+        if not username or not password:
+            return render(request, "oauth2/login.html", {
+                "error": "请输入用户名和密码",
+                "next": next_url,
+            })
+
+        # OAuth2 登录始终绑定发起授权的应用所属租户，同名用户不再产生歧义
+        app = Application.objects.filter(id=request.session.get("oauth_app_id"), status=True).first()
+        users = User.objects.select_related("tenant").filter(username=username)
+        if app is not None:
+            users = users.filter(tenant_id=app.tenant_id)
+        matched = [u for u in users if u.status == 1 and u.check_password(password)]
+        if len(matched) == 1:
+            django_login(request, matched[0])
+            return redirect(next_url)
+        if len(matched) > 1:
+            request.session["oauth_login_candidate_ids"] = [u.id for u in matched]
+            return render(request, "oauth2/login.html", {
+                "tenants": [
+                    {"tenant_id": u.tenant_id, "tenant_name": u.tenant.name} for u in matched
+                ],
+                "next": next_url,
+            })
         return render(request, "oauth2/login.html", {
             "error": "用户名或密码错误",
-            "next": request.GET.get("next", ""),
+            "next": next_url,
         })
     return render(request, "oauth2/login.html", {
         "next": request.GET.get("next", ""),
@@ -125,10 +170,14 @@ def token_exchange(request):
     if not verify_app_secret(app, app_secret):
         return JsonResponse(error(ErrorCode.SIGNATURE_INVALID), status=401)
 
+    # 防御：授权码用户与应用必须同租户，杜绝跨租户换取 Token
     try:
-        auth_code = AuthCode.objects.get(code=code, app=app)
+        auth_code = AuthCode.objects.select_related("user").get(code=code, app=app)
     except AuthCode.DoesNotExist:
         return JsonResponse(error(ErrorCode.TOKEN_INVALID, message="授权码无效"), status=400)
+
+    if auth_code.user.tenant_id != app.tenant_id:
+        return JsonResponse(error(ErrorCode.PERMISSION_DENIED, message="授权用户不属于应用所属租户"), status=403)
 
     if auth_code.is_used:
         return JsonResponse(error(ErrorCode.TOKEN_INVALID, message="授权码已被使用"), status=400)
@@ -152,6 +201,8 @@ def token_exchange(request):
         "user_id": user.id,
         "tenant_id": user.tenant_id,
         "user_type": user.user_type,
+        # 保留应用上下文，刷新后的 access_token 仍需受应用准入约束
+        "app_id": app.id,
     })
 
     return JsonResponse(success({

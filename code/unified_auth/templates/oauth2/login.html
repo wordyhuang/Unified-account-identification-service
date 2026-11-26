@@ -4,6 +4,23 @@
 <body style="font-family: sans-serif; max-width: 400px; margin: 80px auto;">
   <h2>统一账号登录</h2>
   {% if error %}<p style="color:red">{{ error }}</p>{% endif %}
+  {% if tenants %}
+  <p>该用户名在多个租户中存在，请选择要登录的租户：</p>
+  <form method="post">
+    {% csrf_token %}
+    <input type="hidden" name="next" value="{{ next }}">
+    <input type="hidden" name="select_tenant" value="1">
+    {% for t in tenants %}
+    <p>
+      <label>
+        <input type="radio" name="tenant_id" value="{{ t.tenant_id }}" {% if forloop.first %}checked{% endif %}>
+        {{ t.tenant_name }}
+      </label>
+    </p>
+    {% endfor %}
+    <p><button type="submit" style="width:100%;padding:10px;background:#007bff;color:white;border:none">进入</button></p>
+  </form>
+  {% else %}
   <form method="post">
     {% csrf_token %}
     <input type="hidden" name="next" value="{{ next }}">
@@ -11,5 +28,6 @@
     <p><input name="password" type="password" placeholder="密码" style="width:100%;padding:8px"></p>
     <p><button type="submit" style="width:100%;padding:10px;background:#007bff;color:white;border:none">登录</button></p>
   </form>
+  {% endif %}
 </body>
 </html>

@@ -1,5 +1,6 @@
 from django.contrib import admin
 from apps.accounts.models import User
+from .models import UserGroup, UserGroupMember, AppGroupBinding
 
 
 class TenantFilteredAdminMixin:
@@ -34,3 +35,20 @@ class UserAdmin(TenantFilteredAdminMixin, admin.ModelAdmin):
         ("基本信息", {"fields": ("tenant", "user_type", "nickname", "email", "phone", "avatar", "department")}),
         ("状态", {"fields": ("status", "is_staff", "is_superuser", "last_login_at")}),
     )
+
+
+@admin.register(UserGroup)
+class UserGroupAdmin(TenantFilteredAdminMixin, admin.ModelAdmin):
+    list_display = ("name", "tenant", "code", "status", "created_at")
+    list_filter = ("status", "tenant")
+    search_fields = ("name", "code")
+
+
+@admin.register(UserGroupMember)
+class UserGroupMemberAdmin(admin.ModelAdmin):
+    list_display = ("group", "user", "created_at")
+
+
+@admin.register(AppGroupBinding)
+class AppGroupBindingAdmin(admin.ModelAdmin):
+    list_display = ("app", "group", "created_at")

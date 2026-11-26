@@ -40,8 +40,8 @@
       </el-table-column>
       <el-table-column label="操作" min-width="160">
         <template #default="{ row }">
-          <el-button-group>
-            <el-button size="small" type="primary" plain
+          <el-button-group size="default">
+            <el-button type="primary" plain
               :disabled="row.version === current || installing"
               :loading="installing === row.version"
               @click="doInstall(row.version)">

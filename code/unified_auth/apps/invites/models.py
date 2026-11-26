@@ -53,6 +53,8 @@ class InviteCode(models.Model):
     # 码级页面外观覆盖：只存显式配置的项（缺失的项回退租户默认/系统默认），
     # null 表示未配置；合法字段见 invites.appearance.APPEARANCE_KEYS
     appearance = CompatibleJSONField(null=True, blank=True, verbose_name="码级页面外观覆盖")
+    # 注册成功后自动加入的用户组 id 列表（应用启用组准入时必填）
+    auto_group_ids = CompatibleJSONField(null=True, blank=True, verbose_name="注册后自动加入的用户组")
     created_by = models.CharField(max_length=64, null=True, blank=True, verbose_name="创建人")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

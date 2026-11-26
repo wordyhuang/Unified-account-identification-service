@@ -12,6 +12,9 @@
   .url-row .el-button { margin-left: 6px; }
   .secret-value { font-family: monospace; word-break: break-all; background: var(--el-fill-color-light); padding: 8px 10px; border-radius: 4px; }
   .stats-chart { width: 100%; height: auto; display: block; }
+  .muted { color: var(--el-text-color-secondary); font-size: 12px; }
+  .form-hint { margin-top: 4px; color: var(--el-text-color-secondary); font-size: 12px; line-height: 1.5; }
+  .form-hint.warning { color: var(--el-color-warning); }
 </style>
 {% endblock %}
 
@@ -51,6 +54,16 @@
         <span v-else>-</span>
       </template>
     </el-table-column>
+    <el-table-column label="访问用户组" min-width="150" show-overflow-tooltip>
+      <template #default="{ row }">
+        <template v-if="row.group_names && row.group_names.length">
+          <el-tag v-for="(name, idx) in row.group_names.slice(0, 3)" :key="name + idx" size="default"
+            :type="row.group_mode ? 'warning' : 'info'" style="margin-right: 4px">[[ name ]]</el-tag>
+          <span v-if="row.group_names.length > 3" class="muted">+[[ row.group_names.length - 3 ]]</span>
+        </template>
+        <span v-else>-</span>
+      </template>
+    </el-table-column>
     <el-table-column label="角色" min-width="140" show-overflow-tooltip>
       <template #default="{ row }">
         <template v-if="row.roles && row.roles.length">
@@ -70,13 +83,14 @@
     </el-table-column>
     <el-table-column label="操作" width="130" align="center" fixed="right">
       <template #default="{ row }">
-        <el-button-group>
-          <el-button size="small" type="primary" plain @click="onRowAction({ command: 'edit', row: row })">编辑</el-button>
+        <el-button-group size="default">
+          <el-button type="primary" plain @click="onRowAction({ command: 'edit', row: row })">编辑</el-button>
           <el-dropdown trigger="click" @command="function(cmd) { onRowAction({ command: cmd, row: row }) }">
-            <el-button size="small" plain>更多</el-button>
+            <el-button plain>更多</el-button>
             <template #dropdown>
               <el-dropdown-menu>
                 <el-dropdown-item command="secret">密钥</el-dropdown-item>
+                <el-dropdown-item command="diagnosis">准入诊断</el-dropdown-item>
                 <el-dropdown-item command="perms">权限</el-dropdown-item>
                 <el-dropdown-item command="stats">统计</el-dropdown-item>
               </el-dropdown-menu>
@@ -95,8 +109,8 @@
     :api="formMode === 'edit' ? '/api/v1/admin/applications/' + formAppId : ''"
     :submit-api="formMode === 'edit' ? '/api/v1/admin/applications/' + formAppId : '/api/v1/admin/applications'"
     :submit-method="formMode === 'edit' ? 'put' : 'post'"
-    :submit-keys="formMode === 'edit' ? 'name,callback_urls,cors_origins,default_access_user_types,registration_page_url,registration_success_url,webhook_url,role_ids,wechat_mp_app_id,wechat_mp_app_secret,wechat_web_app_id,wechat_web_app_secret' : 'name,callback_urls,cors_origins,default_access_user_types,registration_page_url,registration_success_url,webhook_url'"
-    :data="{ callback_urls: [], cors_origins: [], default_access_user_types: [], registration_page_url: '', registration_success_url: '', webhook_url: '' }"
+    :submit-keys="formMode === 'edit' ? 'name,callback_urls,cors_origins,default_access_user_types,group_ids,registration_page_url,registration_success_url,webhook_url,role_ids,wechat_mp_app_id,wechat_mp_app_secret,wechat_web_app_id,wechat_web_app_secret' : 'name,callback_urls,cors_origins,default_access_user_types,registration_page_url,registration_success_url,webhook_url'"
+    :data="{ callback_urls: [], cors_origins: [], default_access_user_types: [], group_ids: [], registration_page_url: '', registration_success_url: '', webhook_url: '' }"
     :active="true" :rules="formRules" head-refresh-datagrid
     @submit-success="onFormSuccess" @close="drawerVisible = false">
     <template #default="{ model }">
@@ -134,6 +148,21 @@
               <el-checkbox value="internal">内部用户</el-checkbox>
               <el-checkbox value="external">外部用户</el-checkbox>
             </el-checkbox-group>
+          </el-form-item>
+          <el-form-item v-if="formMode === 'edit'" label="访问用户组" prop="group_ids">
+            <div style="width: 100%">
+              <el-select v-model="model.group_ids" multiple filterable clearable
+                :disabled="isOpenAppModel(model)" placeholder="留空表示不按用户组限制" style="width: 100%"
+                @change="onGroupSelectChange">
+                <el-option v-for="g in groupOptions" :key="g.id" :label="g.name" :value="g.id"></el-option>
+              </el-select>
+              <div v-if="isOpenAppModel(model)" class="form-hint warning">
+                已勾选外部用户，该应用为开放应用，用户组不生效
+              </div>
+              <div v-else class="form-hint">
+                绑定后仅组内内部用户可通过该应用准入校验；不绑定则沿用「默认用户类型 + 显式授权」。
+              </div>
+            </div>
           </el-form-item>
           <el-form-item v-if="formMode === 'edit'" label="绑定角色" prop="role_ids">
             <wd-checkbox-list v-model="model.role_ids"
@@ -246,6 +275,40 @@
     <el-button size="default" @click="statsVisible = false">关闭</el-button>
   </template>
 </el-dialog>
+
+<!-- 准入诊断 -->
+<el-dialog v-model="diagnosisVisible" :title="'准入诊断 - ' + (diagnosisApp ? diagnosisApp.name : '')" width="580px" destroy-on-close>
+  <el-alert type="info" :closable="false" title="诊断仅计算判定结果，不会修改任何配置" style="margin-bottom: 12px" ></el-alert>
+  <el-select v-model="diagnosisUserId" filterable remote clearable
+    :remote-method="searchDiagnosisUsers" :loading="diagnosisUserLoading"
+    placeholder="搜索并选择用户（用户名 / 昵称 / 手机号）" style="width: 100%" @change="runDiagnosis">
+    <el-option v-for="u in diagnosisUsers" :key="u.id"
+      :label="u.nickname ? u.nickname + '(' + u.username + ')' : u.username" :value="u.id"></el-option>
+  </el-select>
+  <div v-loading="diagnosisLoading" style="margin-top: 12px">
+    <el-descriptions v-if="diagnosisResult" :column="1" border>
+      <el-descriptions-item label="判定结果">
+        <el-tag :type="diagnosisResult.allowed ? 'success' : 'danger'" size="default">
+          [[ diagnosisResult.allowed ? '允许访问' : '拒绝访问' ]]
+        </el-tag>
+      </el-descriptions-item>
+      <el-descriptions-item label="判定原因">[[ reasonText(diagnosisResult.reason) ]]</el-descriptions-item>
+      <el-descriptions-item label="组准入模式">
+        [[ diagnosisResult.group_mode ? '已启用（仅组内成员可通过）' : '未启用（按用户类型 / 显式授权）' ]]
+      </el-descriptions-item>
+      <el-descriptions-item label="命中组">
+        [[ diagnosisResult.matched_group ? diagnosisResult.matched_group.name : '-' ]]
+      </el-descriptions-item>
+      <el-descriptions-item label="用户类型">
+        [[ diagnosisResult.user_type === 'internal' ? '内部用户' : '外部用户' ]]
+      </el-descriptions-item>
+    </el-descriptions>
+    <el-empty v-else description="选择用户后自动诊断" :image-size="60" ></el-empty>
+  </div>
+  <template #footer>
+    <el-button size="default" @click="diagnosisVisible = false">关闭</el-button>
+  </template>
+</el-dialog>
 {% endblock %}
 
 {% block script %}
@@ -291,7 +354,16 @@ AdminUI.start('/admin-panel/applications/', {
       statsApp: null,
       statsData: null,
       statsDays: 7,
-      statsLoading: false
+      statsLoading: false,
+      groupOptions: [],
+      pendingGroupIds: null,
+      diagnosisVisible: false,
+      diagnosisApp: null,
+      diagnosisUserId: null,
+      diagnosisUsers: [],
+      diagnosisUserLoading: false,
+      diagnosisLoading: false,
+      diagnosisResult: null
     };
   },
   computed: {
@@ -319,14 +391,32 @@ AdminUI.start('/admin-panel/applications/', {
       });
     }
   },
+  mounted: function () {
+    this.loadGroups();
+  },
   methods: {
     fmtTime: AdminUI.fmtTime,
+
+    /* ---------- 用户组 ---------- */
+    loadGroups: function () {
+      var self = this;
+      WorkDesktop.request.get('/api/v1/admin/user-groups?page=1&page_size=100&status=true').then(function (res) {
+        if (res && res.success && res.data) self.groupOptions = res.data.items || [];
+      });
+    },
+    isOpenAppModel: function (model) {
+      return (model.default_access_user_types || []).indexOf('external') >= 0;
+    },
+    onGroupSelectChange: function (value) {
+      this.pendingGroupIds = value || [];
+    },
 
     /* ---------- 新增 / 编辑 ---------- */
     openCreate: function () {
       this.formMode = 'create';
       this.formAppId = null;
       this.formTab = 'basic';
+      this.pendingGroupIds = null;
       this.drawerVisible = true;
     },
     /** 回调地址数组兜底：历史数据 callback_urls 可能为 null */
@@ -345,9 +435,12 @@ AdminUI.start('/admin-panel/applications/', {
         this.formMode = 'edit';
         this.formAppId = row.id;
         this.formTab = 'basic';
+        this.pendingGroupIds = null;
         this.drawerVisible = true;
       } else if (evt.command === 'secret') {
         this.openSecret(row);
+      } else if (evt.command === 'diagnosis') {
+        this.openDiagnosis(row);
       } else if (evt.command === 'perms') {
         this.openPerms(row);
       } else if (evt.command === 'stats') {
@@ -355,6 +448,19 @@ AdminUI.start('/admin-panel/applications/', {
       }
     },
     onFormSuccess: function (data) {
+      var self = this;
+      // 用户组在基础配置中单独提交（应用更新接口不包含绑定关系）
+      if (this.formMode === 'edit' && this.formAppId && this.pendingGroupIds !== null) {
+        WorkDesktop.request.put('/api/v1/admin/applications/' + this.formAppId + '/groups', {
+          group_ids: this.pendingGroupIds
+        }).then(function (res) {
+          if (res && res.success) {
+            self.$refs.gridRef.refresh();
+          } else {
+            AdminUI.toastFail(res, '用户组保存失败');
+          }
+        });
+      }
       if (this.formMode === 'create' && data && data.app_secret) {
         ElementPlus.ElMessageBox.alert(
           'App Key：' + data.app_key + '\nApp Secret：' + data.app_secret,
@@ -427,6 +533,57 @@ AdminUI.start('/admin-panel/applications/', {
       }).finally(function () {
         self.permLoading = false;
       });
+    },
+
+    /* ---------- 准入诊断 ---------- */
+    openDiagnosis: function (row) {
+      this.diagnosisApp = row;
+      this.diagnosisUserId = null;
+      this.diagnosisResult = null;
+      this.diagnosisUsers = [];
+      this.diagnosisVisible = true;
+      this.searchDiagnosisUsers('');
+    },
+    searchDiagnosisUsers: function (query) {
+      var self = this;
+      this.diagnosisUserLoading = true;
+      var url = '/api/v1/admin/users?page=1&page_size=20';
+      if (query) url += '&search=' + encodeURIComponent(query);
+      WorkDesktop.request.get(url).then(function (res) {
+        if (res && res.success && res.data) self.diagnosisUsers = res.data.users || [];
+      }).finally(function () {
+        self.diagnosisUserLoading = false;
+      });
+    },
+    runDiagnosis: function () {
+      var self = this;
+      if (!this.diagnosisApp || !this.diagnosisUserId) return;
+      this.diagnosisLoading = true;
+      this.diagnosisResult = null;
+      WorkDesktop.request.get(
+        '/api/v1/admin/applications/' + this.diagnosisApp.id
+        + '/access-diagnosis?user_id=' + this.diagnosisUserId
+      ).then(function (res) {
+        if (res && res.success) self.diagnosisResult = res.data;
+        else AdminUI.toastFail(res, '诊断失败');
+      }).finally(function () {
+        self.diagnosisLoading = false;
+      });
+    },
+    reasonText: function (reason) {
+      var map = {
+        open_app_explicit: '开放应用：用户级显式授权放行',
+        open_app_type_match: '开放应用：用户类型匹配放行',
+        open_app_denied: '开放应用：用户类型不匹配且无显式授权',
+        group_mode_matched: '组准入：命中绑定组',
+        group_mode_denied: '组准入：不属于任何绑定组',
+        group_mode_external_denied: '组准入：仅内部用户可用，当前为外部用户',
+        legacy_type_match: '未绑组：用户类型匹配放行',
+        legacy_explicit: '未绑组：用户级显式授权放行',
+        legacy_denied: '未绑组：用户类型不匹配且无显式授权',
+        tenant_mismatch: '用户与应用不属于同一租户'
+      };
+      return map[reason] || reason || '-';
     },
 
     /* ---------- API 统计 ---------- */

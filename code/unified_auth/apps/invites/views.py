@@ -338,6 +338,30 @@ def invite_register(request, code):
             setattr(profile, key, value)
         profile.save(update_fields=list(profile_values.keys()))
 
+    # 注册后自动入组：应用启用用户组准入时，邀请码上配置的组在此写入（幂等）
+    auto_group_ids = code_obj.auto_group_ids or []
+    if auto_group_ids:
+        from apps.users.models import UserGroup, UserGroupMember
+        valid_group_ids = list(
+            UserGroup.objects.filter(
+                id__in=auto_group_ids, tenant_id=code_obj.tenant_id
+            ).values_list("id", flat=True)
+        )
+        for gid in valid_group_ids:
+            UserGroupMember.objects.get_or_create(group_id=gid, user=user)
+        if valid_group_ids:
+            AuditLog.objects.create(
+                tenant_id=code_obj.tenant_id,
+                actor_id=user.id,
+                actor_name=user.username,
+                action="invite.register.auto_group",
+                resource_type="user",
+                resource_id=user.id,
+                detail={"group_ids": valid_group_ids, "invite_code_id": code_obj.id},
+                ip_address=request.META.get("REMOTE_ADDR", ""),
+                user_agent=request.META.get("HTTP_USER_AGENT", "")[:512],
+            )
+
     code_obj.used_count += 1
     if code_obj.max_uses is not None and code_obj.used_count >= code_obj.max_uses:
         code_obj.status = 0

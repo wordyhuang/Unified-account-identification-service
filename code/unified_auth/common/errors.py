@@ -15,6 +15,7 @@ class ErrorCode:
     NO_API_PERMISSION = -10202
 
     TENANT_NOT_FOUND = -10203
+    TENANT_SELECT_REQUIRED = -10204
 
     SMS_CODE_INVALID = -10301
     SMS_CODE_EXPIRED = -10302
@@ -51,6 +52,7 @@ ERROR_MESSAGES = {
     ErrorCode.PERMISSION_DENIED: "权限不足",
     ErrorCode.NO_API_PERMISSION: "无接口调用权限",
     ErrorCode.TENANT_NOT_FOUND: "租户不存在，请联系管理员",
+    ErrorCode.TENANT_SELECT_REQUIRED: "该用户名在多个租户中存在，请选择租户后登录",
     ErrorCode.SMS_CODE_INVALID: "验证码错误",
     ErrorCode.SMS_CODE_EXPIRED: "验证码已过期，请重新获取",
     ErrorCode.SMS_SEND_FAILED: "短信发送失败",

@@ -73,8 +73,14 @@ class AdminAuthenticationMiddleware(MiddlewareMixin):
                 request.user_id = None
             return None
 
+        user_id = payload.get("user_id")
+        if not user_id:
+            if is_page:
+                return None
+            return JsonResponse(api_response(ErrorCode.TOKEN_INVALID, message="Token 类型无效"), status=401)
+
         try:
-            user = User.objects.get(id=payload["user_id"], status=1)
+            user = User.objects.get(id=user_id, status=1)
         except User.DoesNotExist:
             if is_page:
                 return None

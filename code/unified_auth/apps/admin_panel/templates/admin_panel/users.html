@@ -42,13 +42,13 @@
     row-key="id" :tools="{ add: true, refresh: true }" height="fix"
     @add="openCreate">
     <template #toolbar="{ selection }">
-      <el-button-group>
-        <el-button size="small" :disabled="!selection.length" @click="onBatchStatus(1)">批量启用</el-button>
-        <el-button size="small" :disabled="!selection.length" @click="onBatchStatus(0)">批量禁用</el-button>
-        <el-button size="small" :disabled="!selection.length" @click="batchTypeVisible = true">批量类型</el-button>
-        <el-button size="small" type="danger" plain :disabled="!selection.length" @click="onBatchDelete">批量删除</el-button>
-        <el-button size="small" @click="onExport">导出 CSV</el-button>
-        <el-button size="small" @click="openImport">导入</el-button>
+      <el-button-group size="default">
+        <el-button :disabled="!selection.length" @click="onBatchStatus(1)">批量启用</el-button>
+        <el-button :disabled="!selection.length" @click="onBatchStatus(0)">批量禁用</el-button>
+        <el-button :disabled="!selection.length" @click="batchTypeVisible = true">批量类型</el-button>
+        <el-button type="danger" plain :disabled="!selection.length" @click="onBatchDelete">批量删除</el-button>
+        <el-button @click="onExport">导出 CSV</el-button>
+        <el-button @click="openImport">导入</el-button>
       </el-button-group>
     </template>
 
@@ -87,6 +87,16 @@
         <span v-else>-</span>
       </template>
     </el-table-column>
+    <el-table-column label="所属组" min-width="120" show-overflow-tooltip>
+      <template #default="{ row }">
+        <template v-if="row.groups && row.groups.length">
+          <el-tag v-for="g in row.groups.slice(0, 2)" :key="g.id" size="default"
+            type="warning" style="margin-right: 4px">[[ g.name ]]</el-tag>
+          <span v-if="row.groups.length > 2" style="color: var(--el-text-color-secondary); font-size: 12px">+[[ row.groups.length - 2 ]]</span>
+        </template>
+        <span v-else>-</span>
+      </template>
+    </el-table-column>
     <el-table-column label="状态" width="80" align="center">
       <template #default="{ row }">
         <wd-switch v-model="row.status" :api="'/api/v1/admin/users/' + row.id + '/status'"
@@ -98,10 +108,10 @@
     </el-table-column>
     <el-table-column label="操作" width="150" align="center" fixed="right">
       <template #default="{ row }">
-        <el-button-group>
-          <el-button size="small" type="primary" plain @click="onRowAction({ command: 'edit', row: row })">编辑</el-button>
+        <el-button-group size="default">
+          <el-button type="primary" plain @click="onRowAction({ command: 'edit', row: row })">编辑</el-button>
           <el-dropdown trigger="click" @command="function(cmd) { onRowAction({ command: cmd, row: row }) }">
-            <el-button size="small" plain>更多</el-button>
+            <el-button plain>更多</el-button>
             <template #dropdown>
               <el-dropdown-menu>
                 <el-dropdown-item command="roles">角色</el-dropdown-item>

@@ -50,6 +50,7 @@ def _invite_serialize(obj, request):
         "registration_mode": "app" if obj.app_id else "builtin",
         "appearance": obj.appearance,
         "appearance_effective": resolve_appearance(obj, obj.tenant, "invite"),
+        "auto_group_ids": obj.auto_group_ids or [],
         "created_by": obj.created_by,
         "created_at": obj.created_at,
     }
@@ -128,6 +129,53 @@ def _parse_appearance_field(body):
     return appearance, err
 
 
+def _parse_auto_group_ids(raw, tenant_id):
+    """解析并校验自动入组 id 列表；返回 (ids, error_message)。"""
+    if raw in (None, ""):
+        return [], None
+    if not isinstance(raw, list):
+        return None, "自动入组必须是用户组 id 数组"
+    ids = []
+    for value in raw:
+        try:
+            gid = int(value)
+        except (TypeError, ValueError):
+            return None, "自动入组中存在非法的用户组 id"
+        if gid not in ids:
+            ids.append(gid)
+
+    from apps.users.models import UserGroup
+    valid_ids = set(
+        UserGroup.objects.filter(id__in=ids, tenant_id=tenant_id).values_list("id", flat=True)
+    )
+    invalid = [gid for gid in ids if gid not in valid_ids]
+    if invalid:
+        return None, "以下用户组不存在或不属于当前租户：%s" % invalid
+    return ids, None
+
+
+def _validate_invite_group_requirement(app, user_type, auto_group_ids):
+    """应用启用组准入时，内部用户邀请码必须配置自动入组，且组必须已绑定到该应用。"""
+    if app is None or user_type != "internal":
+        return None
+    from apps.users.access import is_open_app
+    from apps.users.models import AppGroupBinding
+
+    if is_open_app(app):
+        return None
+    bound_ids = set(
+        AppGroupBinding.objects.filter(app=app).values_list("group_id", flat=True)
+    )
+    if not bound_ids:
+        return None
+    if not auto_group_ids:
+        return "该应用已启用用户组准入，请为邀请码配置注册后自动加入的用户组"
+    extra = [gid for gid in auto_group_ids if gid not in bound_ids]
+    if extra:
+        return "自动入组必须是该应用已绑定的用户组：%s" % extra
+    return None
+
+
 # ==================== 邀请码管理 ====================
 
 
@@ -193,6 +241,15 @@ def invite_codes_view(request):
         return Response(error(ErrorCode.PARAM_INVALID, message=appearance_err), status=400)
     appearance_value = appearance if isinstance(appearance, dict) else None
 
+    auto_group_ids, auto_group_err = _parse_auto_group_ids(
+        body.get("auto_group_ids"), request.tenant_id
+    )
+    if auto_group_err:
+        return Response(error(ErrorCode.PARAM_INVALID, message=auto_group_err), status=400)
+    group_req_err = _validate_invite_group_requirement(app, user_type, auto_group_ids)
+    if group_req_err:
+        return Response(error(ErrorCode.PARAM_INVALID, message=group_req_err), status=400)
+
     while True:
         code = generate_code(32)
         if not InviteCode.objects.filter(code=code).exists():
@@ -214,6 +271,7 @@ def invite_codes_view(request):
         fields=invite_fields,
         app=app,
         appearance=appearance_value,
+        auto_group_ids=auto_group_ids,
         created_by=request.user.username if request.user else None,
     )
     AuditLog.objects.create(
@@ -227,6 +285,7 @@ def invite_codes_view(request):
             "short_code": obj.short_code,
             "allowed_phones_count": len(allowed_phones or []),
             **({"appearance_fields": list(appearance_value.keys())} if appearance_value else {}),
+            **({"auto_group_ids": auto_group_ids} if auto_group_ids else {}),
         },
     )
     return Response(success(_invite_serialize(obj, request)))
@@ -313,6 +372,23 @@ def invite_code_detail_view(request, code_id):
             obj.appearance = appearance
             changed.append("appearance")
 
+        if "auto_group_ids" in body:
+            auto_group_ids, auto_group_err = _parse_auto_group_ids(
+                body.get("auto_group_ids"), request.tenant_id
+            )
+            if auto_group_err:
+                return Response(error(ErrorCode.PARAM_INVALID, message=auto_group_err), status=400)
+            obj.auto_group_ids = auto_group_ids
+            changed.append("auto_group_ids")
+
+        # 承载应用/用户类型/自动入组任一变化时，重新校验组准入闭环
+        if "app_id" in body or "user_type" in body or "auto_group_ids" in body:
+            group_req_err = _validate_invite_group_requirement(
+                obj.app, obj.user_type, obj.auto_group_ids or []
+            )
+            if group_req_err:
+                return Response(error(ErrorCode.PARAM_INVALID, message=group_req_err), status=400)
+
         if not changed:
             return Response(error(ErrorCode.PARAM_MISSING, message="缺少需要修改的配置项"), status=400)
 
@@ -320,6 +396,8 @@ def invite_code_detail_view(request, code_id):
         audit_detail = {"changed": changed}
         if "appearance" in changed and appearance_changes:
             audit_detail["appearance_changed"] = appearance_changes
+        if "auto_group_ids" in changed:
+            audit_detail["auto_group_ids"] = obj.auto_group_ids or []
         AuditLog.objects.create(
             tenant_id=request.tenant_id,
             actor_id=request.user_id,

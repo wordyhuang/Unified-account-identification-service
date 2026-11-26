@@ -684,17 +684,22 @@ def refresh(request):
             }),
         }))
 
+    # 保留刷新前的应用上下文：OAuth2 签发的 refresh_token 携带 app_id，
+    # 刷新出的 access_token 必须继续受该应用准入约束（否则刷新可绕过用户组校验）。
+    # app_id 只从服务端签发的 refresh 载荷读取，不接受客户端传入。
+    access_payload = {
+        "user_id": user_payload["user_id"],
+        "tenant_id": user_payload["tenant_id"],
+        "user_type": user_payload["user_type"],
+    }
+    refresh_payload = dict(access_payload)
+    if user_payload.get("app_id"):
+        access_payload["app_id"] = user_payload["app_id"]
+        refresh_payload["app_id"] = user_payload["app_id"]
+
     return Response(success({
-        "token": create_access_token({
-            "user_id": user_payload["user_id"],
-            "tenant_id": user_payload["tenant_id"],
-            "user_type": user_payload["user_type"],
-        }),
-        "refresh_token": generate_refresh_token({
-            "user_id": user_payload["user_id"],
-            "tenant_id": user_payload["tenant_id"],
-            "user_type": user_payload["user_type"],
-        }),
+        "token": create_access_token(access_payload),
+        "refresh_token": generate_refresh_token(refresh_payload),
     }))
 
 

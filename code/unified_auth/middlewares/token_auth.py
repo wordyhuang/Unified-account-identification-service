@@ -74,21 +74,26 @@ class TokenAuthenticationMiddleware(MiddlewareMixin):
         try:
             user = User.objects.get(id=payload["user_id"], status=1)
             if payload.get("app_id"):
-                from apps.users.models import UserAppAccess
                 from apps.applications.models import Application
-                app = Application.objects.get(id=payload["app_id"])
-                has_access = UserAppAccess.objects.filter(
-                    user=user, app=app, status="active"
-                ).exists()
-                user_type_in_default = (
-                    user.user_type in (app.default_access_user_types or [])
-                )
-                if not has_access and not user_type_in_default:
+                from apps.users.access import evaluate_app_access
+
+                app = Application.objects.filter(
+                    id=payload["app_id"], status=True
+                ).first()
+                if app is None:
+                    return JsonResponse(
+                        api_response(ErrorCode.APP_KEY_INVALID, message="应用不存在或已停用"),
+                        status=403,
+                    )
+                allowed, _reason, _group_id = evaluate_app_access(user, app)
+                if not allowed:
                     return JsonResponse(
                         api_response(ErrorCode.USER_ACCESS_DENIED), status=403
                     )
         except User.DoesNotExist:
-            return JsonResponse(api_response(ErrorCode.USER_NOT_FOUND), status=401)
+            return JsonResponse(
+                api_response(ErrorCode.USER_NOT_FOUND), status=401
+            )
 
         request.user = user
         request.user_id = user.id

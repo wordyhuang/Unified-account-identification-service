@@ -113,6 +113,15 @@ def verify_token(request):
             "user_type": None,
         }))
 
+    # 仅认可本租户的用户 Token：非用户 Token 或跨租户一律视为无效
+    if not payload.get("user_id") or payload.get("tenant_id") != request.tenant_id:
+        return Response(success({
+            "valid": False,
+            "user_id": None,
+            "tenant_id": None,
+            "user_type": None,
+        }))
+
     return Response(success({
         "valid": True,
         "user_id": payload["user_id"],
@@ -327,6 +336,9 @@ def user_profile_by_token(request):
     user_id = payload.get("user_id")
     if not user_id:
         return Response(error(ErrorCode.TOKEN_INVALID), status=401)
+    # 用户 Token 必须与应用所属租户一致，避免跨租户读取/修改用户资料
+    if payload.get("tenant_id") != request.tenant_id:
+        return Response(error(ErrorCode.PERMISSION_DENIED, message="Token 与应用所属租户不一致"), status=403)
 
     try:
         from apps.accounts.models import User as UserModel

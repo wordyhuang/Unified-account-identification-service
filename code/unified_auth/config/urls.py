@@ -24,6 +24,7 @@ ADMIN_PANEL_ROUTES = [
     ("roles/", "roles", "admin-panel-roles"),
     ("departments/", "departments", "admin-panel-departments"),
     ("tags/", "tags", "admin-panel-tags"),
+    ("user-groups/", "user_groups", "admin-panel-user-groups"),
     ("audit/", "audit", "admin-panel-audit"),
     ("sms-config/", "sms_config", "admin-panel-sms-config"),
     ("invite-codes/", "invite_codes", "admin-panel-invite-codes"),

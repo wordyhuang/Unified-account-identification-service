@@ -64,6 +64,7 @@
         { title: '角色管理', path: '/admin-panel/roles/', icon: 'Avatar' },
         { title: '部门管理', path: '/admin-panel/departments/', icon: 'Notebook' },
         { title: '标签管理', path: '/admin-panel/tags/', icon: 'PriceTag' },
+        { title: '用户组管理', path: '/admin-panel/user-groups/', icon: 'UserFilled' },
         { title: '审计日志', path: '/admin-panel/audit/', icon: 'Document' },
         { title: '短信配置', path: '/admin-panel/sms-config/', icon: 'ChatDotSquare' },
         { title: '邀请码管理', path: '/admin-panel/invite-codes/', icon: 'Ticket' },

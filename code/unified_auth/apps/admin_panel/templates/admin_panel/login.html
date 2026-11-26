@@ -19,6 +19,8 @@
     .login-title { text-align: center; margin: 0 0 8px; font-size: 22px; }
     .login-sub { text-align: center; color: #909399; margin: 0 0 24px; font-size: 13px; }
     .login-btn { width: 100%; }
+    .tenant-tip { margin-bottom: 12px; color: var(--el-text-color-secondary); font-size: 13px; }
+    .tenant-option { display: block; width: 100%; margin: 0 0 8px 0; }
   </style>
 </head>
 <body>
@@ -39,6 +41,20 @@
         </el-form-item>
       </el-form>
     </el-card>
+
+    <!-- 同名用户分属多个租户时，由用户选择要登录的租户 -->
+    <el-dialog v-model="tenantVisible" title="选择租户" width="360px" :close-on-click-modal="false">
+      <div class="tenant-tip">该用户名在多个租户中存在，请选择要登录的租户</div>
+      <el-radio-group v-model="selectedTenantId">
+        <el-radio v-for="t in tenantOptions" :key="t.tenant_id" :value="t.tenant_id" border class="tenant-option">
+          [[ t.tenant_name ]]
+        </el-radio>
+      </el-radio-group>
+      <template #footer>
+        <el-button @click="onTenantCancel">取消</el-button>
+        <el-button type="primary" :loading="loading" :disabled="!selectedTenantId" @click="onTenantConfirm">进入</el-button>
+      </template>
+    </el-dialog>
   </div>
   <script src="{% static 'admin_panel/vendor/vue/vue.global.prod.js' %}"></script>
   <script src="{% static 'admin_panel/vendor/element-plus/index.full.min.js' %}"></script>
@@ -62,6 +78,9 @@
           return {
             loading: false,
             form: { username: '', password: '' },
+            tenantVisible: false,
+            tenantOptions: [],
+            selectedTenantId: null,
             rules: {
               username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
               password: [{ required: true, message: '请输入密码', trigger: 'blur' }]
@@ -73,30 +92,52 @@
             var self = this;
             this.$refs.formRef.validate(function (valid) {
               if (!valid) return;
-              self.loading = true;
-              WorkDesktop.request.post('/api/v1/admin/login', {
-                username: self.form.username,
-                password: self.form.password
-              }, {
-                // 请求级抑制库内置的"网络异常"弹窗（全局 exception.showTips 深合并未生效），改由下方监听弹后端 message
-                tipsConfig: { exception: { showTips: false } }
-              }).then(function (res) {
-                self.loading = false;
-                if (!res) return;
-                if (res.success) {
-                  AdminAuth.setAuth(res.data.access_token, res.data);
-                  ElementPlus.ElMessage.success('登录成功');
-                  location.href = res.data.is_superadmin
-                    ? '/admin-panel/superadmin/dashboard/'
-                    : '/admin-panel/dashboard/';
-                } else if (!AdminAuth.isTokenError(res.code)) {
-                  ElementPlus.ElMessage.error(res.message || '登录失败');
-                }
-              }).catch(function () {
-                // HTTP 异常（登录失败返回 400/403）由下方 apiException 监听统一提示
-                self.loading = false;
-              });
+              self.submitLogin();
             });
+          },
+          /** 执行登录；tenantId 仅在同名用户选择租户后传入 */
+          submitLogin: function (tenantId) {
+            var self = this;
+            var payload = { username: this.form.username, password: this.form.password };
+            if (tenantId) payload.tenant_id = tenantId;
+            this.loading = true;
+            WorkDesktop.request.post('/api/v1/admin/login', payload, {
+              // 请求级抑制库内置的"网络异常/操作失败"弹窗（全局配置深合并未生效），改由下方监听弹后端 message
+              tipsConfig: { exception: { showTips: false }, fail: { showTips: false } }
+            }).then(function (res) {
+              self.loading = false;
+              if (!res) return;
+              // 同名用户多租户时后端返回候选租户；失败响应中 data 为 null，原始体在 raw
+              var data = res.data || (res.raw && res.raw.data) || {};
+              var tenants = data.tenants || [];
+              if (res.success) {
+                self.tenantVisible = false;
+                AdminAuth.setAuth(res.data.access_token, res.data);
+                ElementPlus.ElMessage.success('登录成功');
+                location.href = res.data.is_superadmin
+                  ? '/admin-panel/superadmin/dashboard/'
+                  : '/admin-panel/dashboard/';
+              } else if (tenants.length) {
+                // 同名用户分属多个租户：由用户选择租户后带 tenant_id 重试
+                self.tenantOptions = tenants;
+                self.selectedTenantId = tenants[0].tenant_id;
+                self.tenantVisible = true;
+              } else if (!AdminAuth.isTokenError(res.code)) {
+                ElementPlus.ElMessage.error(res.message || '登录失败');
+              }
+            }).catch(function () {
+              // HTTP 异常（登录失败返回 400/403）由下方 apiException 监听统一提示
+              self.loading = false;
+            });
+          },
+          onTenantConfirm: function () {
+            if (!this.selectedTenantId) return;
+            this.submitLogin(this.selectedTenantId);
+          },
+          onTenantCancel: function () {
+            this.tenantVisible = false;
+            this.tenantOptions = [];
+            this.selectedTenantId = null;
           }
         }
       });
