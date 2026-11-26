@@ -17,7 +17,6 @@ LOG_DIR = BASE_DIR / "log" / "package"
 # + 管理员后台操作手册（部署运维使用）
 # 不拷贝 document/ 下的其他设计文档（需求规格、实现计划、企业微信设计等仅留本地开发用）
 ROUTE_DOCS = [
-    DOC_DIR / "archive" / "DEVELOPMENT_ROUTING_GUIDE_v1.0.md",
     DOC_DIR / "管理员后台操作手册_v1.1.md",
     DOC_DIR / "apis" / "API_01_AUTH.md",
     DOC_DIR / "apis" / "API_02_OPEN.md",
@@ -249,12 +248,6 @@ def main():
             doc_files.append(rel_path)
             logging.info(f"Copied route doc: document/{rel_path}")
         logging.info(f"Total route docs copied: {len(doc_files)}")
-
-        # 拷贝 README 到 dist 根目录，作为部署后 AI 对接的主入口
-        readme_src = BASE_DIR / "README.md"
-        if readme_src.exists():
-            shutil.copy2(readme_src, DIST_DIR / "README.md")
-            logging.info("Copied: README.md -> dist/README.md")
 
         migrations = check_migrations(CODE_DIR)
         if migrations:
