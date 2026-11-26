@@ -54,6 +54,9 @@ class AdminCreateAppSerializer(serializers.Serializer):
         child=serializers.ChoiceField(choices=["internal", "external"]),
         required=False, allow_null=True,
     )
+    registration_page_url = serializers.URLField(max_length=512, required=False, allow_blank=True, allow_null=True)
+    registration_success_url = serializers.URLField(max_length=512, required=False, allow_blank=True, allow_null=True)
+    webhook_url = serializers.URLField(max_length=512, required=False, allow_blank=True, allow_null=True)
 
 
 class AdminUpdateAppSerializer(serializers.Serializer):
@@ -63,6 +66,9 @@ class AdminUpdateAppSerializer(serializers.Serializer):
         child=serializers.ChoiceField(choices=["internal", "external"]),
         required=False, allow_null=True,
     )
+    registration_page_url = serializers.URLField(max_length=512, required=False, allow_blank=True, allow_null=True)
+    registration_success_url = serializers.URLField(max_length=512, required=False, allow_blank=True, allow_null=True)
+    webhook_url = serializers.URLField(max_length=512, required=False, allow_blank=True, allow_null=True)
     role_ids = serializers.ListField(child=serializers.IntegerField(), required=False, allow_null=True)
     wechat_mp_app_id = serializers.CharField(max_length=64, required=False, allow_null=True, allow_blank=True)
     wechat_mp_app_secret = serializers.CharField(max_length=256, required=False, allow_null=True, allow_blank=True)

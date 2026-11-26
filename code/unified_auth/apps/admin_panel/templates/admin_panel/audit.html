@@ -14,6 +14,8 @@
 {% endblock %}
 
 {% block content %}
+<div class="page-flex">
+<wd-tips type="box" class="page-tips">审计日志记录管理后台关键操作，支持按操作类型与时间范围检索，可导出 CSV。</wd-tips>
 <wd-panel shadow="never" class="page-card">
   <wd-search-panel head-refresh-datagrid="true" :default-expand="true" label-width="70px"
     @search="onSearch" @reset="onResetSearch">
@@ -34,9 +36,9 @@
   </wd-search-panel>
 </wd-panel>
 
-<wd-panel shadow="never" class="page-card">
+<wd-panel shadow="never" class="page-card grid-panel">
   <wd-data-grid ref="gridRef" api="/api/v1/admin/audit-logs" api-method="get" active row-key="id"
-    :tools="{ refresh: true }">
+    :tools="{ refresh: true }" height="fix">
     <template #toolbar>
       <el-button size="small" @click="onExport">导出 CSV</el-button>
     </template>
@@ -68,6 +70,7 @@
     </el-table-column>
   </wd-data-grid>
 </wd-panel>
+</div>
 {% endblock %}
 
 {% block script %}

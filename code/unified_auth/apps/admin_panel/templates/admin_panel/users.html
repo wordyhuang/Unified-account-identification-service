@@ -12,6 +12,8 @@
 {% endblock %}
 
 {% block content %}
+<div class="page-flex">
+<wd-tips type="box" class="page-tips">用户管理用于维护租户内账号信息，支持新增、导入、批量操作、角色与标签绑定及重置密码。</wd-tips>
 <wd-panel shadow="never" class="page-card">
   <wd-search-panel head-refresh-datagrid="true" :default-expand="true" label-width="70px">
     <template #default="{ model }">
@@ -34,9 +36,9 @@
   </wd-search-panel>
 </wd-panel>
 
-<wd-panel shadow="never" class="page-card">
+<wd-panel shadow="never" class="page-card grid-panel">
   <wd-data-grid ref="gridRef" api="/api/v1/admin/users" api-method="get" active with-selection v-model="selected"
-    row-key="id" :tools="{ add: true, refresh: true }"
+    row-key="id" :tools="{ add: true, refresh: true }" height="fix"
     @add="openCreate">
     <template #toolbar="{ selection }">
       <el-button size="small" :disabled="!selection.length" @click="onBatchStatus(1)">批量启用</el-button>
@@ -47,16 +49,15 @@
       <el-button size="small" @click="openImport">导入</el-button>
     </template>
 
-    <el-table-column prop="username" label="用户名" min-width="120" show-overflow-tooltip ></el-table-column>
+    <el-table-column prop="username" label="用户名" min-width="140" show-overflow-tooltip>
+      <template #default="{ row }">
+        <el-tag :type="row.user_type === 'internal' ? 'primary' : 'success'" size="small" style="margin-right: 4px">
+          [[ row.user_type === 'internal' ? '内部' : '外部' ]]
+        </el-tag>[[ row.username ]]
+      </template>
+    </el-table-column>
     <el-table-column prop="nickname" label="昵称" min-width="100" show-overflow-tooltip>
       <template #default="{ row }">[[ row.nickname || '-' ]]</template>
-    </el-table-column>
-    <el-table-column prop="user_type" label="类型" width="80" align="center">
-      <template #default="{ row }">
-        <el-tag :type="row.user_type === 'internal' ? 'primary' : 'success'" size="small">
-          [[ row.user_type === 'internal' ? '内部' : '外部' ]]
-        </el-tag>
-      </template>
     </el-table-column>
     <el-table-column prop="phone" label="手机号" min-width="120">
       <template #default="{ row }">[[ row.phone || '-' ]]</template>
@@ -91,24 +92,30 @@
     <el-table-column label="最后登录" width="150">
       <template #default="{ row }">[[ fmtTime(row.last_login_at) ]]</template>
     </el-table-column>
-    <el-table-column label="操作" width="350" align="center" fixed="right">
+    <el-table-column label="操作" width="150" align="center" fixed="right">
       <template #default="{ row }">
-        <el-button-group>
-          <el-button size="small" type="primary" plain @click="onRowAction({ command: 'edit', row: row })">编辑</el-button>
-          <el-button size="small" type="primary" plain @click="onRowAction({ command: 'roles', row: row })">角色</el-button>
-          <el-button size="small" type="primary" plain @click="onRowAction({ command: 'tags', row: row })">标签</el-button>
-          <el-button size="small" type="primary" plain @click="onRowAction({ command: 'profile', row: row })">档案</el-button>
-          <el-button size="small" type="warning" plain @click="onRowAction({ command: 'reset', row: row })">重置密码</el-button>
-          <el-button size="small" type="danger" plain @click="onRowAction({ command: 'delete', row: row })">删除</el-button>
-        </el-button-group>
+        <el-button size="small" type="primary" plain @click="onRowAction({ command: 'edit', row: row })">编辑</el-button>
+        <el-dropdown trigger="click" @command="function(cmd) { onRowAction({ command: cmd, row: row }) }" style="margin-left: 8px">
+          <el-button size="small" plain>更多</el-button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item command="roles">角色</el-dropdown-item>
+              <el-dropdown-item command="tags">标签</el-dropdown-item>
+              <el-dropdown-item command="profile">档案</el-dropdown-item>
+              <el-dropdown-item command="reset">重置密码</el-dropdown-item>
+              <el-dropdown-item command="delete" divided style="color: var(--el-color-danger)">删除</el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
       </template>
     </el-table-column>
   </wd-data-grid>
 </wd-panel>
+</div>
 
 <!-- 新增 / 编辑用户 -->
 <el-drawer v-model="drawerVisible" :title="formMode === 'create' ? '新增用户' : '编辑用户'" size="480px" destroy-on-close>
-  <wd-data-form v-if="drawerVisible" :mode="formMode"
+  <wd-data-form v-if="drawerVisible" size="default" :mode="formMode"
     :api="formMode === 'edit' ? '/api/v1/admin/users/' + formUserId : ''"
     :submit-api="formMode === 'edit' ? '/api/v1/admin/users/' + formUserId : '/api/v1/admin/users'"
     :submit-method="formMode === 'edit' ? 'put' : 'post'"
@@ -158,8 +165,8 @@
       api="/api/v1/admin/roles" text-prop="name" value-prop="id" ></wd-checkbox-list>
   </div>
   <template #footer>
-    <el-button @click="roleVisible = false">取消</el-button>
-    <el-button type="primary" :loading="roleSaving" @click="onRoleSave">保存</el-button>
+    <el-button size="small" @click="roleVisible = false">取消</el-button>
+    <el-button size="small" type="primary" :loading="roleSaving" @click="onRoleSave">保存</el-button>
   </template>
 </el-dialog>
 
@@ -170,8 +177,41 @@
       api="/api/v1/admin/tags" text-prop="name" value-prop="id" ></wd-checkbox-list>
   </div>
   <template #footer>
-    <el-button @click="tagVisible = false">取消</el-button>
-    <el-button type="primary" :loading="tagSaving" @click="onTagSave">保存</el-button>
+    <el-button size="small" @click="tagVisible = false">取消</el-button>
+    <el-button size="small" type="primary" :loading="tagSaving" @click="onTagSave">保存</el-button>
+  </template>
+</el-dialog>
+
+<!-- 重置密码：服务端生成随机密码，本次响应展示一次，用户登录后必须修改 -->
+<el-dialog v-model="pwdVisible" :title="'重置密码 - ' + (pwdUser ? pwdUser.username : '')" width="480px" destroy-on-close>
+  <template v-if="!pwdResult">
+    <el-alert type="warning" :closable="false"
+      title="重置将由服务端生成随机密码，仅展示一次；该用户下次登录后将被强制要求修改密码。"></el-alert>
+    <el-form label-width="90px" style="margin-top: 12px">
+      <el-form-item label="登录名">
+        <span>[[ pwdUser ? pwdUser.username : '' ]]</span>
+      </el-form-item>
+    </el-form>
+  </template>
+  <template v-else>
+    <el-alert type="success" :closable="false"
+      title="密码已重置，请立即复制并发送给用户（关闭弹窗后不再显示）。"></el-alert>
+    <el-form label-width="90px" style="margin-top: 12px">
+      <el-form-item label="新密码">
+        <el-input :model-value="pwdResult.password" readonly class="pwd-result-input">
+          <template #append>
+            <el-button @click="copyPassword">复制</el-button>
+          </template>
+        </el-input>
+      </el-form-item>
+      <el-form-item label="后续策略">
+        <span style="color: var(--el-text-color-secondary)">用户首次登录后必须修改密码，修改前仅可访问个人信息与改密接口</span>
+      </el-form-item>
+    </el-form>
+  </template>
+  <template #footer>
+    <el-button size="small" @click="pwdVisible = false">[[ pwdResult ? '关闭' : '取消' ]]</el-button>
+    <el-button v-if="!pwdResult" size="small" type="primary" :loading="pwdSaving" @click="onPwdSave">重置并生成随机密码</el-button>
   </template>
 </el-dialog>
 
@@ -240,8 +280,8 @@
     <el-radio value="external">外部用户</el-radio>
   </el-radio-group>
   <template #footer>
-    <el-button @click="batchTypeVisible = false">取消</el-button>
-    <el-button type="primary" :loading="batchSaving" @click="onBatchTypeSave">确定</el-button>
+    <el-button size="small" @click="batchTypeVisible = false">取消</el-button>
+    <el-button size="small" type="primary" :loading="batchSaving" @click="onBatchTypeSave">确定</el-button>
   </template>
 </el-dialog>
 
@@ -265,8 +305,8 @@
     </el-table>
   </template>
   <template #footer>
-    <el-button @click="importVisible = false">关闭</el-button>
-    <el-button type="primary" :loading="importSaving" :disabled="!importContent.trim()" @click="onImportSubmit">开始导入</el-button>
+    <el-button size="small" @click="importVisible = false">关闭</el-button>
+    <el-button size="small" type="primary" :loading="importSaving" :disabled="!importContent.trim()" @click="onImportSubmit">开始导入</el-button>
   </template>
 </el-dialog>
 {% endblock %}
@@ -296,6 +336,10 @@ AdminUI.start('/admin-panel/users/', {
       tagIds: [],
       tagLoading: false,
       tagSaving: false,
+      pwdVisible: false,
+      pwdUser: null,
+      pwdResult: null,
+      pwdSaving: false,
       profileVisible: false,
       profileUserId: null,
       batchTypeVisible: false,
@@ -411,20 +455,32 @@ AdminUI.start('/admin-panel/users/', {
 
     /* ---------- 重置密码 / 删除 ---------- */
     onResetPassword: function (row) {
-      ElementPlus.ElMessageBox.prompt('请输入新密码（至少 8 位）', '重置密码 - ' + row.username, {
-        inputType: 'password',
-        inputPattern: /^.{8,}$/,
-        inputErrorMessage: '密码至少 8 位',
-        confirmButtonText: '确定',
-        cancelButtonText: '取消'
-      }).then(function (ret) {
-        return WorkDesktop.request.post('/api/v1/admin/users/' + row.id + '/reset-password', {
-          new_password: ret.value
+      this.pwdUser = row;
+      this.pwdResult = null;
+      this.pwdVisible = true;
+    },
+    onPwdSave: function () {
+      var self = this;
+      self.pwdSaving = true;
+      WorkDesktop.request.post('/api/v1/admin/users/' + self.pwdUser.id + '/reset-password', {})
+        .then(function (res) {
+          if (res && res.success) {
+            self.pwdResult = res.data;
+            self.$refs.gridRef.refresh();
+          } else {
+            AdminUI.toastFail(res, '重置失败');
+          }
+        }).catch(function () {}).finally(function () {
+          self.pwdSaving = false;
         });
-      }).then(function (res) {
-        if (res && res.success) ElementPlus.ElMessage.success('密码已重置');
-        else AdminUI.toastFail(res, '重置失败');
-      }).catch(function () {});
+    },
+    copyPassword: function () {
+      if (!this.pwdResult) return;
+      navigator.clipboard.writeText(this.pwdResult.password).then(function () {
+        ElementPlus.ElMessage.success('已复制');
+      }).catch(function () {
+        ElementPlus.ElMessage.error('复制失败，请手动选择复制');
+      });
     },
     onDelete: function (row) {
       var self = this;

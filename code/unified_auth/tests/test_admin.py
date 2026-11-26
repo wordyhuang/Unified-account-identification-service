@@ -135,18 +135,22 @@ class TestAdminUsers:
         assert data["data"]["status"] == 1
 
     def test_reset_password(self, api_client, staff_auth_headers, normal_user):
-        """TC-ADMIN-011: 重置用户密码"""
+        """TC-ADMIN-011: 重置用户密码（服务端生成随机密码并置强制改密标志）"""
         resp = api_client.post(
             f"/api/v1/admin/users/{normal_user.id}/reset-password",
-            {"new_password": "newpass5678"},
             content_type="application/json",
             **staff_auth_headers,
         )
         data = json.loads(resp.content)
         assert data["code"] == 0
 
+        new_password = data["data"]["password"]
+        assert new_password
+        assert data["data"]["must_change_password"] is True
+
         normal_user.refresh_from_db()
-        assert normal_user.check_password("newpass5678")
+        assert normal_user.check_password(new_password)
+        assert normal_user.must_change_password is True
 
     def test_delete_user(self, api_client, staff_auth_headers, tenant_default):
         """TC-ADMIN-012: 删除用户"""

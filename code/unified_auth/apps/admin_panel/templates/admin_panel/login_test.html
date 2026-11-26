@@ -12,6 +12,7 @@
 {% endblock %}
 
 {% block content %}
+<wd-tips type="box" class="page-tips">登录测试用于以租户内用户身份发起真实登录验证，测试登录不影响正式会话。</wd-tips>
 <wd-panel shadow="never" class="page-card" title="用户登录测试">
   <el-alert type="info" :closable="false" style="margin-bottom: 12px"
     title="使用租户内用户的账号密码进行登录验证，测试结果不会影响到正式会话" ></el-alert>
@@ -24,7 +25,7 @@
         @keyup.enter="onTest" ></el-input>
     </el-form-item>
     <el-form-item>
-      <el-button type="primary" :loading="testing" :disabled="!username.trim() || !password" @click="onTest">开始测试</el-button>
+      <el-button size="small" type="primary" :loading="testing" :disabled="!username.trim() || !password" @click="onTest">开始测试</el-button>
     </el-form-item>
   </el-form>
 </wd-panel>

@@ -3,7 +3,6 @@
 
 {% block head %}
 <style>
-  .ver-tip { margin: 0 0 12px; color: var(--el-text-color-secondary); font-size: 13px; }
   .ver-current { font-size: 32px; font-weight: 600; color: var(--el-color-primary); line-height: 1.2; }
   .ver-meta { margin-top: 10px; color: var(--el-text-color-secondary); font-size: 13px; }
   .ver-card { margin-bottom: 12px; }
@@ -13,9 +12,9 @@
 
 {% block content %}
 <div v-loading="loading">
-  <p class="ver-tip">
+  <wd-tips type="box" class="page-tips">
     管理后台界面组件库 workdesktop-ai 的版本管理与升级。升级/回退会从官方 npm 地址下载组件文件并立即替换，替换后重新刷新页面即可生效。
-  </p>
+  </wd-tips>
 
   <wd-panel class="ver-card" title="当前版本" shadow="never">
     <div v-if="current">

@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>资料补全</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+            background: linear-gradient(160deg, #ecfdf5 0%, #d1fae5 100%);
+            min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 16px;
+        }
+        .card {
+            background: #fff; border-radius: 16px; box-shadow: 0 8px 30px rgba(0,0,0,.08);
+            width: 100%; max-width: 420px; padding: 32px 28px;
+        }
+        .logo { text-align: center; margin-bottom: 20px; }
+        .logo .icon { font-size: 40px; }
+        .logo h1 { font-size: 20px; color: #1f2937; margin-top: 8px; }
+        .meta { text-align: center; color: #6b7280; font-size: 13px; margin-bottom: 20px; }
+        .field { margin-bottom: 16px; }
+        .field label { display: block; font-size: 13px; color: #374151; margin-bottom: 6px; }
+        .field input, .field select, .field textarea {
+            width: 100%; border: 1px solid #d1d5db; border-radius: 8px; padding: 10px 12px;
+            font-size: 15px; outline: none; transition: border-color .15s; font-family: inherit;
+        }
+        .field input:focus, .field select:focus, .field textarea:focus { border-color: var(--brand-color, #10b981); }
+        .btn {
+            width: 100%; padding: 12px; border: none; border-radius: 8px; background: var(--brand-color, #059669);
+            color: #fff; font-size: 16px; cursor: pointer; margin-top: 8px;
+        }
+        .btn:disabled { background: #6ee7b7; cursor: not-allowed; }
+        .msg { padding: 10px 12px; border-radius: 8px; font-size: 13px; margin-bottom: 16px; display: none; }
+        .msg.error { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; display: block; }
+        .result { text-align: center; display: none; }
+        .result .ok { font-size: 48px; }
+        .result h2 { font-size: 18px; color: #065f46; margin: 12px 0 8px; }
+        .result p { color: #6b7280; font-size: 14px; }
+        .step { font-size: 13px; color: #6b7280; margin-bottom: 12px; }
+        .footer { text-align: center; color: #9ca3af; font-size: 12px; margin-top: 14px; display: none; }
+    </style>
+</head>
+<body>
+<div class="card">
+    <!-- 身份验证（多人通用模式） -->
+    <div id="verifyView" style="display:none">
+        <div class="logo"><div class="icon">🪪</div><h1>资料补全 · 身份验证</h1></div>
+        <div class="meta">请输入账号绑定手机号完成身份验证</div>
+        <div class="msg" id="verifyError"></div>
+        <div class="field">
+            <label>手机号</label>
+            <input type="tel" id="verifyPhone" maxlength="20" placeholder="请输入手机号">
+        </div>
+        <div class="field" id="codeField" style="display:none">
+            <label>短信验证码</label>
+            <input type="text" id="verifyCode" maxlength="6" placeholder="请输入验证码">
+        </div>
+        <button class="btn" id="sendBtn" onclick="sendVerify()">发送验证码</button>
+        <button class="btn" id="loginBtn" style="display:none" onclick="doLogin()">验证并继续</button>
+    </div>
+
+    <!-- 资料表单 -->
+    <div id="formView" style="display:none">
+        <div class="logo"><div class="icon">📝</div><h1>完善个人资料</h1></div>
+        <div class="meta" id="formMeta"></div>
+        <div class="msg" id="error"></div>
+        <form id="profileForm" onsubmit="return submitProfile(event)"></form>
+        <button class="btn" id="submitBtn" onclick="submitProfile(event)">提交资料</button>
+    </div>
+
+    <!-- 完成页 -->
+    <div class="result" id="resultView">
+        <div class="ok">🎉</div>
+        <h2>资料提交成功</h2>
+        <p>您的个人资料已更新</p>
+    </div>
+    <div class="footer" id="pageFooter"></div>
+</div>
+<script>
+const CODE = "{{ code|escapejs }}";
+const BASE = "/api/v1/public/profile-completion/" + CODE;
+let info = null, sessionToken = null, fieldMeta = [];
+
+function showError(text, view) {
+    const el = document.getElementById(view || "error");
+    el.textContent = text; el.className = "msg error";
+}
+
+function applyAppearance(appearance) {
+    if (!appearance) return;
+    if (appearance.theme_color) {
+        document.documentElement.style.setProperty("--brand-color", appearance.theme_color);
+    }
+    const bg = appearance.background || "";
+    if (bg) {
+        if (/^(https:\/\/|data:image\/)/.test(bg)) {
+            document.body.style.backgroundImage = "linear-gradient(rgba(255,255,255,.55),rgba(255,255,255,.55)),url(\"" + bg.replace(/"/g, "%22") + "\")";
+            document.body.style.backgroundSize = "cover";
+            document.body.style.backgroundPosition = "center";
+        } else {
+            document.body.style.background = bg;
+        }
+    }
+    if (appearance.title) {
+        const formTitle = document.querySelector("#formView h1");
+        if (formTitle) formTitle.textContent = appearance.title;
+    }
+    if (appearance.button_text) {
+        document.getElementById("submitBtn").textContent = appearance.button_text;
+    }
+    if (appearance.footer_text) {
+        const footer = document.getElementById("pageFooter");
+        footer.textContent = appearance.footer_text;
+        footer.style.display = "block";
+    }
+}
+
+fetch(BASE).then(r => r.json()).then(res => {
+    if (res.code !== 0) {
+        document.getElementById("verifyView").style.display = "block";
+        return showError(res.message || "补全链接无效", "verifyError");
+    }
+    info = res.data;
+    applyAppearance(info.appearance);
+    if (info.mode === "single") {
+        startForm(info.fields, info.prefill);
+    } else {
+        document.getElementById("verifyView").style.display = "block";
+    }
+}).catch(() => {
+    document.getElementById("verifyView").style.display = "block";
+    showError("网络异常，请稍后重试", "verifyError");
+});
+
+function sendVerify() {
+    const phone = document.getElementById("verifyPhone").value.trim();
+    if (!phone) return showError("请输入手机号", "verifyError");
+    const btn = document.getElementById("sendBtn");
+    btn.disabled = true; btn.textContent = "发送中…";
+    fetch(BASE + "/verify", {
+        method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({phone})
+    }).then(r => r.json()).then(res => {
+        if (res.code !== 0) {
+            btn.disabled = false; btn.textContent = "发送验证码";
+            return showError(res.message || "发送失败", "verifyError");
+        }
+        showError("", "verifyError");
+        document.getElementById("codeField").style.display = "block";
+        document.getElementById("loginBtn").style.display = "block";
+        btn.textContent = "已发送（60s内勿重复点击）";
+    }).catch(() => {
+        btn.disabled = false; btn.textContent = "发送验证码";
+        showError("网络异常，请稍后重试", "verifyError");
+    });
+}
+
+function doLogin() {
+    const phone = document.getElementById("verifyPhone").value.trim();
+    const sms_code = document.getElementById("verifyCode").value.trim();
+    if (!sms_code) return showError("请输入验证码", "verifyError");
+    fetch(BASE + "/login", {
+        method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({phone, sms_code})
+    }).then(r => r.json()).then(res => {
+        if (res.code !== 0) return showError(res.message || "验证失败", "verifyError");
+        sessionToken = res.data.session_token;
+        startForm(res.data.fields, res.data.prefill);
+    }).catch(() => showError("网络异常，请稍后重试", "verifyError"));
+}
+
+function startForm(fields, prefill) {
+    fieldMeta = fields;
+    document.getElementById("verifyView").style.display = "none";
+    document.getElementById("formView").style.display = "block";
+    const form = document.getElementById("profileForm");
+    fields.forEach(f => {
+        const wrap = document.createElement("div");
+        wrap.className = "field";
+        const label = document.createElement("label");
+        label.textContent = f.label;
+        wrap.appendChild(label);
+        let input;
+        if (f.type === "select") {
+            input = document.createElement("select");
+            const empty = document.createElement("option");
+            empty.value = ""; empty.textContent = "请选择";
+            input.appendChild(empty);
+            (f.options || []).forEach(o => {
+                const opt = document.createElement("option");
+                opt.value = o.value; opt.textContent = o.label;
+                input.appendChild(opt);
+            });
+        } else if (f.type === "textarea") {
+            input = document.createElement("textarea");
+            input.rows = 3;
+        } else {
+            input = document.createElement("input");
+            input.type = f.type === "date" ? "date" : "text";
+        }
+        input.id = "fld_" + f.name;
+        if (prefill && prefill[f.name] !== null && prefill[f.name] !== undefined) {
+            input.value = prefill[f.name];
+        }
+        wrap.appendChild(input);
+        form.appendChild(wrap);
+    });
+}
+
+function submitProfile(e) {
+    if (e) e.preventDefault();
+    const payload = {};
+    let hasError = false;
+    fieldMeta.forEach(f => {
+        const el = document.getElementById("fld_" + f.name);
+        if (!el) return;
+        let v = el.value.trim();
+        if (v === "") return;
+        payload[f.name] = v;
+    });
+    if (hasError) return false;
+    const headers = {"Content-Type": "application/json"};
+    if (sessionToken) headers["X-Completion-Token"] = sessionToken;
+    const btn = document.getElementById("submitBtn");
+    btn.disabled = true; btn.textContent = "提交中…";
+    fetch(BASE + "/submit", {
+        method: "PUT", headers, body: JSON.stringify(payload)
+    }).then(r => r.json()).then(res => {
+        if (res.code !== 0) {
+            btn.disabled = false; btn.textContent = "提交资料";
+            return showError(res.message || "提交失败");
+        }
+        document.getElementById("formView").style.display = "none";
+        document.getElementById("resultView").style.display = "block";
+    }).catch(() => {
+        btn.disabled = false; btn.textContent = "提交资料";
+        showError("网络异常，请稍后重试");
+    });
+    return false;
+}
+</script>
+</body>
+</html>

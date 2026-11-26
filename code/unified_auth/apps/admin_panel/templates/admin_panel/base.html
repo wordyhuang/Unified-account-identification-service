@@ -5,7 +5,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}管理后台{% endblock %} · 统一账号识别服务</title>
-  <link rel="icon" href="{% static 'admin_panel/favicon.svg' %}">
+  <link rel="icon" href="{% static 'admin_panel/img/favicon.ico' %}">
   <link rel="stylesheet" href="{% static 'admin_panel/vendor/element-plus/index.css' %}">
   <link rel="stylesheet" href="{% static 'admin_panel/vendor/workdesktop-ai/style.css' %}">
   <style>
@@ -14,17 +14,34 @@
     [v-cloak] { display: none; }
     .impersonate-tip { padding: 4px 12px; }
     .impersonate-tip .el-button { margin-left: 12px; }
+    .page-tips { margin-bottom: 12px; }
+    /* 品牌 logo（默认皮肤侧边栏为浅色底，使用深蓝原版素材）；收起态切换方形图标由 aside 的 is-collapsed 类纯 CSS 驱动 */
+    .station-logo { height: 36px; display: block; }
+    .station-logo-mark { height: 34px; width: 34px; display: block; }
+    .wd-station__aside .station-logo-mark { display: none; }
+    .wd-station__aside.is-collapsed .station-logo { display: none; }
+    .wd-station__aside.is-collapsed .station-logo-mark { display: block; }
+    /* 单表格页（page-flex + grid-panel）：让表格 panel 的 body 获得确定的 flex 高度。
+       DataGrid height="fix" 以其直接父级（panel body）的当前高度计算，body 定高后 fix 才能正确生效，
+       并随窗口尺寸、搜索面板收起/展开自动重算 */
+    .page-flex { height: 100%; display: flex; flex-direction: column; }
+    .page-flex > .grid-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; margin-bottom: 0; }
+    .page-flex > .grid-panel .wd-panel__content,
+    .page-flex > .grid-panel .wd-panel__content-inner { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+    .page-flex > .grid-panel .wd-panel__body { flex: 1; min-height: 0; }
   </style>
   {% block head %}{% endblock %}
 </head>
 <body>
   <div id="app">
+    <!-- 全局组件尺寸 small（EP 支持的最小尺寸）：使 wd-search-panel / wd-data-grid / wd-dataform 内置按钮统一小尺寸 -->
+    <el-config-provider size="small">
     <wd-station v-cloak
-      title="统一账号识别服务"
+      :title="stationTitle"
       logo="Key"
       :menu-groups="menuGroups"
       :active-menu="activeMenu"
-      v-model:collapsed="stationCollapsed"
+      @update:collapsed="onCollapsedChange"
       router-mode="html"
       content-mode="page"
       :user-name="currentUser.nickname || currentUser.username"
@@ -32,14 +49,19 @@
       copyright="统一账号识别服务 · 管理后台"
       @menu-select="onMenuSelect"
       @logout="onLogout">
+      <template #logo>
+        <img class="station-logo" src="{% static 'admin_panel/img/logo-word.png' %}" alt="UAIS">
+        <img class="station-logo-mark" src="{% static 'admin_panel/img/logo-mark.png' %}" alt="UAIS">
+      </template>
       <template #header-center>
         <el-alert v-if="currentUser.impersonated" type="warning" :closable="false" class="impersonate-tip">
           <span>正在模拟租户 <b>[[ currentUser.tenant_name || ('#' + currentUser.tenant_id) ]]</b></span>
-          <el-button size="small" type="warning" plain @click="onExitImpersonate">退出模拟</el-button>
+          <el-button size="mini" type="warning" plain @click="onExitImpersonate">退出模拟</el-button>
         </el-alert>
       </template>
       {% block content %}{% endblock %}
     </wd-station>
+    </el-config-provider>
   </div>
   <script src="{% static 'admin_panel/vendor/vue/vue.global.prod.js' %}"></script>
   <script src="{% static 'admin_panel/vendor/element-plus/index.full.min.js' %}"></script>

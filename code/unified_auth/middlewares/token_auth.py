@@ -17,6 +17,15 @@ PUBLIC_PATHS = [
 ]
 
 
+# 强制改密状态下仍可访问的路径（改密闭环白名单）
+PASSWORD_CHANGE_ALLOWED_PATHS = (
+    "/api/v1/auth/me",
+    "/api/v1/auth/me/password",
+    "/api/v1/auth/logout",
+    "/api/v1/auth/token/refresh",
+)
+
+
 class TokenAuthenticationMiddleware(MiddlewareMixin):
     def process_request(self, request):
         if request.path.startswith("/admin/"):
@@ -28,6 +37,15 @@ class TokenAuthenticationMiddleware(MiddlewareMixin):
         if request.path == "/favicon.ico":
             return None
         if request.method == "OPTIONS":
+            return None
+        # 自助凭证码：公开 API 与扫码页面/短链（无登录态，码即凭证）
+        if request.path.startswith("/api/v1/public/"):
+            return None
+        if request.path.startswith("/invite/") or request.path.startswith("/profile-completion/"):
+            return None
+        if request.path.startswith("/appearance-preview/"):
+            return None
+        if request.path.startswith("/s/"):
             return None
         for p in PUBLIC_PATHS:
             if request.path == p or request.path == p + "/":
@@ -76,4 +94,13 @@ class TokenAuthenticationMiddleware(MiddlewareMixin):
         request.user_id = user.id
         request.tenant_id = user.tenant_id
         request.app_id = payload.get("app_id")
+
+        # 强制改密全量拦截：密码被管理员重置后，仅放行改密闭环白名单路径
+        # 以数据库实时值为准，改密成功清除标志后立即放行
+        if getattr(user, "must_change_password", False):
+            if request.path.rstrip("/") not in PASSWORD_CHANGE_ALLOWED_PATHS:
+                return JsonResponse(
+                    api_response(ErrorCode.PASSWORD_CHANGE_REQUIRED),
+                    status=403,
+                )
         return None

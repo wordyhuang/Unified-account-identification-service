@@ -29,6 +29,8 @@ local_settings.py
 *~
 .DS_Store
 Thumbs.db
+AGENTS.md
+memory.md
 
 # ==================== 环境配置 ====================
 .env
@@ -48,13 +50,16 @@ tmp/
 # ==================== 项目调试/测试脚本 ====================
 code/unified_auth/test_*.py
 code/unified_auth/unified_auth
+check_user.py
+admin_login*.json
+login_req*.json
+refresh_req.json
+token_req.json
 .ai/
 *.zip
 
 # ==================== 文档白名单（仅放行 apis/ 与 archive/） ====================
-# document/ 根目录下的设计文档不进仓库；AI 路由体系只保留 apis/ 与 archive/ 两份主路由
+# document/ 根目录下的设计文档不进仓库；AI 路由体系只保留 apis/
 document/*
 !document/apis/
 !document/apis/**
-!document/archive/
-!document/archive/**

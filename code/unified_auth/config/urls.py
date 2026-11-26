@@ -3,6 +3,7 @@ from django.urls import path, include
 from django.shortcuts import render
 from django.http import HttpResponseRedirect
 from apps.admin_panel import views as admin_views
+from apps.invites import views as invites_views
 
 
 def admin_panel_index(request):
@@ -25,6 +26,8 @@ ADMIN_PANEL_ROUTES = [
     ("tags/", "tags", "admin-panel-tags"),
     ("audit/", "audit", "admin-panel-audit"),
     ("sms-config/", "sms_config", "admin-panel-sms-config"),
+    ("invite-codes/", "invite_codes", "admin-panel-invite-codes"),
+    ("completion-codes/", "completion_codes", "admin-panel-completion-codes"),
     ("login-test/", "login_test", "admin-panel-login-test"),
     ("superadmin/dashboard/", "superadmin_dashboard", "admin-panel-superadmin-dashboard"),
     ("superadmin/tenants/", "superadmin_tenants", "admin-panel-superadmin-tenants"),
@@ -40,6 +43,7 @@ def favicon_view(request):
     return HttpResponseRedirect("/static/admin_panel/favicon.svg")
 
 
+# 自助凭证码公开页面 + 短链（无需登录，认证守卫在页面 JS 侧校验码有效性）
 urlpatterns = [
     path('favicon.ico', favicon_view),
     path('admin/', admin.site.urls),
@@ -48,11 +52,18 @@ urlpatterns = [
     path('admin-panel/' + route, admin_panel_page, {"template": template}, name=name)
     for route, template, name in ADMIN_PANEL_ROUTES
 ] + [
+    path('invite/<str:code>', invites_views.invite_page, name="invite-page"),
+    path('profile-completion/<str:code>', invites_views.completion_page, name="completion-page"),
+    path('s/<str:short_code>', invites_views.short_link, name="invite-short-link"),
+    path('appearance-preview/<str:token>', invites_views.appearance_preview_page, name="appearance-preview"),
+] + [
     path('api/v1/auth/', include('apps.accounts.urls')),
     path('api/v1/open/', include('apps.openapi.urls')),
+    path('api/v1/public/', include('apps.invites.urls_public')),
     path('oauth/', include('apps.oauth2.urls')),
     path('api/v1/admin/', include('apps.admin_panel.urls')),
     path('api/v1/admin/', include('apps.tags.urls')),
+    path('api/v1/admin/', include('apps.invites.urls_admin')),
     path('api/v1/superadmin/global-stats', admin_views.superadmin_global_stats, name="superadmin-global-stats"),
     path('api/v1/superadmin/platform-config', admin_views.superadmin_platform_config, name="superadmin-platform-config"),
     path('api/v1/superadmin/tenants', admin_views.superadmin_tenants_view, name="superadmin-tenants"),

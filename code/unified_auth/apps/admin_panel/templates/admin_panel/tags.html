@@ -12,9 +12,11 @@
 {% endblock %}
 
 {% block content %}
-<wd-panel shadow="never" class="page-card">
+<div class="page-flex">
+<wd-tips type="box" class="page-tips">标签管理用于维护用户标签体系，标签可在用户管理中批量绑定。</wd-tips>
+<wd-panel shadow="never" class="page-card grid-panel">
   <wd-data-grid ref="gridRef" api="/api/v1/admin/tags" api-method="get" active row-key="id"
-    :tools="{ add: true, refresh: true }"
+    :tools="{ add: true, refresh: true }" height="fix"
     @add="openCreate">
     <el-table-column label="标签" min-width="160">
       <template #default="{ row }">
@@ -44,10 +46,11 @@
     </el-table-column>
   </wd-data-grid>
 </wd-panel>
+</div>
 
 <!-- 新增 / 编辑标签 -->
 <el-drawer v-model="drawerVisible" :title="formMode === 'create' ? '新增标签' : '编辑标签'" size="380px" destroy-on-close>
-  <wd-data-form v-if="drawerVisible" :mode="formMode"
+  <wd-data-form v-if="drawerVisible" size="default" :mode="formMode"
     :submit-api="formMode === 'edit' ? '/api/v1/admin/tags/' + formTagId : '/api/v1/admin/tags/create'"
     :submit-method="formMode === 'edit' ? 'put' : 'post'"
     submit-keys="name,color,description"

@@ -66,6 +66,8 @@
         { title: '标签管理', path: '/admin-panel/tags/', icon: 'PriceTag' },
         { title: '审计日志', path: '/admin-panel/audit/', icon: 'Document' },
         { title: '短信配置', path: '/admin-panel/sms-config/', icon: 'ChatDotSquare' },
+        { title: '邀请码管理', path: '/admin-panel/invite-codes/', icon: 'Ticket' },
+        { title: '资料补全码', path: '/admin-panel/completion-codes/', icon: 'Finished' },
         { title: '登录测试', path: '/admin-panel/login-test/', icon: 'Key' }
       ]
     },
@@ -102,8 +104,6 @@
 
   /* ==================== workdesktop-ai 全局配置（须早于 UMD 加载） ==================== */
   window.workDesktopConfig = {
-    // 时尚皮肤（workdesktop-ai@1.1.1+ 预设皮肤系统，11 套之一）
-    theme: { skin: 'fashion' },
     page: {
       // 注：库内 componentDefault 仅 WdRequester 消费，wd-data-grid 等须在模板显式传 api-method
       pager: {
@@ -233,9 +233,21 @@
             stationCollapsed: false
           }, pageData);
         },
-        computed: pageOptions.computed || {},
+        computed: Object.assign({
+          // 工作台标题：租户管理员（含模拟租户）显示租户名，纯超管用默认标题
+          stationTitle: function () {
+            var u = this.currentUser || {};
+            var showTenant = u.tenant_name && (u.impersonated || !u.is_superadmin);
+            return showTenant ? u.tenant_name + ' · 统一账号识别服务' : '统一账号识别服务';
+          }
+        }, pageOptions.computed || {}),
         watch: pageOptions.watch || {},
         methods: Object.assign({
+          // 侧边栏收起状态（非受控：库内受控模式的 emit 时机有 bug，收起后无法展开，
+          // 故不传 collapsed prop，仅监听事件同步给页面用于 logo 切换等）
+          onCollapsedChange: function (v) {
+            this.stationCollapsed = v;
+          },
           onMenuSelect: function (item) {
             if (item && item.path && item.path !== location.pathname) location.href = item.path;
           },

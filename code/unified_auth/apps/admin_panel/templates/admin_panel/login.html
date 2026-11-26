@@ -5,7 +5,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>登录 · 统一账号识别服务管理后台</title>
-  <link rel="icon" href="{% static 'admin_panel/favicon.svg' %}">
+  <link rel="icon" href="{% static 'admin_panel/img/favicon.ico' %}">
   <link rel="stylesheet" href="{% static 'admin_panel/vendor/element-plus/index.css' %}">
   <style>
     html, body { height: 100%; margin: 0; padding: 0; }
@@ -15,6 +15,7 @@
     }
     [v-cloak] { display: none; }
     .login-card { width: 400px; }
+    .login-logo { display: block; margin: 4px auto 16px; height: 48px; }
     .login-title { text-align: center; margin: 0 0 8px; font-size: 22px; }
     .login-sub { text-align: center; color: #909399; margin: 0 0 24px; font-size: 13px; }
     .login-btn { width: 100%; }
@@ -23,6 +24,7 @@
 <body>
   <div id="app">
     <el-card v-cloak class="login-card">
+      <img class="login-logo" src="{% static 'admin_panel/img/logo-word.png' %}" alt="UAIS">
       <h1 class="login-title">统一账号识别服务</h1>
       <p class="login-sub">管理后台登录</p>
       <el-form ref="formRef" :model="form" :rules="rules" size="large" @keyup.enter="onSubmit">
@@ -75,6 +77,9 @@
               WorkDesktop.request.post('/api/v1/admin/login', {
                 username: self.form.username,
                 password: self.form.password
+              }, {
+                // 请求级抑制库内置的"网络异常"弹窗（全局 exception.showTips 深合并未生效），改由下方监听弹后端 message
+                tipsConfig: { exception: { showTips: false } }
               }).then(function (res) {
                 self.loading = false;
                 if (!res) return;
@@ -88,12 +93,18 @@
                   ElementPlus.ElMessage.error(res.message || '登录失败');
                 }
               }).catch(function () {
-                // HTTP 异常（如 403 非管理员）已由全局 exception 提示
+                // HTTP 异常（登录失败返回 400/403）由下方 apiException 监听统一提示
                 self.loading = false;
               });
             });
           }
         }
+      });
+      // 登录失败（HTTP 400/401/403）时全局 exception.showTips=false，此处提取后端 message 弹出
+      WorkDesktop.request.on(function (evt) {
+        if (evt.type !== 'apiException') return;
+        var data = evt.error && evt.error.response && evt.error.response.data;
+        ElementPlus.ElMessage.error((data && data.message) || '网络异常，请稍后重试');
       });
       app.use(ElementPlus, { locale: ElementPlusLocaleZhCn });
       Object.keys(ElementPlusIconsVue).forEach(function (name) {

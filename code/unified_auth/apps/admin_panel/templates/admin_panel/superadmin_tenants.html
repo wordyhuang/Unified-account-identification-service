@@ -11,6 +11,8 @@
 {% endblock %}
 
 {% block content %}
+<div class="page-flex">
+<wd-tips type="box" class="page-tips">租户管理用于维护平台接入的租户，支持新增、模拟登录与停用；模拟登录后将以租户管理员视角操作。</wd-tips>
 <wd-panel shadow="never" class="page-card">
   <wd-search-panel head-refresh-datagrid="true" :default-expand="true" label-width="70px">
     <template #default="{ model }">
@@ -25,9 +27,9 @@
   </wd-search-panel>
 </wd-panel>
 
-<wd-panel shadow="never" class="page-card">
+<wd-panel shadow="never" class="page-card grid-panel">
   <wd-data-grid ref="gridRef" api="/api/v1/superadmin/tenants" api-method="get" active
-    row-key="id" :tools="{ add: true, refresh: true }"
+    row-key="id" :tools="{ add: true, refresh: true }" height="fix"
     @add="openCreate">
     <el-table-column prop="name" label="租户名称" min-width="140" show-overflow-tooltip ></el-table-column>
     <el-table-column prop="slug" label="Slug" min-width="120" show-overflow-tooltip>
@@ -56,10 +58,11 @@
     </el-table-column>
   </wd-data-grid>
 </wd-panel>
+</div>
 
 <!-- 新增 / 编辑租户 -->
 <el-drawer v-model="drawerVisible" :title="formMode === 'create' ? '新增租户' : '编辑租户'" size="420px" destroy-on-close>
-  <wd-data-form v-if="drawerVisible" :mode="formMode"
+  <wd-data-form v-if="drawerVisible" size="default" :mode="formMode"
     :api="formMode === 'edit' ? '/api/v1/superadmin/tenants/' + formTenantId : ''"
     :submit-api="formMode === 'edit' ? '/api/v1/superadmin/tenants/' + formTenantId : '/api/v1/superadmin/tenants'"
     :submit-method="formMode === 'edit' ? 'put' : 'post'"

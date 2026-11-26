@@ -15,9 +15,11 @@
 {% endblock %}
 
 {% block content %}
-<wd-panel shadow="never" class="page-card">
+<div class="page-flex">
+<wd-tips type="box" class="page-tips">角色管理用于定义角色及其接口权限，角色可批量分配给用户；权限项在行展开中查看。</wd-tips>
+<wd-panel shadow="never" class="page-card grid-panel">
   <wd-data-grid ref="gridRef" api="/api/v1/admin/roles" api-method="get" active row-key="id"
-    :tools="{ add: true, refresh: true }"
+    :tools="{ add: true, refresh: true }" height="fix"
     @add="openCreate">
     <el-table-column type="expand">
       <template #default="{ row }">
@@ -50,10 +52,11 @@
     </el-table-column>
   </wd-data-grid>
 </wd-panel>
+</div>
 
 <!-- 新增 / 编辑角色 -->
 <el-drawer v-model="drawerVisible" :title="formMode === 'create' ? '新增角色' : '编辑角色'" size="560px" destroy-on-close>
-  <wd-data-form v-if="drawerVisible" :mode="formMode"
+  <wd-data-form v-if="drawerVisible" size="default" :mode="formMode"
     :api="formMode === 'edit' ? '/api/v1/admin/roles/' + formRoleId : ''"
     :submit-api="formMode === 'edit' ? '/api/v1/admin/roles/' + formRoleId : '/api/v1/admin/roles'"
     :submit-method="formMode === 'edit' ? 'put' : 'post'"
@@ -101,8 +104,8 @@
   </el-form>
   <el-alert type="info" :closable="false" title="将复制源角色的全部权限到新角色" ></el-alert>
   <template #footer>
-    <el-button @click="copyVisible = false">取消</el-button>
-    <el-button type="primary" :loading="copySaving" :disabled="!copyName.trim() || !copyCode.trim()" @click="onCopySave">确定</el-button>
+    <el-button size="small" @click="copyVisible = false">取消</el-button>
+    <el-button size="small" type="primary" :loading="copySaving" :disabled="!copyName.trim() || !copyCode.trim()" @click="onCopySave">确定</el-button>
   </template>
 </el-dialog>
 {% endblock %}

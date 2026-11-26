@@ -40,6 +40,7 @@ INSTALLED_APPS = [
     'apps.admin_panel',
     'apps.oauth2',
     'apps.tags',
+    'apps.invites',
 ]
 
 TEMPLATES = [
@@ -59,6 +60,7 @@ TEMPLATES = [
 ]
 
 MIDDLEWARE = [
+    'middlewares.dynamic_cors.DynamicCorsMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
@@ -151,3 +153,7 @@ SMS_IP_RATE_PER_MINUTE = int(os.getenv('SMS_IP_RATE_PER_MINUTE', '10'))
 RATE_LIMIT_WINDOW_SECONDS = int(os.getenv('RATE_LIMIT_WINDOW_SECONDS', '60'))
 RATE_LIMIT_IP_DEFAULT = int(os.getenv('RATE_LIMIT_IP_DEFAULT', '60'))
 RATE_LIMIT_APP_DEFAULT = int(os.getenv('RATE_LIMIT_APP_DEFAULT', '1000'))
+
+# 邀请码注册防刷（V_1.7）：单 IP 每分钟注册尝试上限 / 单码每日成功注册上限
+INVITE_REGISTER_IP_LIMIT_PER_MINUTE = int(os.getenv('INVITE_REGISTER_IP_LIMIT_PER_MINUTE', '3'))
+INVITE_REGISTER_CODE_DAILY_LIMIT = int(os.getenv('INVITE_REGISTER_CODE_DAILY_LIMIT', '20'))

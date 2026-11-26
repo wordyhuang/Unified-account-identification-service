@@ -16,6 +16,8 @@
 {% endblock %}
 
 {% block content %}
+<div class="page-flex">
+<wd-tips type="box" class="page-tips">应用管理用于接入第三方应用，维护应用信息与回调地址；密钥、权限与调用统计在行内操作中查看。</wd-tips>
 <wd-panel shadow="never" class="page-card">
   <wd-search-panel head-refresh-datagrid="true" :default-expand="true" label-width="70px">
     <template #default="{ model }">
@@ -30,9 +32,9 @@
   </wd-search-panel>
 </wd-panel>
 
-<wd-panel shadow="never" class="page-card">
+<wd-panel shadow="never" class="page-card grid-panel">
   <wd-data-grid ref="gridRef" api="/api/v1/admin/applications" api-method="get" active row-key="id"
-    :tools="{ add: true, refresh: true }"
+    :tools="{ add: true, refresh: true }" height="fix"
     @add="openCreate">
     <el-table-column prop="name" label="应用名称" min-width="140" show-overflow-tooltip ></el-table-column>
     <el-table-column prop="app_key" label="App Key" min-width="200" show-overflow-tooltip>
@@ -66,27 +68,33 @@
     <el-table-column label="创建时间" width="150">
       <template #default="{ row }">[[ fmtTime(row.created_at) ]]</template>
     </el-table-column>
-    <el-table-column label="操作" width="220" align="center" fixed="right">
+    <el-table-column label="操作" width="130" align="center" fixed="right">
       <template #default="{ row }">
-        <el-button-group>
-          <el-button size="small" type="primary" plain @click="onRowAction({ command: 'edit', row: row })">编辑</el-button>
-          <el-button size="small" type="primary" plain @click="onRowAction({ command: 'secret', row: row })">密钥</el-button>
-          <el-button size="small" type="primary" plain @click="onRowAction({ command: 'perms', row: row })">权限</el-button>
-          <el-button size="small" type="primary" plain @click="onRowAction({ command: 'stats', row: row })">统计</el-button>
-        </el-button-group>
+        <el-button size="small" type="primary" plain @click="onRowAction({ command: 'edit', row: row })">编辑</el-button>
+        <el-dropdown trigger="click" @command="function(cmd) { onRowAction({ command: cmd, row: row }) }" style="margin-left: 8px">
+          <el-button size="small" plain>更多</el-button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item command="secret">密钥</el-dropdown-item>
+              <el-dropdown-item command="perms">权限</el-dropdown-item>
+              <el-dropdown-item command="stats">统计</el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
       </template>
     </el-table-column>
   </wd-data-grid>
 </wd-panel>
+</div>
 
 <!-- 新增 / 编辑应用 -->
 <el-drawer v-model="drawerVisible" :title="formMode === 'create' ? '新增应用' : '编辑应用'" size="520px" destroy-on-close>
-  <wd-data-form v-if="drawerVisible" :mode="formMode"
+  <wd-data-form v-if="drawerVisible" size="default" :mode="formMode"
     :api="formMode === 'edit' ? '/api/v1/admin/applications/' + formAppId : ''"
     :submit-api="formMode === 'edit' ? '/api/v1/admin/applications/' + formAppId : '/api/v1/admin/applications'"
     :submit-method="formMode === 'edit' ? 'put' : 'post'"
-    :submit-keys="formMode === 'edit' ? 'name,callback_urls,default_access_user_types,role_ids,wechat_mp_app_id,wechat_mp_app_secret,wechat_web_app_id,wechat_web_app_secret' : 'name,callback_urls,default_access_user_types'"
-    :data="{ callback_urls: [], default_access_user_types: [] }"
+    :submit-keys="formMode === 'edit' ? 'name,callback_urls,default_access_user_types,registration_page_url,registration_success_url,webhook_url,role_ids,wechat_mp_app_id,wechat_mp_app_secret,wechat_web_app_id,wechat_web_app_secret' : 'name,callback_urls,default_access_user_types,registration_page_url,registration_success_url,webhook_url'"
+    :data="{ callback_urls: [], default_access_user_types: [], registration_page_url: '', registration_success_url: '', webhook_url: '' }"
     :active="true" :rules="formRules" head-refresh-datagrid
     @submit-success="onFormSuccess" @close="drawerVisible = false">
     <template #default="{ model }">
@@ -95,11 +103,11 @@
       </el-form-item>
       <el-form-item label="回调地址" prop="callback_urls">
         <div style="width: 100%">
-          <div v-for="(url, idx) in model.callback_urls" :key="idx" class="url-row">
+          <div v-for="(url, idx) in (model.callback_urls || [])" :key="idx" class="url-row">
             <el-input v-model="model.callback_urls[idx]" placeholder="https://example.com/callback" clearable ></el-input>
             <el-button size="small" type="danger" plain @click="model.callback_urls.splice(idx, 1)">删除</el-button>
           </div>
-          <el-button size="small" @click="model.callback_urls.push('')">添加地址</el-button>
+          <el-button size="small" @click="onAddCallbackUrl(model)">添加地址</el-button>
         </div>
       </el-form-item>
       <el-form-item label="默认用户类型" prop="default_access_user_types">
@@ -108,6 +116,19 @@
           <el-checkbox value="external">外部用户</el-checkbox>
         </el-checkbox-group>
       </el-form-item>
+      <el-divider content-position="left">邀请注册页接入（选填）</el-divider>
+      <el-form-item label="注册页地址" prop="registration_page_url">
+        <el-input v-model="model.registration_page_url" placeholder="https://example.com/register" clearable ></el-input>
+      </el-form-item>
+      <el-form-item label="成功跳转地址" prop="registration_success_url">
+        <el-input v-model="model.registration_success_url" placeholder="https://example.com/registered" clearable ></el-input>
+      </el-form-item>
+      <el-form-item label="Webhook 地址" prop="webhook_url">
+        <el-input v-model="model.webhook_url" placeholder="https://example.com/api/uais-hook" clearable ></el-input>
+      </el-form-item>
+      <div style="padding-left: 100px; margin-bottom: 12px; color: var(--el-text-color-secondary); font-size: 12px; line-height: 1.5">
+        三个地址的域名必须已在「回调地址」白名单中；留空表示不启用对应能力。绑定本应用的邀请码将跳转到注册页地址。
+      </div>
       <template v-if="formMode === 'edit'">
         <el-form-item label="绑定角色" prop="role_ids">
           <wd-checkbox-list v-model="model.role_ids"
@@ -152,7 +173,7 @@
     </template>
   </div>
   <template #footer>
-    <el-button @click="secretVisible = false">关闭</el-button>
+    <el-button size="small" @click="secretVisible = false">关闭</el-button>
   </template>
 </el-dialog>
 
@@ -169,7 +190,7 @@
     </el-table>
   </div>
   <template #footer>
-    <el-button @click="permVisible = false">关闭</el-button>
+    <el-button size="small" @click="permVisible = false">关闭</el-button>
   </template>
 </el-dialog>
 
@@ -198,7 +219,7 @@
     </wd-panel>
   </div>
   <template #footer>
-    <el-button @click="statsVisible = false">关闭</el-button>
+    <el-button size="small" @click="statsVisible = false">关闭</el-button>
   </template>
 </el-dialog>
 {% endblock %}
@@ -272,6 +293,11 @@ AdminUI.start('/admin-panel/applications/', {
       this.formMode = 'create';
       this.formAppId = null;
       this.drawerVisible = true;
+    },
+    /** 回调地址数组兜底：历史数据 callback_urls 可能为 null */
+    onAddCallbackUrl: function (model) {
+      if (!Array.isArray(model.callback_urls)) model.callback_urls = [];
+      model.callback_urls.push('');
     },
     onRowAction: function (evt) {
       var row = evt.row;

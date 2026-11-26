@@ -101,15 +101,17 @@ def login(request):
         "user_type": user.user_type,
         "is_superuser": user.is_superuser,
         "is_staff": user.is_staff,
+        "must_change_password": bool(user.must_change_password),
         "tags": tag_names,
     }))
 
 
-def _dispatch_sms_code(phone, ip, code_cache_key, app_key=None):
+def _dispatch_sms_code(phone, ip, code_cache_key, app_key=None, tenant=None):
     """
     发送短信验证码的公共流程：限频检查 + 生成验证码 + 发送 + 缓存。
 
     code_cache_key: 验证码缓存 key（如 sms:{phone} / sms:pwd:{phone}，用于区分用途防重放）
+    tenant: 可直接指定租户（使用租户自定义短信渠道），未指定时从 app_key 推导
     返回 (success: bool, response_or_none)
     """
     from django.core.cache import cache
@@ -148,8 +150,7 @@ def _dispatch_sms_code(phone, ip, code_cache_key, app_key=None):
 
     code = generate_code()
 
-    tenant = None
-    if app_key:
+    if tenant is None and app_key:
         app = Application.objects.filter(app_key=app_key, status=True).first()
         if app:
             tenant = Tenant.objects.filter(id=app.tenant_id).first()
@@ -287,7 +288,8 @@ def reset_password(request):
     cache.delete(f"sms:pwd:{user.phone}")
 
     user.set_password(ser.validated_data["new_password"])
-    user.save(update_fields=["password"])
+    user.must_change_password = False
+    user.save(update_fields=["password", "must_change_password"])
     return Response(success())
 
 
@@ -378,6 +380,7 @@ def sms_login(request):
         "user_type": user.user_type,
         "is_superuser": user.is_superuser,
         "is_staff": user.is_staff,
+        "must_change_password": bool(user.must_change_password),
         "tags": tag_names,
     }))
 
@@ -488,6 +491,7 @@ def social_login(request):
         "user_type": user.user_type,
         "is_superuser": user.is_superuser,
         "is_staff": user.is_staff,
+        "must_change_password": bool(user.must_change_password),
         "tags": tag_names,
     }))
 
@@ -598,6 +602,7 @@ def wechat_login(request):
         "user_type": user.user_type,
         "is_superuser": user.is_superuser,
         "is_staff": user.is_staff,
+        "must_change_password": bool(user.must_change_password),
         "tags": tag_names,
     }))
 
@@ -752,7 +757,8 @@ def change_password(request):
         return Response(error(ErrorCode.PARAM_INVALID, message="原密码错误"), status=400)
 
     request.user.set_password(ser.validated_data["new_password"])
-    request.user.save(update_fields=["password"])
+    request.user.must_change_password = False
+    request.user.save(update_fields=["password", "must_change_password"])
     return Response(success())
 
 

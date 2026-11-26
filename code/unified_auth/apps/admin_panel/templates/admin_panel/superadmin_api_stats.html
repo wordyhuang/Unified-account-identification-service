@@ -14,6 +14,7 @@
 
 {% block content %}
 <div v-loading="loading">
+  <wd-tips type="box" class="page-tips">API 统计展示平台接口调用量趋势与排行，可切换统计周期（7 / 14 / 30 / 90 天）。</wd-tips>
   <wd-panel shadow="never" class="page-card" title="全局 API 调用趋势">
     <template #extra>
       <el-radio-group v-model="days" size="small" @change="loadStats">

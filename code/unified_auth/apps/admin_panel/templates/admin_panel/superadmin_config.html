@@ -7,7 +7,6 @@
 <style>
   .page-card { margin-bottom: 12px; }
   .page-card:last-child { margin-bottom: 0; }
-  .config-tip { margin: 0 0 12px; color: var(--el-text-color-secondary); font-size: 13px; }
   .config-key { font-family: monospace; font-size: 12px; }
   .config-value { word-break: break-all; }
 </style>
@@ -15,9 +14,9 @@
 
 {% block content %}
 <div v-loading="loading">
-  <p class="config-tip">
+  <wd-tips type="box" class="page-tips">
     以下配置来源于服务端环境变量，仅支持查看，修改需更新部署环境后重启服务。敏感项以 *** 脱敏展示。
-  </p>
+  </wd-tips>
   <el-row :gutter="12">
     <el-col v-for="group in configs" :key="group.group" :span="12">
       <wd-panel shadow="never" class="page-card" :title="group.group">

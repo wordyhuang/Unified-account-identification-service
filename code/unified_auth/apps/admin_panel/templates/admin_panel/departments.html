@@ -12,10 +12,11 @@
 {% endblock %}
 
 {% block content %}
+<wd-tips type="box" class="page-tips">部门管理用于维护组织架构树，支持新增子部门、编辑与删除。</wd-tips>
 <wd-panel shadow="never" class="page-card">
   <div class="dept-toolbar">
-    <el-button type="primary" @click="openCreate(null)">新增部门</el-button>
-    <el-button @click="loadDepartments">刷新</el-button>
+    <el-button size="small" type="primary" @click="openCreate(null)">新增部门</el-button>
+    <el-button size="small" @click="loadDepartments">刷新</el-button>
   </div>
   <el-table v-loading="loading" :data="deptTree" row-key="id" default-expand-all border>
     <el-table-column prop="name" label="部门名称" min-width="200" ></el-table-column>
@@ -40,7 +41,7 @@
 
 <!-- 新增 / 编辑部门 -->
 <el-drawer v-model="drawerVisible" :title="formMode === 'create' ? '新增部门' : '编辑部门'" size="440px" destroy-on-close>
-  <wd-data-form v-if="drawerVisible" :mode="formMode"
+  <wd-data-form v-if="drawerVisible" size="default" :mode="formMode"
     :api="formMode === 'edit' ? '/api/v1/admin/departments/' + formDeptId : ''"
     :submit-api="formMode === 'edit' ? '/api/v1/admin/departments/' + formDeptId : '/api/v1/admin/departments'"
     :submit-method="formMode === 'edit' ? 'put' : 'post'"

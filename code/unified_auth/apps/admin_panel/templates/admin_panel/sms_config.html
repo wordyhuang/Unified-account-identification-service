@@ -14,6 +14,7 @@
 {% endblock %}
 
 {% block content %}
+<wd-tips type="box" class="page-tips">短信配置用于维护短信服务商参数与签名模板，保存后可通过发送测试短信验证。</wd-tips>
 <wd-panel shadow="never" class="page-card sms-form-card" title="短信服务配置">
   <wd-data-form mode="edit" api="/api/v1/admin/tenant-sms-config"
     submit-api="/api/v1/admin/tenant-sms-config" submit-method="put"
@@ -51,7 +52,7 @@
 <wd-panel shadow="never" class="page-card sms-form-card" title="发送测试短信">
   <div class="test-row">
     <el-input v-model="testPhone" placeholder="接收测试短信的手机号" clearable maxlength="11" ></el-input>
-    <el-button type="primary" :loading="testSending" :disabled="!/^1\d{10}$/.test(testPhone)" @click="onSendTest">发送测试</el-button>
+    <el-button size="small" type="primary" :loading="testSending" :disabled="!/^1\d{10}$/.test(testPhone)" @click="onSendTest">发送测试</el-button>
   </div>
 </wd-panel>
 {% endblock %}

@@ -22,7 +22,7 @@ from apps.rbac.models import Role, ApiPermission, RolePermission, AppRoleBinding
 from apps.audit.models import AuditLog
 from .serializers import (
     AdminCreateUserSerializer, AdminUpdateUserSerializer,
-    AdminUserStatusSerializer, AdminResetPasswordSerializer,
+    AdminUserStatusSerializer,
     AdminCreateAppSerializer, AdminUpdateAppSerializer,
     AdminAppStatusSerializer,
     AdminCreateRoleSerializer, AdminUpdateRoleSerializer,
@@ -67,6 +67,7 @@ def _user_serialize(u):
         "dept_id": u.dept_id,
         "status": u.status, "is_staff": u.is_staff,
         "is_superuser": u.is_superuser,
+        "must_change_password": bool(u.must_change_password),
         "tenant_id": u.tenant_id,
         "role_ids": role_ids,
         "role_names": role_names,
@@ -77,6 +78,22 @@ def _user_serialize(u):
     }
 
 
+def _check_registration_urls(callback_urls, payload):
+    """校验邀请注册页三个地址：必须与回调白名单同源，且不得指向内网。"""
+    from apps.invites.services import url_allowed_for_origins
+
+    labels = (
+        ("registration_page_url", "注册页地址"),
+        ("registration_success_url", "注册成功跳转地址"),
+        ("webhook_url", "Webhook 地址"),
+    )
+    for key, label in labels:
+        value = payload.get(key)
+        if value and not url_allowed_for_origins(callback_urls, value):
+            return f"{label}必须与回调地址白名单同源，且不能指向内网地址"
+    return None
+
+
 def _app_serialize(a):
     from apps.rbac.models import AppRoleBinding
     bindings = AppRoleBinding.objects.filter(app=a).select_related("role")
@@ -85,7 +102,10 @@ def _app_serialize(a):
     return {
         "id": a.id, "uuid": str(a.uuid), "tenant_id": a.tenant_id,
         "name": a.name, "app_key": a.app_key,
-        "callback_urls": a.callback_urls,
+        "callback_urls": a.callback_urls or [],
+        "registration_page_url": a.registration_page_url or "",
+        "registration_success_url": a.registration_success_url or "",
+        "webhook_url": a.webhook_url or "",
         "default_access_user_types": a.default_access_user_types or [],
         "role_ids": role_ids,
         "roles": roles,
@@ -550,19 +570,35 @@ def user_status_view(request, user_id):
     return Response(success(_user_serialize(user)))
 
 
+def _generate_random_password(length=12):
+    """生成随机密码：保证含大写、小写、数字、符号各至少1个。"""
+    import secrets as py_secrets
+    import string
+
+    symbols = "!@#$%^&*"
+    pools = [string.ascii_uppercase, string.ascii_lowercase, string.digits, symbols]
+    chars = [py_secrets.choice(pool) for pool in pools]
+    all_chars = string.ascii_letters + string.digits + symbols
+    chars += [py_secrets.choice(all_chars) for _ in range(length - len(chars))]
+    py_secrets.SystemRandom().shuffle(chars)
+    return "".join(chars)
+
+
 @api_view(["POST"])
 def user_reset_password_view(request, user_id):
+    """管理员重置用户密码：服务端生成随机密码，置强制改密标志。
+
+    随机密码仅在本次响应中返回一次，用户下次登录必须修改密码。
+    """
     try:
         user = User.objects.get(id=user_id, tenant_id=request.tenant_id)
     except User.DoesNotExist:
         return Response(error(ErrorCode.USER_NOT_FOUND), status=404)
 
-    ser = AdminResetPasswordSerializer(data=request.data)
-    if not ser.is_valid():
-        return Response(error(ErrorCode.PARAM_INVALID, data=ser.errors), status=400)
-
-    user.set_password(ser.validated_data["new_password"])
-    user.save(update_fields=["password"])
+    new_password = _generate_random_password()
+    user.set_password(new_password)
+    user.must_change_password = True
+    user.save(update_fields=["password", "must_change_password"])
     AuditLog.objects.create(
         tenant_id=request.tenant_id,
         actor_id=request.user_id,
@@ -570,8 +606,12 @@ def user_reset_password_view(request, user_id):
         action="admin.user.reset_password",
         resource_type="user",
         resource_id=user_id,
+        detail={"must_change_password": True},
     )
-    return Response(success())
+    return Response(success({
+        "password": new_password,
+        "must_change_password": True,
+    }))
 
 
 # ======================== 应用管理 ========================
@@ -608,13 +648,20 @@ def apps_view(request):
     app_key = hashlib.sha256(secrets.token_bytes(32)).hexdigest()[:32]
     app_secret = secrets.token_hex(32)
 
+    url_err = _check_registration_urls(data.get("callback_urls"), data)
+    if url_err:
+        return Response(error(ErrorCode.PARAM_INVALID, message=url_err), status=400)
+
     app = Application.objects.create(
         tenant_id=request.tenant_id,
         name=data["name"],
         app_key=app_key,
         app_secret=app_secret,
-        callback_urls=data.get("callback_urls"),
+        callback_urls=data.get("callback_urls") or [],
         default_access_user_types=data.get("default_access_user_types"),
+        registration_page_url=data.get("registration_page_url") or "",
+        registration_success_url=data.get("registration_success_url") or "",
+        webhook_url=data.get("webhook_url") or "",
     )
     result = _app_serialize(app)
     result["app_secret"] = app_secret
@@ -647,6 +694,12 @@ def app_detail_view(request, app_id):
 
     data = ser.validated_data
     role_ids = data.pop("role_ids", None)
+
+    # 三个注册页地址：以合并后的白名单校验（本次未传 callback_urls 则用现有值）
+    merged_callback_urls = data.get("callback_urls") if "callback_urls" in data else app.callback_urls
+    url_err = _check_registration_urls(merged_callback_urls, data)
+    if url_err:
+        return Response(error(ErrorCode.PARAM_INVALID, message=url_err), status=400)
 
     update_fields = []
     for field, value in data.items():
@@ -2296,6 +2349,8 @@ def admin_login_view(request):
         "is_staff": user.is_staff,
         "is_superadmin": False,
         "tenant_id": user.tenant_id,
+        "tenant_name": user.tenant.name if user.tenant else None,
+        "must_change_password": bool(user.must_change_password),
         "tags": tag_names,
     }))
 

@@ -1,0 +1,91 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>页面外观预览</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+            background: #F5F7FA;
+            min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 16px;
+        }
+        .preview-tag {
+            background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; border-radius: 6px;
+            padding: 4px 12px; font-size: 12px; margin-bottom: 16px;
+        }
+        .card {
+            background: #fff; border-radius: 16px; box-shadow: 0 8px 30px rgba(0,0,0,.08);
+            width: 100%; max-width: 420px; padding: 32px 28px;
+        }
+        .logo { text-align: center; margin-bottom: 20px; }
+        .logo .icon { font-size: 40px; }
+        .logo .brand-logo { max-width: 180px; max-height: 56px; }
+        .logo h1 { font-size: 20px; color: #1f2937; margin-top: 8px; }
+        .meta { text-align: center; color: #6b7280; font-size: 13px; margin-bottom: 20px; }
+        .field { margin-bottom: 16px; }
+        .field label { display: block; font-size: 13px; color: #374151; margin-bottom: 6px; }
+        .field label .req { color: #ef4444; margin-left: 2px; }
+        .field input {
+            width: 100%; border: 1px solid #d1d5db; border-radius: 8px; padding: 10px 12px;
+            font-size: 15px; outline: none; background: #fff; color: #9ca3af;
+        }
+        .field input:focus { border-color: var(--brand-color, #6366f1); }
+        .btn {
+            width: 100%; padding: 12px; border: none; border-radius: 8px; background: var(--brand-color, #4f46e5);
+            color: #fff; font-size: 16px; cursor: not-allowed; margin-top: 8px; opacity: .85;
+        }
+        .footer { text-align: center; color: #9ca3af; font-size: 12px; margin-top: 14px; }
+    </style>
+</head>
+<body>
+<div class="preview-tag">外观预览 · 仅展示样式，不可提交</div>
+<div class="card">
+    <div class="logo">
+        {% if appearance.logo %}
+            <img class="brand-logo" src="{{ appearance.logo }}" alt="logo">
+        {% else %}
+            <div class="icon">{% if page_type == 'completion' %}📝{% else %}✉️{% endif %}</div>
+        {% endif %}
+        <h1>{{ appearance.title|default:"预览标题" }}</h1>
+    </div>
+    <div class="meta">{{ appearance.welcome|default:"欢迎语显示在此处" }}</div>
+    <div class="field">
+        <label>用户名 <span class="req">*</span></label>
+        <input type="text" disabled placeholder="预览占位">
+    </div>
+    <div class="field">
+        <label>密码 <span class="req">*</span></label>
+        <input type="text" disabled placeholder="预览占位">
+    </div>
+    <button class="btn" disabled>{{ appearance.button_text|default:"提交" }}</button>
+    {% if appearance.footer_text %}
+    <div class="footer">{{ appearance.footer_text }}</div>
+    {% endif %}
+</div>
+<script>
+// 背景与主题色（由预览接口解析后的生效值驱动）
+(function () {
+    var appearance = {
+        theme_color: "{{ appearance.theme_color|escapejs }}",
+        background: "{{ appearance.background|escapejs }}"
+    };
+    if (appearance.theme_color) {
+        document.documentElement.style.setProperty("--brand-color", appearance.theme_color);
+    }
+    var bg = appearance.background || "";
+    if (bg) {
+        if (/^(https:\/\/|data:image\/)/.test(bg)) {
+            document.body.style.backgroundImage = "linear-gradient(rgba(255,255,255,.55),rgba(255,255,255,.55)),url(\"" + bg.replace(/"/g, "%22") + "\")";
+            document.body.style.backgroundSize = "cover";
+            document.body.style.backgroundPosition = "center";
+        } else {
+            document.body.style.background = bg;
+        }
+    }
+})();
+</script>
+</body>
+</html>

@@ -77,11 +77,11 @@ unified_auth/
 >    - 搭项目骨架、模块划分、表结构、认证中间件 → `document/统一账号识别服务-实现计划_v1.0.md`
 >    - 企业微信扫码登录 / 手机号获取 → `document/企业微信登录集成设计文档_v1.1.md`
 >    - 开放 API 回调 / Webhook → `document/回调模块实施计划（独立模块）_v1.0.md`
->    - 超级管理员后台 → `document/超级管理员后台与全模块完整设计文档_v1.5.md`
+>    - 超级管理员后台 → `document/超级管理员后台与全模块完整设计文档_v1.7.md`
 >    - 写测试 / 压测 → `document/统一账号识别服务-系统测试计划_v1.0.md`
 > 3. **不要**直接凭 README 的目录结构或代码注释就动手，必须先进入对应设计文档理解业务边界与数据模型。
 >
-> 另外：如果你只是要**对接 API**（调用接口、查入参出参），走另一条路由：[`document/archive/AI_API_ROUTING_GUIDE_v1.0.md`](document/archive/AI_API_ROUTING_GUIDE_v1.0.md)。
+> 另外：如果你只是要**对接 API**（调用接口、查入参出参），直接查阅第六章「API 清单路由」，从 [`document/apis/`](document/apis/) 目录的 5 份清单文档中按 URL 前缀选择对应子清单。
 
 ***
 
@@ -123,10 +123,10 @@ DB_NAME=db.sqlite3
 JWT_SECRET_KEY=dev-jwt-secret
 
 # 超级管理员账户
-SUPERADMIN_ACCOUNTS=[{"username":"admin","password":"admin123"}]
+SUPERADMIN_ACCOUNTS=[{"username":"admin","password":"1C5G7JI@adD2"}]
 
 # 初始化管理员密码
-ADMIN_INIT_PASSWORD=admin123
+ADMIN_INIT_PASSWORD=admin123456
 ```
 
 ### 4. 初始化数据库
@@ -181,28 +181,74 @@ DB_PORT=3306
 | 配置组        | 环境变量                                                                                                     | 说明                                                         |
 | ---------- | -------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
 | **Django** | `DJANGO_SECRET_KEY`                                                                                      | Django 密钥（生产环境务必修改）                                        |
-| <br />     | `DJANGO_DEBUG`                                                                                           | 调试模式（生产环境设为 False）                                         |
-| <br />     | `ALLOWED_HOSTS`                                                                                          | 允许的主机名，逗号分隔                                                |
+|            | `DJANGO_DEBUG`                                                                                           | 调试模式（生产环境设为 False）                                         |
+|            | `ALLOWED_HOSTS`                                                                                          | 允许的主机名，逗号分隔                                                |
 | **数据库**    | `DB_ENGINE`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_HOST`, `DB_PORT`                                   | 数据库连接信息                                                    |
 | **JWT**    | `JWT_SECRET_KEY`                                                                                         | JWT 签名密钥（生产环境务必修改）                                         |
-| <br />     | `JWT_ACCESS_TOKEN_EXPIRE_MINUTES`                                                                        | Access Token 有效期（默认 120 分钟）                                |
-| <br />     | `JWT_REFRESH_TOKEN_EXPIRE_DAYS`                                                                          | Refresh Token 有效期（默认 30 天）                                 |
+|            | `JWT_ACCESS_TOKEN_EXPIRE_MINUTES`                                                                        | Access Token 有效期（默认 120 分钟）                                |
+|            | `JWT_REFRESH_TOKEN_EXPIRE_DAYS`                                                                          | Refresh Token 有效期（默认 30 天）                                 |
 | **超级管理员**  | `SUPERADMIN_ACCOUNTS`                                                                                    | JSON 数组格式，如 `[{"username":"admin","password":"admin123"}]` |
 | **邮件服务**   | `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`, `EMAIL_USE_TLS`, `EMAIL_FROM_NAME` | SMTP 邮件发送配置                                                |
 | **短信服务**   | `SMS_PROVIDER`, `SMS_ACCESS_KEY_ID`, `SMS_ACCESS_KEY_SECRET`, `SMS_SIGN_NAME`, `SMS_TEMPLATE_CODE`       | 阿里云短信配置                                                    |
 | **安全策略**   | `PASSWORD_MIN_LENGTH`                                                                                    | 密码最小长度（默认 8）                                               |
-| <br />     | `PASSWORD_MUST_HAVE_DIGIT`                                                                               | 密码必须包含数字                                                   |
-| <br />     | `PASSWORD_MUST_HAVE_UPPER`                                                                               | 密码必须包含大写字母                                                 |
-| <br />     | `ACCOUNT_LOCKOUT_THRESHOLD`                                                                              | 登录锁定阈值（默认 5 次）                                             |
-| <br />     | `ACCOUNT_LOCKOUT_MINUTES`                                                                                | 锁定时长（默认 30 分钟）                                             |
+|            | `PASSWORD_MUST_HAVE_DIGIT`                                                                               | 密码必须包含数字                                                   |
+|            | `PASSWORD_MUST_HAVE_UPPER`                                                                               | 密码必须包含大写字母                                                 |
+|            | `ACCOUNT_LOCKOUT_THRESHOLD`                                                                              | 登录锁定阈值（默认 5 次）                                             |
+|            | `ACCOUNT_LOCKOUT_MINUTES`                                                                                | 锁定时长（默认 30 分钟）                                             |
 | **限流**     | `RATE_LIMIT_IP_DEFAULT`                                                                                  | IP 级限流（默认 60 次/分钟）                                         |
-| <br />     | `RATE_LIMIT_APP_DEFAULT`                                                                                 | AppKey 级限流（默认 1000 次/分钟）                                   |
+|            | `RATE_LIMIT_APP_DEFAULT`                                                                                 | AppKey 级限流（默认 1000 次/分钟）                                   |
 
 ***
 
-## 三、部署指南
+## 三、打包发布
 
-### 3.1 Docker 部署（推荐）
+项目通过打包脚本生成部署包，脚本位于 `scripts/package.py`（工作区根目录下执行）。
+
+### 3.1 执行打包
+
+```bash
+# 在工作区根目录执行
+python scripts/package.py
+```
+
+### 3.2 打包内容
+
+| 内容 | 来源 | 打包位置 |
+|---|---|---|
+| 工程代码 | `code/unified_auth/`（含 `*.py/*.md/*.html/*.js/*.sql/.env.example` 等） | `code/dist/` 按原目录结构 |
+| 路由文档 | `document/apis/` 下 5 份 API 清单（无版本号、始终最新版）+ `DEVELOPMENT_ROUTING_GUIDE_v1.0.md` + `管理员后台操作手册` | `code/dist/document/` |
+| 主入口 README | 工作区根目录 `README.md` | `code/dist/README.md` |
+| 部署说明 | 脚本自动生成 | `code/dist/UPDATE_NOTES.txt` |
+
+**自动排除**：`tests/`、`__pycache__`、`.git`、`node_modules`、`.env`、`db_init.sql`、接口调试临时文件等；其余设计文档（需求规格、实现计划、企业微信设计等）仅保留在本地 `document/`，不进入部署包。
+
+**迁移检测**：脚本自动扫描 `apps/*/migrations/` 下的迁移文件并写入 UPDATE_NOTES.txt，提醒部署时执行 `python manage.py migrate`。
+
+### 3.3 打包产物
+
+| 产物 | 路径 | 说明 |
+|---|---|---|
+| 部署目录 | `code/dist/` | 可直接上传到服务器替换旧版本 |
+| 发布压缩包 | `output/unified_auth_<YYYY-MM-DD>.zip` | 每次打包覆盖当日同名包 |
+| 打包日志 | `log/package/<YYYY-MM-DD>.log` | 记录拷贝明细与跳过的文档 |
+
+### 3.4 上线步骤（详见 UPDATE_NOTES.txt）
+
+1. 备份现有数据库与 `.env` 配置
+2. 停止服务
+3. 用 `code/dist/` 内容替换服务器代码目录（`.env` 不在包内，不会被覆盖）
+4. 如有迁移文件：`python manage.py migrate`
+5. 启动服务
+
+### 3.5 部署后 AI 对接
+
+`code/dist/` 内已包含 README 与 `document/apis/` 全部 API 清单，AI Agent 在服务器上可直接按 README 第六章「API 清单路由」找到权威接口定义。
+
+***
+
+## 四、部署指南
+
+### 4.1 Docker 部署（推荐）
 
 #### 构建并启动
 
@@ -236,7 +282,7 @@ docker-compose logs -f
 4. 收集静态文件
 5. 通过 `entrypoint.sh` 执行：迁移 → 初始化数据 → 收集静态文件 → 启动 Gunicorn
 
-### 3.2 手动部署（Linux）
+### 4.2 手动部署（Linux）
 
 ```bash
 # 1. 安装系统依赖
@@ -299,7 +345,7 @@ ln -s /etc/nginx/sites-available/unified_auth /etc/nginx/sites-enabled/
 nginx -t && systemctl reload nginx
 ```
 
-### 3.3 环境变量清单（生产环境必改项）
+### 4.3 环境变量清单（生产环境必改项）
 
 | 变量                     | 说明        | 建议值                                   |
 | ---------------------- | --------- | ------------------------------------- |
@@ -311,7 +357,7 @@ nginx -t && systemctl reload nginx
 | `SUPERADMIN_ACCOUNTS`  | 超管账户      | 设置强密码                                 |
 | `CORS_ALLOWED_ORIGINS` | 允许的跨域来源   | 前端域名列表                                |
 
-### 3.4 生产环境安全检查清单
+### 4.4 生产环境安全检查清单
 
 - [ ] `DJANGO_DEBUG=False`
 - [ ] `DJANGO_SECRET_KEY` 改为随机密钥
@@ -323,7 +369,7 @@ nginx -t && systemctl reload nginx
 - [ ] 定期备份数据库
 - [ ] 开启 Gunicorn 访问日志
 
-### 3.5 宝塔面板部署指南
+### 4.5 宝塔面板部署指南
 
 以下步骤适用于使用宝塔 Linux 面板（BT Panel）部署本项目的场景。
 
@@ -517,7 +563,7 @@ server {
 
 ***
 
-## 四、管理命令
+## 五、管理命令
 
 ### 初始化基础数据
 
@@ -566,132 +612,53 @@ python manage.py test
 
 ***
 
-## 五、API 概览
+## 六、API 清单路由
 
-> **🤖 给 AI Agent 的强指令（对接本服务前必读）**
->
+> 本 README **不包含任何 API 明细列表**。所有接口的权威定义统一由 `document/apis/` 目录下的 API 清单文档提供（文件名不带版本号，始终为最新版；历史版本在 `document/archive/`）。
+> 完整模块设计背景见 [超级管理员后台与全模块完整设计文档_v1.7.md](document/超级管理员后台与全模块完整设计文档_v1.7.md)。
+
+### 6.1 API 清单目录
+
+| 清单文档 | 覆盖 URL 前缀 | 适用读者 |
+|---|---|---|
+| [API_01_AUTH.md](document/apis/API_01_AUTH.md) | `/api/v1/auth/*` | App / H5 客户端开发者（登录、短信、社交登录、改密、强制改密策略） |
+| [API_02_OPEN.md](document/apis/API_02_OPEN.md) | `/api/v1/open/*` | 第三方应用服务端（AppKey+Signature 签名对接、用户管理开放接口） |
+| [API_03_ADMIN.md](document/apis/API_03_ADMIN.md) | `/api/v1/admin/*` | 租户管理员、管理后台前端（用户/应用/角色/部门/标签/审计/短信/邀请码/补全码） |
+| [API_04_SUPERADMIN.md](document/apis/API_04_SUPERADMIN.md) | `/api/v1/superadmin/*` | 超级管理员（租户管理、模拟模式、全局报表） |
+| [API_05_PUBLIC.md](document/apis/API_05_PUBLIC.md) | `/api/v1/public/*` 及公开页面 | 扫码页面对接、集成测试（邀请码注册、资料补全码、短链） |
+
+### 6.2 给 AI Agent 的强指令（对接本服务前必读）
+
 > 如果你是 AI Agent（包括但不限于 Cursor / Trae / 各类 Coding Agent）即将对接本服务，请**严格遵守**以下顺序：
 >
-> 1. **先打开主路由文档** [`document/archive/AI_API_ROUTING_GUIDE_v1.0.md`](document/archive/AI_API_ROUTING_GUIDE_v1.0.md)。
-> 2. 在主路由文档的"主分类索引"中，根据调用者身份 + URL 前缀，跳到对应的子路由文档：
->    - 终端用户登录/资料 → `document/apis/API_01_AUTH_v1.0.md`
->    - 外部应用签名对接 → `document/apis/API_02_OPEN_v1.0.md`
->    - 企业管理后台 → `document/apis/API_03_ADMIN_v1.0.md`
->    - 平台超级管理员 → `document/apis/API_04_SUPERADMIN_v1.0.md`
-> 3. **不要**直接凭本 README 的概览表回答接口细节，必须进入子文档查看入参、出参、错误码与示例。
->
-> 本节概览表仅作为人类读者的快速索引；AI 对接的权威入口是主路由文档。
+> 1. **根据调用者身份 + URL 前缀**，从上方 5.1 清单目录中选择对应清单文档。
+> 2. **只以清单文档为权威**，查看其中的入参、出参、认证方式、错误码与示例。
+> 3. **不要**凭本 README 或训练记忆回答接口细节；README 不维护 API 列表。
 
-### 5.1 客户端认证 API `/api/v1/auth/`
+### 6.3 认证方式速记
 
-| 方法    | 路径                   | 功能               | 认证方式          |
-| ----- | -------------------- | ---------------- | ------------- |
-| POST  | `/login`             | 密码登录             | 无             |
-| POST  | `/sms/send`          | 发送短信验证码          | 无             |
-| POST  | `/sms/verify`        | 校验短信验证码          | 无             |
-| POST  | `/sms/login`         | 短信验证码登录          | 无             |
-| POST  | `/sms/send/pwd`      | 发送改密验证码          | Access Token  |
-| POST  | `/social/login`      | 社交登录             | 无             |
-| POST  | `/wechat/login`      | 微信小程序登录          | 无             |
-| POST  | `/token/refresh`     | 刷新 Token         | Refresh Token |
-| POST  | `/logout`            | 登出               | Access Token  |
-| GET   | `/me`                | 获取当前用户信息         | Access Token  |
-| PUT   | `/me`                | 修改用户信息           | Access Token  |
-| PATCH | `/me/password`       | 修改密码（原密码校验）      | Access Token  |
-| POST  | `/me/password/reset` | 短信验证码重置密码（无需原密码） | Access Token  |
-| GET   | `/me/profile`        | 获取用户资料           | Access Token  |
-| PUT   | `/me/profile`        | 更新用户资料           | Access Token  |
+仅用于快速判断该读哪份清单，具体规则以清单文档为准：
 
-### 5.2 开放 API `/api/v1/open/`
-
-通过 AppKey/AppSecret 签名认证，提供用户管理系统对接接口。
-
-| 方法    | 路径                         | 功能                    | 权限码                   |
-| ----- | -------------------------- | --------------------- | --------------------- |
-| POST  | `/verify_token`            | 验证用户 Token            | `token:verify`        |
-| GET   | `/users`                   | 查询用户列表                | `user:read`           |
-| GET   | `/users/<id>`              | 获取用户详情                | `user:read`           |
-| POST  | `/users`                   | 创建用户                  | `user:create`         |
-| PUT   | `/users/<id>`              | 修改用户信息                | `user:update`         |
-| PATCH | `/users/<id>/status`       | 启用/禁用用户               | `user:update`         |
-| POST  | `/check_permission`        | 检查用户权限                | `permission:check`    |
-| GET   | `/user/profile/by_token`   | 通过Token获取用户资料         | `user:profile:read`   |
-| PUT   | `/user/profile/by_token`   | 通过Token修改用户资料         | `user:profile:update` |
-| GET   | `/wechat/access_token`     | 获取微信AccessToken（自动缓存） | `wechat:access_token` |
-| POST  | `/wechat/get_phone_number` | 获取微信用户手机号             | `wechat:phone`        |
-
-> 开放 API 通过中间件自动实现租户数据隔离，每个应用只能操作所属租户的数据。
-
-### 5.3 企业管理后台 API `/api/v1/admin/`
-
-需要管理员登录 Token（`is_staff=True`）。
-
-| 方法             | 路径                                     | 功能         |
-| -------------- | -------------------------------------- | ---------- |
-| GET            | `/stats`                               | 仪表盘统计      |
-| GET            | `/recent-activities`                   | 最近操作动态     |
-| GET            | `/stats/login-trend`                   | 登录趋势       |
-| GET            | `/stats/login-distribution`            | 登录方式分布     |
-| GET            | `/stats/user-growth`                   | 用户增长趋势     |
-| GET            | `/stats/user-type-distribution`        | 用户类型分布     |
-| GET            | `/stats/active-users`                  | 活跃用户统计     |
-| GET/POST       | `/users`                               | 用户列表/创建    |
-| GET/PUT/DELETE | `/users/<id>`                          | 用户详情/编辑/删除 |
-| PATCH          | `/users/<id>/status`                   | 用户状态切换     |
-| POST           | `/users/<id>/reset-password`           | 重置密码       |
-| GET/PUT        | `/users/<id>/roles`                    | 用户角色管理     |
-| GET/PUT        | `/users/<id>/profile`                  | 用户资料管理     |
-| GET/POST       | `/applications`                        | 应用列表/创建    |
-| GET/PUT        | `/applications/<id>`                   | 应用详情/编辑    |
-| PATCH          | `/applications/<id>/status`            | 应用状态切换     |
-| POST           | `/applications/<id>/regenerate-secret` | 重新生成密钥     |
-| GET            | `/applications/<id>/permissions`       | 应用权限配置     |
-| GET            | `/applications/<id>/api-stats`         | 应用API调用统计  |
-| GET/POST       | `/roles`                               | 角色列表/创建    |
-| GET/PUT        | `/roles/<id>`                          | 角色详情/编辑    |
-| GET            | `/departments`                         | 部门列表（树形）   |
-| GET/POST       | `/departments`                         | 部门创建       |
-| GET/PUT/DELETE | `/departments/<id>`                    | 部门管理       |
-| GET/POST       | `/users/import`                        | 用户导入       |
-| GET            | `/users/export`                        | 用户导出       |
-| GET            | `/audit-logs`                          | 审计日志列表     |
-| GET            | `/audit-logs/export`                   | 审计日志导出     |
-| GET            | `/permissions`                         | 权限列表       |
-
-### 5.4 超级管理员 API `/api/v1/superadmin/`
-
-需要超级管理员身份（`is_superuser=True`）。
-
-| 方法             | 路径                                 | 功能        |
-| -------------- | ---------------------------------- | --------- |
-| GET            | `/global-stats`                    | 平台总览统计    |
-| GET/POST       | `/tenants`                         | 租户列表/创建   |
-| GET/PUT/DELETE | `/tenants/<id>`                    | 租户管理      |
-| GET            | `/audit-logs`                      | 全局审计日志    |
-| GET            | `/audit-logs/export`               | 审计日志导出    |
-| GET            | `/api-stats`                       | 全局API调用统计 |
-| GET            | `/platform-config`                 | 全局配置查看    |
-| POST           | `/impersonate/<tenant_id>`         | 模拟进入租户    |
-| POST           | `/impersonate/exit`                | 退出模拟模式    |
-| GET            | `/stats/tenant-growth`             | 租户增长趋势    |
-| GET            | `/stats/tenant-activity-ranking`   | 租户活跃度排行   |
-| GET            | `/stats/global-user-growth`        | 全局用户增长    |
-| GET            | `/stats/global-login-trend`        | 全局登录趋势    |
-| GET            | `/stats/global-login-distribution` | 全局登录分布    |
-| GET            | `/stats/app-call-ranking`          | 应用调用排行    |
+| 你的身份 | 前缀 | 认证方式 |
+|---|---|---|
+| App/H5 终端用户 | `/api/v1/auth/` | URL 参数 `?access_token=<应用级Token>`（+ 用户 Token） |
+| 第三方应用服务端 | `/api/v1/open/` | Header `X-App-Key/X-Timestamp/X-Signature` 或 URL access_token |
+| 租户管理员 | `/api/v1/admin/` | Header `Authorization: Bearer <后台登录Token>` |
+| 超级管理员 | `/api/v1/superadmin/` | 同上，且需 `is_superuser=True` |
+| 匿名扫码用户 | `/api/v1/public/` | 码即凭证，无需登录（IP 限流保护） |
 
 ***
 
-## 六、中间件架构
+## 七、中间件架构
 
-### 6.1 执行顺序
+### 7.1 执行顺序
 
 ```
 请求 → RateLimitMiddleware → AppAuthenticationMiddleware → TokenAuthenticationMiddleware
      → AdminAuthenticationMiddleware → PermissionMiddleware → AuditLogMiddleware → 视图
 ```
 
-### 6.2 各中间件职责
+### 7.2 各中间件职责
 
 | 中间件                             | 路由范围             | 职责                                              |
 | ------------------------------- | ---------------- | ----------------------------------------------- |
@@ -704,7 +671,7 @@ python manage.py test
 
 ***
 
-## 七、测试
+## 八、测试
 
 ### 运行所有测试
 
@@ -728,7 +695,7 @@ pytest tests/test_gateway.py -v
 
 ***
 
-## 八、常见问题
+## 九、常见问题
 
 ### Q: 启动后访问管理后台出现 403？
 

@@ -18,6 +18,23 @@ class Tenant(models.Model):
     sms_sign_name = models.CharField(max_length=64, null=True, blank=True, verbose_name="短信签名")
     sms_template_code = models.CharField(max_length=64, null=True, blank=True, verbose_name="短信模板编码")
 
+    # 邀请注册页品牌自定义（留空则使用默认样式与企业名称）
+    invite_brand_name = models.CharField(max_length=128, blank=True, default="", verbose_name="邀请页品牌名称")
+    invite_welcome = models.CharField(max_length=255, blank=True, default="", verbose_name="邀请页欢迎语")
+    invite_theme_color = models.CharField(max_length=16, blank=True, default="", verbose_name="邀请页主题色")
+    invite_logo = models.TextField(blank=True, default="", verbose_name="邀请页 Logo（图片 URL 或 data URI）")
+    invite_background = models.TextField(blank=True, default="", verbose_name="邀请页背景（图片 URL/data URI 或 #RRGGBB）")
+    invite_footer_text = models.CharField(max_length=100, blank=True, default="", verbose_name="邀请页页脚文案")
+
+    # 邀请注册页字段与文案配置（null 表示使用系统默认）
+    invite_fields = CompatibleJSONField(
+        null=True, blank=True, verbose_name="邀请注册默认字段",
+        help_text='形如 [{"key": "real_name", "required": true}]，null 表示使用系统默认',
+    )
+    invite_submit_text = models.CharField(max_length=32, blank=True, default="", verbose_name="注册按钮文案")
+    invite_success_text = models.CharField(max_length=255, blank=True, default="", verbose_name="注册成功提示")
+    invite_agreement = models.CharField(max_length=255, blank=True, default="", verbose_name="协议勾选文案")
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -102,6 +119,7 @@ class User(AbstractBaseUser, PermissionsMixin):
         verbose_name="角色",
     )
     status = models.SmallIntegerField(choices=STATUS_CHOICES, default=1, verbose_name="状态")
+    must_change_password = models.BooleanField(default=False, verbose_name="须强制修改密码")
     last_login_at = models.DateTimeField(null=True, blank=True)
     is_staff = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)

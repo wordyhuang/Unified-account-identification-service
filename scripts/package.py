@@ -1,4 +1,5 @@
 import os
+import fnmatch
 import shutil
 import zipfile
 import datetime
@@ -9,19 +10,20 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 CODE_DIR = BASE_DIR / "code" / "unified_auth"
 DOC_DIR = BASE_DIR / "document"
 DIST_DIR = BASE_DIR / "dist"
-LOG_DIR = BASE_DIR / "scripts" / "package"
+OUT_DIR = BASE_DIR / "output"
+LOG_DIR = BASE_DIR / "log" / "package"
 
-# 打包时只拷贝路由文档（开发路由主文档 + API 路由主文档 + 4 个 API 子文档）
+# 打包时只拷贝 AI 对接路由文档：开发路由主文档 + document/apis/ 下 5 份无版本号 API 清单（始终最新版）
+# + 管理员后台操作手册（部署运维使用）
 # 不拷贝 document/ 下的其他设计文档（需求规格、实现计划、企业微信设计等仅留本地开发用）
 ROUTE_DOCS = [
     DOC_DIR / "archive" / "DEVELOPMENT_ROUTING_GUIDE_v1.0.md",
-    DOC_DIR / "archive" / "AI_API_ROUTING_GUIDE_v1.0.md",
-    DOC_DIR / "archive" / "管理员后台操作手册_v1.0.md",
-    DOC_DIR / "archive" / "审计报告_超级管理员后台与全模块完整设计文档_v1.5_20261017.md",
-    DOC_DIR / "apis" / "API_01_AUTH_v1.0.md",
-    DOC_DIR / "apis" / "API_02_OPEN_v1.0.md",
-    DOC_DIR / "apis" / "API_03_ADMIN_v1.0.md",
-    DOC_DIR / "apis" / "API_04_SUPERADMIN_v1.0.md",
+    DOC_DIR / "管理员后台操作手册_v1.1.md",
+    DOC_DIR / "apis" / "API_01_AUTH.md",
+    DOC_DIR / "apis" / "API_02_OPEN.md",
+    DOC_DIR / "apis" / "API_03_ADMIN.md",
+    DOC_DIR / "apis" / "API_04_SUPERADMIN.md",
+    DOC_DIR / "apis" / "API_05_PUBLIC.md",
 ]
 
 INCLUDE_PATTERNS = [
@@ -68,6 +70,15 @@ EXCLUDE_FILES = [
     "*.egg-info",
     ".DS_Store",
     "Thumbs.db",
+    # 接口调试请求体与临时脚本（历史遗留，不得进入部署包）
+    "admin_login*.json",
+    "login_req*.json",
+    "refresh_req.json",
+    "token_req.json",
+    "check_user.py",
+    # 过时的初始化 SQL 与误命名的 SQLite 库
+    "db_init.sql",
+    "unified_auth",
 ]
 
 
@@ -86,7 +97,7 @@ def setup_logging(log_file_path):
 def should_include_file(file_path):
     file_name = file_path.name
     for pattern in EXCLUDE_FILES:
-        if file_name.endswith(pattern.replace("*", "")) or file_name == pattern.replace("*", ""):
+        if fnmatch.fnmatch(file_name, pattern):
             return False
     return True
 
@@ -251,7 +262,8 @@ def main():
         
         generate_update_notes(DIST_DIR, migrations, today)
         
-        zip_path = BASE_DIR / f"unified_auth_{today}.zip"
+        OUT_DIR.mkdir(parents=True, exist_ok=True)
+        zip_path = OUT_DIR / f"unified_auth_{today}.zip"
         if zip_path.exists():
             zip_path.unlink()
             logging.info(f"Removed existing zip: {zip_path}")

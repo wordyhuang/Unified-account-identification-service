@@ -5,7 +5,10 @@
 
 {% block head %}
 <style>
-  .stat-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 12px; margin-bottom: 12px; }
+  .page-tips { margin-bottom: 12px; }
+  .page-card { margin-bottom: 12px; }
+  .page-card:last-child { margin-bottom: 0; }
+  .stat-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 12px; }
   .stat-card { background: var(--el-bg-color); border: 1px solid var(--el-border-color-lighter); border-radius: 8px; padding: 16px; }
   .stat-card .stat-label { color: var(--el-text-color-secondary); font-size: 13px; margin-bottom: 8px; }
   .stat-card .stat-value { font-size: 26px; font-weight: 600; line-height: 1.2; }
@@ -26,8 +29,11 @@
 
 {% block content %}
 <div v-loading="loading">
+  <wd-tips type="box" class="page-tips">全局概览汇总平台内租户、用户与应用的运行指标，用于平台运营巡检；租户明细请进入租户管理页面。</wd-tips>
+
   <!-- 全局指标卡 -->
-  <div class="stat-grid">
+  <wd-panel shadow="never" class="page-card" title="平台指标">
+    <div class="stat-grid">
     <div class="stat-card">
       <div class="stat-label">租户总数</div>
       <div class="stat-value">[[ stats.total_tenants || 0 ]]</div>
@@ -63,13 +69,13 @@
       <div class="stat-value">[[ ratio(stats.active_apps, stats.total_apps) ]]%</div>
       <div class="stat-sub">正常应用占比</div>
     </div>
-  </div>
+    </div>
+  </wd-panel>
 
   <el-row :gutter="12" class="panel-row">
     <!-- 全局登录趋势 -->
     <el-col :span="12">
-      <el-card shadow="never">
-        <template #header><span>近 7 天全局登录趋势</span></template>
+      <wd-panel shadow="never" class="page-card" title="近 7 天全局登录趋势">
         <div class="chart-wrap" v-if="loginTrend.length">
           <div class="chart-legend">
             <span><i style="background: var(--el-color-primary)"></i>登录总数</span>
@@ -87,12 +93,11 @@
           </svg>
         </div>
         <div v-else class="empty-tip">暂无数据</div>
-      </el-card>
+      </wd-panel>
     </el-col>
     <!-- 全局登录方式分布 -->
     <el-col :span="12">
-      <el-card shadow="never">
-        <template #header><span>全局登录方式分布</span></template>
+      <wd-panel shadow="never" class="page-card" title="全局登录方式分布">
         <template v-if="distList.length">
           <div v-for="item in distList" :key="item.label" class="dist-item">
             <span class="dist-label">[[ item.label ]]</span>
@@ -101,15 +106,14 @@
           </div>
         </template>
         <div v-else class="empty-tip">暂无数据</div>
-      </el-card>
+      </wd-panel>
     </el-col>
   </el-row>
 
   <el-row :gutter="12" class="panel-row">
     <!-- 全局用户增长 -->
     <el-col :span="12">
-      <el-card shadow="never">
-        <template #header><span>近 30 天全局用户增长（当前总量 [[ userGrowthTotal ]]）</span></template>
+      <wd-panel shadow="never" class="page-card" :title="'近 30 天全局用户增长（当前总量 ' + userGrowthTotal + '）'">
         <div class="chart-wrap" v-if="userGrowth.length">
           <svg viewBox="0 0 560 160" style="width: 100%; height: 160px">
             <polyline :points="linePoints(userGrowth, 'new_users', 560, 140)" fill="none"
@@ -117,12 +121,11 @@
           </svg>
         </div>
         <div v-else class="empty-tip">暂无数据</div>
-      </el-card>
+      </wd-panel>
     </el-col>
     <!-- 租户活跃排行 -->
     <el-col :span="12">
-      <el-card shadow="never">
-        <template #header><span>租户活跃排行（近 30 天活跃用户 Top 10）</span></template>
+      <wd-panel shadow="never" class="page-card" title="租户活跃排行（近 30 天活跃用户 Top 10）">
         <el-table :data="activityRanking" size="small" max-height="220">
           <el-table-column type="index" label="#" width="50" align="center" ></el-table-column>
           <el-table-column prop="tenant_name" label="租户" min-width="120" show-overflow-tooltip ></el-table-column>
@@ -131,13 +134,12 @@
           </el-table-column>
           <el-table-column prop="app_count" label="应用数" width="80" align="right" ></el-table-column>
         </el-table>
-      </el-card>
+      </wd-panel>
     </el-col>
   </el-row>
 
   <!-- 租户一览 -->
-  <el-card shadow="never">
-    <template #header><span>租户一览</span></template>
+  <wd-panel shadow="never" class="page-card" title="租户一览">
     <el-table :data="stats.tenant_stats || []" size="small" max-height="360">
       <el-table-column prop="name" label="租户名称" min-width="130" show-overflow-tooltip ></el-table-column>
       <el-table-column prop="slug" label="Slug" min-width="110" show-overflow-tooltip>
@@ -154,7 +156,7 @@
         <template #default="{ row }">[[ fmtTime(row.created_at) ]]</template>
       </el-table-column>
     </el-table>
-  </el-card>
+  </wd-panel>
 </div>
 {% endblock %}
 
