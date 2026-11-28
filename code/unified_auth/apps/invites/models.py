@@ -112,3 +112,44 @@ class ProfileCompletionCode(models.Model):
 
     def __str__(self):
         return f"CompletionCode:{self.short_code}({self.mode})"
+
+
+class WechatBindCode(models.Model):
+    """微信绑定码：管理员生成后发给用户，用于将微信账号绑定到指定用户。
+
+    mode=single：绑定具体用户；mode=shared：多人通用，配合 max_uses 限制使用次数。
+    第一版仅提供管理端生成/启停/作废，实际绑定核销接口后续接入。
+    """
+    MODE_CHOICES = (
+        ("single", "单人绑定"),
+        ("shared", "多人通用"),
+    )
+    STATUS_CHOICES = (
+        (1, "启用"),
+        (0, "停用"),
+    )
+
+    tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE, verbose_name="所属企业")
+    user = models.ForeignKey(
+        User, on_delete=models.CASCADE, null=True, blank=True,
+        verbose_name="绑定用户（单人模式）",
+    )
+    code = models.CharField(max_length=32, unique=True, editable=False, verbose_name="绑定码")
+    short_code = models.CharField(max_length=16, unique=True, editable=False, verbose_name="短码")
+    mode = models.CharField(max_length=10, choices=MODE_CHOICES, default="single", verbose_name="模式")
+    max_uses = models.PositiveIntegerField(null=True, blank=True, verbose_name="使用次数上限")
+    used_count = models.PositiveIntegerField(default=0, verbose_name="已使用次数")
+    expires_at = models.DateTimeField(null=True, blank=True, verbose_name="有效期至")
+    status = models.SmallIntegerField(choices=STATUS_CHOICES, default=1, verbose_name="状态")
+    remark = models.CharField(max_length=255, null=True, blank=True, verbose_name="备注")
+    created_by = models.CharField(max_length=64, null=True, blank=True, verbose_name="创建人")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "wechat_bind_code"
+        verbose_name = "微信绑定码"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"WechatBindCode:{self.short_code}({self.mode})"

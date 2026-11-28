@@ -1,0 +1,1094 @@
+{% extends "admin_panel/base.html" %}
+{% load static %}
+
+{% block title %}码管理{% endblock %}
+
+{% block head %}
+<style>
+  .page-flex { margin-bottom: 0; }
+  .tips-row { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 12px; }
+  .tips-row .page-tips { flex: 1; margin-bottom: 0; }
+  .toolbar-row { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
+  .toolbar-row .search-input { width: 220px; }
+  .toolbar-spacer { flex: 1; }
+  /* 卡片流 */
+  .card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 12px; }
+  .code-card { border: 1px solid var(--el-border-color-lighter); border-radius: 10px; padding: 14px 16px; background: #fff; display: flex; flex-direction: column; gap: 10px; transition: box-shadow .2s, border-color .2s; }
+  .code-card:hover { box-shadow: var(--el-box-shadow-light); border-color: var(--el-color-primary-light-5); }
+  .card-head { display: flex; align-items: center; gap: 8px; }
+  .type-badge { font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 4px; color: #fff; }
+  .type-badge.type-invite { background: var(--el-color-primary); }
+  .type-badge.type-completion { background: var(--el-color-success); }
+  .type-badge.type-wechat { background: var(--el-color-warning); }
+  .short-code { font-family: monospace; font-size: 14px; font-weight: 600; margin-left: auto; }
+  .expired-tag { color: var(--el-color-danger); font-size: 12px; }
+  .meta-grid { display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; font-size: 12.5px; line-height: 1.6; }
+  .meta-label { color: var(--el-text-color-secondary); white-space: nowrap; }
+  .meta-value { color: var(--el-text-color-primary); word-break: break-all; }
+  .meta-value.dim { color: var(--el-text-color-secondary); }
+  .field-labels { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .card-foot { margin-top: auto; padding-top: 8px; border-top: 1px dashed var(--el-border-color-lighter); display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .card-created { color: var(--el-text-color-secondary); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .card-ops { display: flex; gap: 6px; flex-shrink: 0; }
+  .pager-row { display: flex; justify-content: flex-end; margin-top: 14px; }
+  .field-list { width: 100%; }
+  .field-row { display: flex; align-items: center; justify-content: space-between; padding: 2px 0; }
+  .field-hint { color: var(--el-text-color-secondary); font-size: 12px; line-height: 1.5; margin-top: 4px; }
+  .code-text { font-family: monospace; font-size: 12px; word-break: break-all; }
+  .link-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+  .link-row .el-input { flex: 1; }
+  .brand-logo-preview { max-width: 180px; max-height: 60px; border: 1px solid var(--el-border-color); border-radius: 6px; padding: 4px; background: #fff; }
+  .brand-logo-empty { color: var(--el-text-color-secondary); font-size: 12px; }
+  .appearance-preview-frame { width: 100%; height: 380px; border: 1px solid var(--el-border-color); border-radius: 8px; background: #fff; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-flex">
+<div class="tips-row">
+  <wd-tips type="box" class="page-tips">统一管理三类凭证码：注册邀请码用于自助注册；资料补全码用于引导用户补全资料；微信绑定码用于将微信账号绑定到指定用户（绑定核销接口后续接入）。</wd-tips>
+  <el-button v-if="codeType !== 'wechat'" size="default" @click="openBrand">页面外观</el-button>
+</div>
+
+<div class="toolbar-row">
+  <el-radio-group v-model="codeType" @change="onTypeChange">
+    <el-radio-button value="invite">注册邀请码</el-radio-button>
+    <el-radio-button value="completion">资料补全码</el-radio-button>
+    <el-radio-button value="wechat">微信绑定码</el-radio-button>
+  </el-radio-group>
+  <el-input v-model="search" class="search-input" placeholder="搜索短码 / 备注 / 用户名" clearable @input="onSearchInput"></el-input>
+  <el-select v-model="statusFilter" style="width: 110px" @change="onFilterChange">
+    <el-option label="全部状态" value=""></el-option>
+    <el-option label="启用" value="1"></el-option>
+    <el-option label="停用" value="0"></el-option>
+  </el-select>
+  <div class="toolbar-spacer"></div>
+  <el-button size="default" type="primary" @click="openCreate">生成[[ typeLabel(codeType) ]]</el-button>
+</div>
+
+<wd-panel shadow="never" class="page-card">
+  <div v-loading="loading">
+    <div v-if="items.length" class="card-grid">
+      <div v-for="item in items" :key="item.id" class="code-card">
+        <div class="card-head">
+          <span class="type-badge" :class="'type-' + codeType">[[ typeLabel(codeType) ]]</span>
+          <el-tag size="small" :type="item.status === 1 ? 'success' : 'danger'">[[ item.status === 1 ? '启用' : '停用' ]]</el-tag>
+          <span v-if="isExpired(item)" class="expired-tag">已过期</span>
+          <span class="short-code">[[ item.short_code ]]</span>
+          <el-button link type="primary" size="small" @click="copyText(item.short_code)">复制</el-button>
+        </div>
+
+        <div class="meta-grid">
+          <!-- 邀请码 -->
+          <template v-if="codeType === 'invite'">
+            <span class="meta-label">用户类型</span>
+            <span class="meta-value">[[ item.user_type === 'internal' ? '内部用户' : '外部游客' ]]</span>
+            <span class="meta-label">手机白名单</span>
+            <span class="meta-value" :class="{ dim: !item.allowed_phones || !item.allowed_phones.length }">
+              [[ item.allowed_phones && item.allowed_phones.length ? item.allowed_phones.length + ' 个' : '不限' ]]
+            </span>
+            <span class="meta-label">注册页</span>
+            <span class="meta-value" :class="{ dim: item.registration_mode !== 'app' }">
+              [[ item.registration_mode === 'app' ? (item.app_name || '接入应用') : '内置' ]]
+            </span>
+            <span class="meta-label">备注</span>
+            <span class="meta-value" :class="{ dim: !item.remark }">[[ item.remark || '-' ]]</span>
+          </template>
+          <!-- 补全码 -->
+          <template v-else-if="codeType === 'completion'">
+            <span class="meta-label">模式</span>
+            <span class="meta-value">[[ item.mode === 'shared' ? '多人通用' : '单人绑定' ]]</span>
+            <span class="meta-label">关联用户</span>
+            <span class="meta-value" :class="{ dim: !item.username }">[[ item.username || '-' ]]</span>
+            <span class="meta-label">补全字段</span>
+            <span class="meta-value field-labels">[[ (item.field_labels || []).join('、') || '-' ]]</span>
+            <span class="meta-label" v-if="item.mode === 'single'">允许多次</span>
+            <span class="meta-value" v-if="item.mode === 'single'">[[ item.allow_repeated ? '是' : '否' ]]</span>
+            <span class="meta-label">备注</span>
+            <span class="meta-value dim">-</span>
+          </template>
+          <!-- 微信绑定码 -->
+          <template v-else>
+            <span class="meta-label">模式</span>
+            <span class="meta-value">[[ item.mode === 'shared' ? '多人通用' : '单人绑定' ]]</span>
+            <span class="meta-label">绑定用户</span>
+            <span class="meta-value" :class="{ dim: !item.username }">[[ item.username || '-' ]]</span>
+            <span class="meta-label">备注</span>
+            <span class="meta-value" :class="{ dim: !item.remark }">[[ item.remark || '-' ]]</span>
+          </template>
+          <span class="meta-label">使用次数</span>
+          <span class="meta-value">[[ item.used_count ]] / [[ item.max_uses || '不限' ]]</span>
+          <span class="meta-label">有效期至</span>
+          <span class="meta-value" :class="{ dim: !item.expires_at }">
+            [[ item.expires_at ? fmtTime(item.expires_at) : '永久有效' ]][[ isExpired(item) ? '（已过期）' : '' ]]
+          </span>
+        </div>
+
+        <div class="card-foot">
+          <span class="card-created">[[ item.created_by || '-' ]] · [[ fmtTime(item.created_at) ]]</span>
+          <div class="card-ops">
+            <el-button v-if="codeType !== 'wechat'" size="small" type="primary" plain @click="openQr(item)">二维码</el-button>
+            <el-button size="small" @click="openEdit(item)">编辑</el-button>
+            <el-button size="small" :type="item.status === 1 ? 'warning' : 'success'" plain @click="onToggleStatus(item)">[[ item.status === 1 ? '停用' : '启用' ]]</el-button>
+            <el-button size="small" type="danger" plain @click="onDelete(item)">删除</el-button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <el-empty v-else-if="!loading" description="暂无[[ typeLabel(codeType) ]]记录"></el-empty>
+    <div class="pager-row" v-if="total > 0">
+      <el-pagination v-model:current-page="page" v-model:page-size="pageSize" :total="total"
+        :page-sizes="[10, 20, 50]" layout="total, sizes, prev, pager, next"
+        @current-change="loadItems" @size-change="onSizeChange"></el-pagination>
+    </div>
+  </div>
+</wd-panel>
+</div>
+
+<!-- 生成 / 编辑凭证码 -->
+<el-drawer v-model="createVisible" :title="(editId ? '编辑' : '生成') + typeLabel(codeType)" size="480px" destroy-on-close>
+  <el-tabs v-model="activeTab">
+    <el-tab-pane label="基本信息" name="basic">
+      <!-- 注册邀请码 -->
+      <el-form v-if="codeType === 'invite'" label-width="100px">
+        <el-form-item label="备注">
+          <el-input v-model="form.remark" placeholder="选填，便于识别用途" clearable ></el-input>
+        </el-form-item>
+        <el-form-item label="用户类型">
+          <el-radio-group v-model="form.user_type">
+            <el-radio value="external">外部用户</el-radio>
+            <el-radio value="internal">内部用户</el-radio>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item label="手机白名单">
+          <el-input v-model="form.allowed_phones_text" type="textarea" :rows="4"
+            placeholder="选填，每行一个手机号。留空表示不限制注册手机号" ></el-input>
+        </el-form-item>
+        <el-form-item label="使用次数上限">
+          <el-input-number v-model="form.max_uses" :min="1" :max="1000" style="width: 160px" ></el-input-number>
+          <span style="margin-left: 8px; color: var(--el-text-color-secondary); font-size: 12px">必填（1-1000），防刷强制限制</span>
+        </el-form-item>
+        <el-form-item label="有效期至">
+          <el-date-picker v-model="form.expires_at" type="datetime" placeholder="留空为永久有效"
+            value-format="YYYY-MM-DDTHH:mm:ss" style="width: 200px" ></el-date-picker>
+        </el-form-item>
+        <el-form-item label="注册页来源">
+          <el-radio-group v-model="form.source">
+            <el-radio value="builtin">UAIS 内置页</el-radio>
+            <el-radio value="app">接入应用</el-radio>
+          </el-radio-group>
+          <div v-if="form.source === 'app'" style="margin-top: 8px; width: 100%">
+            <el-select v-model="form.app_id" placeholder="选择本租户的接入应用" clearable style="width: 100%">
+              <el-option v-for="app in appOptions" :key="app.id" :label="app.name" :value="app.id"></el-option>
+            </el-select>
+            <div class="field-hint">短链将 302 到该应用配置的注册页地址</div>
+            <div v-if="form.user_type === 'internal' && selectedAppGroupMode()" style="margin-top: 12px">
+              <el-select v-model="form.auto_group_ids" multiple filterable
+                placeholder="选择注册后自动加入的用户组" style="width: 100%">
+                <el-option v-for="g in selectedAppGroups()" :key="g.id" :label="g.name" :value="g.id"></el-option>
+              </el-select>
+              <div class="field-hint">
+                该应用已启用用户组准入：内部用户注册成功后自动加入所选组，未配置将无法保存。
+              </div>
+            </div>
+          </div>
+        </el-form-item>
+        <el-form-item label="注册字段">
+          <el-radio-group v-model="form.fields_mode">
+            <el-radio value="inherit">继承租户默认</el-radio>
+            <el-radio value="custom">自定义</el-radio>
+          </el-radio-group>
+          <div v-if="form.fields_mode === 'custom'" class="field-list">
+            <div v-for="f in inviteFields" :key="f.key" class="field-row">
+              <el-checkbox v-model="form.fieldKeys" :value="f.key">[[ f.label ]]</el-checkbox>
+              <el-switch v-model="form.fieldRequired[f.key]" :disabled="form.fieldKeys.indexOf(f.key) === -1"
+                active-text="必填" size="default" ></el-switch>
+            </div>
+            <div class="field-hint">用户名、密码恒必填；启用手机白名单时手机号强制必填</div>
+          </div>
+        </el-form-item>
+      </el-form>
+      <!-- 资料补全码 -->
+      <el-form v-else-if="codeType === 'completion'" label-width="100px">
+        <el-form-item label="模式">
+          <el-radio-group v-model="form.mode" :disabled="!!editId">
+            <el-radio value="single">单人</el-radio>
+            <el-radio value="shared">多人通用</el-radio>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item v-if="form.mode === 'single'" label="绑定用户">
+          <el-select v-model="form.user_id" filterable remote clearable :remote-method="searchUsers"
+            :loading="userSearching" placeholder="输入用户名 / 手机号搜索" style="width: 100%">
+            <el-option v-for="u in userOptions" :key="u.id" :label="u.username + (u.phone ? '（' + u.phone + '）' : '')" :value="u.id" ></el-option>
+          </el-select>
+        </el-form-item>
+        <el-form-item label="补全字段">
+          <wd-checkbox-list v-model="form.fields"
+            api="/api/v1/admin/profile-completion-fields" text-prop="label" value-prop="name" ></wd-checkbox-list>
+        </el-form-item>
+        <el-form-item v-if="form.mode === 'single'" label="允许多次">
+          <el-switch v-model="form.allow_repeated" ></el-switch>
+          <span style="margin-left: 8px; color: var(--el-text-color-secondary); font-size: 12px">关闭时提交一次后补全码自动失效</span>
+        </el-form-item>
+        <el-form-item v-if="form.mode === 'shared' || form.allow_repeated" label="使用次数上限">
+          <el-input-number v-model="form.max_uses" :min="1" :max="100000" style="width: 160px" ></el-input-number>
+          <el-button size="default" link @click="form.max_uses = null" style="margin-left: 8px">不限</el-button>
+        </el-form-item>
+        <el-form-item label="有效期至">
+          <el-date-picker v-model="form.expires_at" type="datetime" placeholder="留空为永久有效"
+            value-format="YYYY-MM-DDTHH:mm:ss" style="width: 200px" ></el-date-picker>
+        </el-form-item>
+      </el-form>
+      <!-- 微信绑定码 -->
+      <el-form v-else label-width="100px">
+        <el-form-item label="模式">
+          <el-radio-group v-model="form.mode" :disabled="!!editId">
+            <el-radio value="single">单人绑定</el-radio>
+            <el-radio value="shared">多人通用</el-radio>
+          </el-radio-group>
+          <div class="field-hint">单人绑定：一个码绑定一位用户；多人通用：多人可复用，配合次数上限</div>
+        </el-form-item>
+        <el-form-item v-if="form.mode === 'single'" label="绑定用户">
+          <el-select v-model="form.user_id" filterable remote clearable :remote-method="searchUsers"
+            :loading="userSearching" placeholder="输入用户名 / 手机号搜索" style="width: 100%">
+            <el-option v-for="u in userOptions" :key="u.id" :label="u.username + (u.phone ? '（' + u.phone + '）' : '')" :value="u.id" ></el-option>
+          </el-select>
+        </el-form-item>
+        <el-form-item label="使用次数上限">
+          <el-input-number v-model="form.max_uses" :min="1" :max="100000" style="width: 160px" ></el-input-number>
+          <el-button size="default" link @click="form.max_uses = null" style="margin-left: 8px">不限</el-button>
+        </el-form-item>
+        <el-form-item label="有效期至">
+          <el-date-picker v-model="form.expires_at" type="datetime" placeholder="留空为永久有效"
+            value-format="YYYY-MM-DDTHH:mm:ss" style="width: 200px" ></el-date-picker>
+        </el-form-item>
+        <el-form-item label="备注">
+          <el-input v-model="form.remark" placeholder="选填，便于识别用途" clearable ></el-input>
+        </el-form-item>
+        <div class="field-hint" style="padding-left: 100px">
+          微信绑定码当前仅提供生成与启停管理，用户侧绑定核销接口后续接入
+        </div>
+      </el-form>
+    </el-tab-pane>
+    <el-tab-pane v-if="codeType !== 'wechat'" label="页面外观" name="appearance">
+      <el-form label-width="100px">
+        <el-form-item label="外观模式">
+          <el-radio-group v-model="form.appearance_mode" @change="refreshAppearancePreview">
+            <el-radio value="default">使用默认外观</el-radio>
+            <el-radio value="custom">自定义外观</el-radio>
+          </el-radio-group>
+          <div class="field-hint">自定义模式下，留空的项将使用租户默认外观（逐项回退）</div>
+        </el-form-item>
+        <template v-if="form.appearance_mode === 'custom'">
+          <el-form-item label="Logo">
+            <div>
+              <img v-if="form.appearance.logo" :src="form.appearance.logo" class="brand-logo-preview" alt="logo 预览">
+              <div v-else class="brand-logo-empty">留空则使用租户默认 Logo</div>
+              <div style="margin-top: 8px">
+                <input ref="codeLogoInput" type="file" accept="image/*" style="display: none" @change="onCodeLogoPick">
+                <el-button size="default" @click="$refs.codeLogoInput.click()">选择图片</el-button>
+                <el-button v-if="form.appearance.logo" size="default" type="danger" plain @click="form.appearance.logo = ''">移除</el-button>
+              </div>
+            </div>
+          </el-form-item>
+          <el-form-item label="页面标题">
+            <el-input v-model="form.appearance.title" maxlength="50" show-word-limit
+              placeholder="留空则使用默认标题" clearable ></el-input>
+          </el-form-item>
+          <el-form-item label="欢迎语">
+            <el-input v-model="form.appearance.welcome" maxlength="100" show-word-limit
+              placeholder="留空则使用租户默认欢迎语" clearable ></el-input>
+          </el-form-item>
+          <el-form-item label="主题色">
+            <el-color-picker v-model="form.appearance.theme_color" ></el-color-picker>
+            <span style="margin-left: 8px; color: var(--el-text-color-secondary); font-size: 12px">
+              影响按钮与输入框聚焦色，留空使用默认色
+            </span>
+          </el-form-item>
+          <el-form-item label="背景">
+            <div style="display: flex; gap: 8px; align-items: center; width: 100%">
+              <el-color-picker v-model="form.appearance.background" ></el-color-picker>
+              <el-input v-model="form.appearance.background" placeholder="#RRGGBB 或 https 图片链接" clearable ></el-input>
+            </div>
+            <div class="field-hint">背景图优先于背景色；留空则使用租户默认背景</div>
+          </el-form-item>
+          <el-form-item label="按钮文字">
+            <el-input v-model="form.appearance.button_text" maxlength="20" show-word-limit
+              placeholder="留空则使用默认按钮文案" clearable ></el-input>
+          </el-form-item>
+          <el-form-item label="页脚文案">
+            <el-input v-model="form.appearance.footer_text" maxlength="100" show-word-limit
+              placeholder="留空则不显示页脚" clearable ></el-input>
+          </el-form-item>
+          <el-form-item label="实时预览">
+            <div style="width: 100%">
+              <iframe v-if="previewUrl" :src="previewUrl" class="appearance-preview-frame"
+                title="外观预览" sandbox="allow-same-origin"></iframe>
+              <div v-else class="brand-logo-empty">输入外观配置后自动生成预览…</div>
+              <div style="margin-top: 8px" v-if="previewUrl">
+                <el-button size="default" type="primary" plain @click="openFullPreview">新窗口打开完整预览</el-button>
+              </div>
+            </div>
+          </el-form-item>
+        </template>
+      </el-form>
+    </el-tab-pane>
+  </el-tabs>
+  <template #footer>
+    <el-button size="default" @click="createVisible = false">取消</el-button>
+    <el-button size="default" type="primary" :loading="saving" @click="onSubmit">[[ editId ? '保存' : '生成' ]]</el-button>
+  </template>
+</el-drawer>
+
+<!-- 链接与二维码 -->
+<el-dialog v-model="qrVisible" :title="typeLabel(codeType) + '链接与二维码'" width="420px" destroy-on-close @opened="renderQr">
+  <div class="link-row">
+    <el-input :model-value="qrRow ? qrRow.short_url : ''" readonly ></el-input>
+    <el-button size="default" type="primary" plain @click="copyText(qrRow.short_url)">复制</el-button>
+  </div>
+  <div class="link-row">
+    <el-input :model-value="qrRow ? qrRow.page_url : ''" readonly ></el-input>
+    <el-button size="default" plain @click="copyText(qrRow.page_url)">复制</el-button>
+  </div>
+  <div style="display: flex; justify-content: center; padding: 8px 0">
+    <div id="code-qr-box"></div>
+  </div>
+</el-dialog>
+
+<!-- 页面默认外观（租户级） -->
+<el-drawer v-model="brandVisible" :title="brandType === 'invite' ? '邀请注册页外观' : '资料补全页外观'" size="420px" destroy-on-close>
+  <el-form label-width="90px" size="default" v-loading="brandLoading">
+    <!-- 邀请注册页 -->
+    <template v-if="brandType === 'invite'">
+      <el-form-item label="品牌名称">
+        <el-input v-model="brandForm.brand_name" maxlength="128" show-word-limit
+          placeholder="留空则使用默认「账号邀请注册」" clearable ></el-input>
+      </el-form-item>
+      <el-form-item label="欢迎语">
+        <el-input v-model="brandForm.welcome" maxlength="60" show-word-limit
+          placeholder="显示在邀请信息上方，如「欢迎加入某某团队」" clearable ></el-input>
+      </el-form-item>
+      <el-form-item label="主题色">
+        <el-color-picker v-model="brandForm.theme_color" ></el-color-picker>
+        <span style="margin-left: 8px; color: var(--el-text-color-secondary); font-size: 12px">
+          影响注册按钮与输入框聚焦色，留空使用默认靛蓝
+        </span>
+      </el-form-item>
+      <el-form-item label="Logo">
+        <div>
+          <img v-if="brandForm.logo" :src="brandForm.logo" class="brand-logo-preview" alt="logo 预览">
+          <div v-else class="brand-logo-empty">未上传，使用默认信封图标</div>
+          <div style="margin-top: 8px">
+            <input ref="logoInput" type="file" accept="image/*" style="display: none" @change="onBrandLogoPick">
+            <el-button size="default" @click="$refs.logoInput.click()">选择图片</el-button>
+            <el-button v-if="brandForm.logo" size="default" type="danger" plain @click="brandForm.logo = ''">移除</el-button>
+          </div>
+        </div>
+      </el-form-item>
+      <el-divider content-position="left">注册字段（默认）</el-divider>
+      <div class="field-list" style="padding-left: 8px">
+        <div v-for="f in inviteFields" :key="f.key" class="field-row">
+          <el-checkbox v-model="brandFieldKeys" :value="f.key">[[ f.label ]]</el-checkbox>
+          <el-switch v-model="brandFieldRequired[f.key]" :disabled="brandFieldKeys.indexOf(f.key) === -1"
+            active-text="必填" size="default" ></el-switch>
+        </div>
+        <div class="field-hint">本租户默认采集字段，未单独覆盖的邀请码全部继承；用户名、密码恒必填</div>
+      </div>
+      <el-divider content-position="left">页面文案</el-divider>
+      <el-form-item label="按钮文案">
+        <el-input v-model="brandForm.submit_text" maxlength="32" show-word-limit
+          placeholder="留空使用默认「注册账号」" clearable ></el-input>
+      </el-form-item>
+      <el-form-item label="成功提示">
+        <el-input v-model="brandForm.success_text" maxlength="255" show-word-limit
+          placeholder="留空使用默认文案，可用 {username} 占位" clearable ></el-input>
+      </el-form-item>
+      <el-form-item label="协议文案">
+        <el-input v-model="brandForm.agreement" maxlength="255" show-word-limit
+          placeholder="留空则不显示协议勾选" clearable ></el-input>
+      </el-form-item>
+      <el-divider content-position="left">默认页面外观</el-divider>
+      <el-form-item label="背景">
+        <div style="display: flex; gap: 8px; align-items: center; width: 100%">
+          <el-color-picker v-model="brandForm.background" ></el-color-picker>
+          <el-input v-model="brandForm.background" placeholder="#RRGGBB 或 https 图片链接" clearable ></el-input>
+        </div>
+        <div class="field-hint">本租户所有注册页的默认背景，邀请码可单独覆盖；背景图优先于背景色</div>
+      </el-form-item>
+      <el-form-item label="页脚文案">
+        <el-input v-model="brandForm.footer_text" maxlength="100" show-word-limit
+          placeholder="留空则不显示页脚，如「XX 科技 · 内部系统」" clearable ></el-input>
+      </el-form-item>
+    </template>
+    <!-- 资料补全页 -->
+    <template v-else>
+      <el-form-item label="Logo">
+        <div>
+          <img v-if="brandForm.logo" :src="brandForm.logo" class="brand-logo-preview" alt="logo 预览">
+          <div v-else class="brand-logo-empty">未上传，使用默认图标</div>
+          <div style="margin-top: 8px">
+            <input ref="logoInput" type="file" accept="image/*" style="display: none" @change="onBrandLogoPick">
+            <el-button size="default" @click="$refs.logoInput.click()">选择图片</el-button>
+            <el-button v-if="brandForm.logo" size="default" type="danger" plain @click="brandForm.logo = ''">移除</el-button>
+          </div>
+        </div>
+      </el-form-item>
+      <el-form-item label="页面标题">
+        <el-input v-model="brandForm.title" maxlength="50" show-word-limit
+          placeholder="留空则使用默认「资料补全」" clearable ></el-input>
+      </el-form-item>
+      <el-form-item label="欢迎语">
+        <el-input v-model="brandForm.welcome" maxlength="100" show-word-limit
+          placeholder="显示在表单上方，如「请完善以下资料」" clearable ></el-input>
+      </el-form-item>
+      <el-form-item label="主题色">
+        <el-color-picker v-model="brandForm.theme_color" ></el-color-picker>
+        <span style="margin-left: 8px; color: var(--el-text-color-secondary); font-size: 12px">留空使用默认色</span>
+      </el-form-item>
+      <el-form-item label="背景">
+        <div style="display: flex; gap: 8px; align-items: center; width: 100%">
+          <el-color-picker v-model="brandForm.background" ></el-color-picker>
+          <el-input v-model="brandForm.background" placeholder="#RRGGBB 或 https 图片链接" clearable ></el-input>
+        </div>
+        <div class="field-hint">背景图优先于背景色；留空使用默认背景</div>
+      </el-form-item>
+      <el-form-item label="按钮文字">
+        <el-input v-model="brandForm.button_text" maxlength="20" show-word-limit
+          placeholder="留空则使用默认「提交资料」" clearable ></el-input>
+      </el-form-item>
+      <el-form-item label="页脚文案">
+        <el-input v-model="brandForm.footer_text" maxlength="100" show-word-limit
+          placeholder="留空则不显示页脚" clearable ></el-input>
+      </el-form-item>
+      <div class="field-hint" style="padding-left: 90px">
+        该配置作用于本租户全部资料补全页；单个补全码的「页面外观」可再逐项覆盖
+      </div>
+    </template>
+  </el-form>
+  <template #footer>
+    <el-button size="default" @click="brandVisible = false">取消</el-button>
+    <el-button size="default" type="primary" :loading="brandSaving" @click="saveBrand">保存</el-button>
+  </template>
+</el-drawer>
+{% endblock %}
+
+{% block script %}
+<script src="{% static 'admin_panel/vendor/qrcode/qrcode.min.js' %}"></script>
+<script>
+var TYPE_META = {
+  invite: { label: '注册邀请码', api: '/api/v1/admin/invite-codes' },
+  completion: { label: '资料补全码', api: '/api/v1/admin/profile-completion-codes' },
+  wechat: { label: '微信绑定码', api: '/api/v1/admin/wechat-bind-codes' }
+};
+
+AdminUI.start('/admin-panel/code-center/', {
+  data: function () {
+    return {
+      codeType: 'invite',
+      search: '',
+      searchTimer: null,
+      statusFilter: '',
+      page: 1,
+      pageSize: 10,
+      total: 0,
+      items: [],
+      loading: false,
+
+      createVisible: false,
+      saving: false,
+      editId: null,
+      activeTab: 'basic',
+      previewUrl: '',
+      previewTimer: null,
+      form: {},
+      userOptions: [],
+      userSearching: false,
+
+      qrVisible: false,
+      qrRow: null,
+
+      brandVisible: false,
+      brandType: 'invite',
+      brandLoading: false,
+      brandSaving: false,
+      brandPreviewUrl: '',
+      brandPreviewTimer: null,
+      brandForm: {},
+      brandFieldKeys: [],
+      brandFieldRequired: {},
+
+      inviteFields: [],
+      appOptions: []
+    };
+  },
+  mounted: function () {
+    this.loadFieldRegistry();
+    this.loadApps();
+    this.loadItems();
+  },
+  methods: {
+    fmtTime: AdminUI.fmtTime,
+    typeLabel: function (type) {
+      return (TYPE_META[type] || {}).label || '';
+    },
+    isExpired: function (item) {
+      if (!item.expires_at) return false;
+      return new Date(item.expires_at).getTime() < Date.now();
+    },
+
+    /* ---------- 列表加载 ---------- */
+    loadItems: function () {
+      var self = this;
+      var meta = TYPE_META[this.codeType];
+      var qs = '?page=' + this.page + '&page_size=' + this.pageSize;
+      if (this.search) qs += '&search=' + encodeURIComponent(this.search.trim());
+      if (this.statusFilter !== '') qs += '&status=' + this.statusFilter;
+      this.loading = true;
+      WorkDesktop.request.get(meta.api + qs).then(function (res) {
+        if (res && res.success && res.data) {
+          self.items = res.data.items || res.data.list || [];
+          self.total = res.data.total || 0;
+        } else {
+          AdminUI.toastFail(res, '加载列表失败');
+        }
+      }).catch(function () {}).finally(function () {
+        self.loading = false;
+      });
+    },
+    onTypeChange: function () {
+      this.page = 1;
+      this.loadItems();
+    },
+    onSearchInput: function () {
+      var self = this;
+      if (this.searchTimer) clearTimeout(this.searchTimer);
+      this.searchTimer = setTimeout(function () {
+        self.page = 1;
+        self.loadItems();
+      }, 300);
+    },
+    onFilterChange: function () {
+      this.page = 1;
+      this.loadItems();
+    },
+    onSizeChange: function () {
+      this.page = 1;
+      this.loadItems();
+    },
+
+    /* ---------- 表单 ---------- */
+    emptyAppearance: function () {
+      return { logo: '', title: '', welcome: '', theme_color: '', background: '', button_text: '', footer_text: '' };
+    },
+    emptyForm: function (type) {
+      var base = {
+        mode: 'single', user_id: null, max_uses: null, expires_at: null, remark: '',
+        appearance_mode: 'default',
+        appearance: this.emptyAppearance()
+      };
+      if (type === 'invite') {
+        base.remark = '';
+        base.user_type = 'external';
+        base.allowed_phones_text = '';
+        base.max_uses = 10;
+        base.source = 'builtin';
+        base.app_id = null;
+        base.fields_mode = 'inherit';
+        base.fieldKeys = [];
+        base.fieldRequired = {};
+        base.auto_group_ids = [];
+      }
+      if (type === 'completion') {
+        base.fields = [];
+        base.allow_repeated = false;
+      }
+      return base;
+    },
+    openCreate: function () {
+      this.editId = null;
+      this.activeTab = 'basic';
+      this.previewUrl = '';
+      this.form = this.emptyForm(this.codeType);
+      this.userOptions = [];
+      this.createVisible = true;
+    },
+    openEdit: function (row) {
+      this.editId = row.id;
+      this.activeTab = 'basic';
+      this.previewUrl = '';
+      var appearance = row.appearance || null;
+      var form = this.emptyForm(this.codeType);
+      form.mode = row.mode;
+      form.user_id = row.user_id;
+      form.max_uses = row.max_uses;
+      form.expires_at = row.expires_at;
+      form.remark = row.remark || '';
+      form.appearance_mode = appearance ? 'custom' : 'default';
+      form.appearance = {
+        logo: (appearance && appearance.logo) || '',
+        title: (appearance && appearance.title) || '',
+        welcome: (appearance && appearance.welcome) || '',
+        theme_color: (appearance && appearance.theme_color) || '',
+        background: (appearance && appearance.background) || '',
+        button_text: (appearance && appearance.button_text) || '',
+        footer_text: (appearance && appearance.footer_text) || ''
+      };
+      if (this.codeType === 'invite') {
+        var keys = [];
+        var required = {};
+        (row.fields || []).forEach(function (f) {
+          keys.push(f.key);
+          required[f.key] = !!f.required;
+        });
+        form.user_type = row.user_type;
+        form.auto_group_ids = row.auto_group_ids || [];
+        form.allowed_phones_text = (row.allowed_phones || []).join('\n');
+        form.max_uses = row.max_uses || 10;
+        form.source = row.registration_mode === 'app' ? 'app' : 'builtin';
+        form.app_id = row.app_id || null;
+        form.fields_mode = row.fields === null || row.fields === undefined ? 'inherit' : 'custom';
+        form.fieldKeys = keys;
+        form.fieldRequired = required;
+      }
+      if (this.codeType === 'completion') {
+        form.fields = (row.fields || []).slice();
+        form.allow_repeated = !!row.allow_repeated;
+      }
+      this.userOptions = (form.mode === 'single' && row.user_id)
+        ? [{ id: row.user_id, username: row.username, phone: null }]
+        : [];
+      this.form = form;
+      this.createVisible = true;
+    },
+    searchUsers: function (query) {
+      var self = this;
+      if (!query || !query.trim()) {
+        return;
+      }
+      this.userSearching = true;
+      WorkDesktop.request.get('/api/v1/admin/users?page_size=20&search=' + encodeURIComponent(query.trim()))
+        .then(function (res) {
+          if (res && res.success && res.data && Array.isArray(res.data.users)) {
+            self.userOptions = res.data.users.map(function (u) {
+              return { id: u.id, username: u.username, phone: u.phone };
+            });
+          } else {
+            AdminUI.toastFail(res, '搜索用户失败');
+          }
+        }).catch(function () {}).finally(function () {
+          self.userSearching = false;
+        });
+    },
+
+    /* ---------- 码级外观 ---------- */
+    collectAppearance: function () {
+      var a = this.form.appearance;
+      var out = {};
+      ['logo', 'title', 'welcome', 'theme_color', 'background', 'button_text', 'footer_text'].forEach(function (key) {
+        var value = (a[key] || '').trim();
+        if (value) out[key] = value;
+      });
+      return out;
+    },
+    refreshAppearancePreview: function () {
+      var self = this;
+      if (this.previewTimer) clearTimeout(this.previewTimer);
+      this.previewTimer = setTimeout(function () {
+        if (self.activeTab !== 'appearance' || self.form.appearance_mode !== 'custom') return;
+        var payload = { page_type: self.codeType === 'invite' ? 'invite' : 'completion', appearance: self.collectAppearance() };
+        if (self.editId) payload.code_id = self.editId;
+        WorkDesktop.request.post('/api/v1/admin/invite-appearance/preview', payload).then(function (res) {
+          if (res && res.success && res.data) {
+            self.previewUrl = '/appearance-preview/' + res.data.preview_token;
+          }
+        }).catch(function () {});
+      }, 300);
+    },
+    openFullPreview: function () {
+      if (this.previewUrl) window.open(this.previewUrl, '_blank');
+    },
+    onCodeLogoPick: function (e) {
+      var self = this;
+      var file = e.target.files && e.target.files[0];
+      e.target.value = '';
+      if (!file) return;
+      if (!/^image\//.test(file.type)) {
+        ElementPlus.ElMessage.warning('请选择图片文件');
+        return;
+      }
+      var reader = new FileReader();
+      reader.onload = function () {
+        var img = new Image();
+        img.onload = function () {
+          var scale = Math.min(1, 360 / img.width, 120 / img.height);
+          var canvas = document.createElement('canvas');
+          canvas.width = Math.max(1, Math.round(img.width * scale));
+          canvas.height = Math.max(1, Math.round(img.height * scale));
+          canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+          self.form.appearance.logo = canvas.toDataURL('image/png');
+          self.refreshAppearancePreview();
+        };
+        img.onerror = function () {
+          ElementPlus.ElMessage.error('图片读取失败');
+        };
+        img.src = reader.result;
+      };
+      reader.readAsDataURL(file);
+    },
+
+    /* ---------- 提交 ---------- */
+    validateAppearance: function (appearance) {
+      if (appearance.theme_color && !/^#[0-9a-fA-F]{6}$/.test(appearance.theme_color)) {
+        ElementPlus.ElMessage.warning('主题色格式应为 #RRGGBB');
+        return false;
+      }
+      if (appearance.background && !/^#[0-9a-fA-F]{6}$/.test(appearance.background)
+        && !/^(https:\/\/|data:image\/)/.test(appearance.background)) {
+        ElementPlus.ElMessage.warning('背景应为 #RRGGBB 颜色或 https 图片链接');
+        return false;
+      }
+      return true;
+    },
+    collectFieldConfig: function (keys, requiredMap) {
+      return (keys || []).map(function (key) {
+        return { key: key, required: !!requiredMap[key] };
+      });
+    },
+    onSubmit: function () {
+      var self = this;
+      var f = this.form;
+      var type = this.codeType;
+      var meta = TYPE_META[type];
+      var appearancePayload = null;
+      if (type !== 'wechat' && f.appearance_mode === 'custom') {
+        var appearance = this.collectAppearance();
+        if (!this.validateAppearance(appearance)) return;
+        appearancePayload = appearance;
+      }
+      var payload;
+      if (type === 'invite') {
+        var phones = f.allowed_phones_text
+          ? f.allowed_phones_text.split(/\n+/).map(function (s) { return s.trim(); }).filter(function (s) { return s; })
+          : [];
+        for (var i = 0; i < phones.length; i++) {
+          if (!/^\d{1,20}$/.test(phones[i])) {
+            ElementPlus.ElMessage.warning('手机白名单格式错误：' + phones[i]);
+            return;
+          }
+        }
+        payload = {
+          remark: f.remark,
+          user_type: f.user_type,
+          allowed_phones: phones.length ? phones : null,
+          max_uses: f.max_uses,
+          expires_at: f.expires_at,
+          app_id: f.source === 'app' ? f.app_id : null,
+          auto_group_ids: (f.source === 'app' && f.user_type === 'internal') ? (f.auto_group_ids || []) : [],
+          fields: f.fields_mode === 'custom' ? this.collectFieldConfig(f.fieldKeys, f.fieldRequired) : null,
+          appearance: appearancePayload
+        };
+      } else if (type === 'completion') {
+        if (!f.fields.length) {
+          ElementPlus.ElMessage.warning('请至少勾选一个补全字段');
+          return;
+        }
+        if (this.editId) {
+          payload = { fields: f.fields, expires_at: f.expires_at, appearance: appearancePayload };
+          if (f.mode === 'single') {
+            payload.allow_repeated = f.allow_repeated;
+            if (f.user_id) payload.user_id = f.user_id;
+          }
+          if (f.max_uses) payload.max_uses = f.max_uses;
+        } else {
+          if (f.mode === 'single' && !f.user_id) {
+            ElementPlus.ElMessage.warning('单人模式必须绑定用户');
+            return;
+          }
+          payload = {
+            mode: f.mode,
+            fields: f.fields,
+            allow_repeated: f.mode === 'single' ? f.allow_repeated : false,
+            max_uses: (f.mode === 'shared' || f.allow_repeated) ? f.max_uses : null,
+            expires_at: f.expires_at,
+            appearance: appearancePayload
+          };
+          if (f.mode === 'single') payload.user_id = f.user_id;
+        }
+      } else {
+        if (this.editId) {
+          payload = { expires_at: f.expires_at, remark: f.remark };
+          if (f.max_uses) payload.max_uses = f.max_uses;
+          if (f.mode === 'single' && f.user_id) payload.user_id = f.user_id;
+        } else {
+          if (f.mode === 'single' && !f.user_id) {
+            ElementPlus.ElMessage.warning('单人绑定必须选择用户');
+            return;
+          }
+          payload = {
+            mode: f.mode,
+            user_id: f.mode === 'single' ? f.user_id : null,
+            max_uses: f.max_uses,
+            expires_at: f.expires_at,
+            remark: f.remark
+          };
+        }
+      }
+      var req = this.editId
+        ? WorkDesktop.request.patch(meta.api + '/' + this.editId, payload)
+        : WorkDesktop.request.post(meta.api, payload);
+      this.saving = true;
+      req.then(function (res) {
+        if (res && res.success) {
+          ElementPlus.ElMessage.success(self.editId ? '已保存' : (meta.label + '已生成'));
+          self.createVisible = false;
+          self.loadItems();
+        } else {
+          AdminUI.toastFail(res, self.editId ? '保存失败' : '生成失败');
+        }
+      }).catch(function () {}).finally(function () {
+        self.saving = false;
+      });
+    },
+    onToggleStatus: function (item) {
+      var self = this;
+      var target = item.status === 1 ? 0 : 1;
+      var text = target === 1 ? '启用' : '停用';
+      WorkDesktop.request.patch(TYPE_META[this.codeType].api + '/' + item.id, { status: target }).then(function (res) {
+        if (res && res.success) {
+          ElementPlus.ElMessage.success('已' + text);
+          self.loadItems();
+        } else {
+          AdminUI.toastFail(res, text + '失败');
+        }
+      }).catch(function () {});
+    },
+    onDelete: function (item) {
+      var self = this;
+      ElementPlus.ElMessageBox.confirm('确定删除' + this.typeLabel(this.codeType) + '「' + item.short_code + '」吗？删除后该码立即失效。', '删除' + this.typeLabel(this.codeType), {
+        type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消'
+      }).then(function () {
+        return WorkDesktop.request.delete(TYPE_META[self.codeType].api + '/' + item.id);
+      }).then(function (res) {
+        if (res && res.success) {
+          ElementPlus.ElMessage.success('已删除');
+          self.loadItems();
+        } else {
+          AdminUI.toastFail(res, '删除失败');
+        }
+      }).catch(function () {});
+    },
+
+    /* ---------- 二维码 ---------- */
+    openQr: function (item) {
+      this.qrRow = item;
+      this.qrVisible = true;
+    },
+    renderQr: function () {
+      var box = document.getElementById('code-qr-box');
+      if (!box || !this.qrRow) return;
+      box.innerHTML = '';
+      new QRCode(box, { text: this.qrRow.short_url, width: 180, height: 180, correctLevel: QRCode.CorrectLevel.M });
+    },
+    copyText: function (text) {
+      navigator.clipboard.writeText(text).then(function () {
+        ElementPlus.ElMessage.success('已复制');
+      }).catch(function () {
+        ElementPlus.ElMessage.error('复制失败，请手动选择复制');
+      });
+    },
+
+    /* ---------- 租户级默认外观 ---------- */
+    loadFieldRegistry: function () {
+      var self = this;
+      WorkDesktop.request.get('/api/v1/admin/invite-fields').then(function (res) {
+        if (res && res.success && res.data) self.inviteFields = res.data.items || [];
+      }).catch(function () {});
+    },
+    loadApps: function () {
+      var self = this;
+      WorkDesktop.request.get('/api/v1/admin/applications?page=1&page_size=100').then(function (res) {
+        if (res && res.success && res.data) self.appOptions = res.data.apps || [];
+      }).catch(function () {});
+    },
+    selectedAppGroups: function () {
+      var self = this;
+      var app = (this.appOptions || []).filter(function (a) { return a.id === self.form.app_id; })[0];
+      if (!app || !app.group_mode) return [];
+      return (app.group_ids || []).map(function (id, idx) {
+        return { id: id, name: (app.group_names || [])[idx] || ('组' + id) };
+      });
+    },
+    selectedAppGroupMode: function () {
+      return this.selectedAppGroups().length > 0;
+    },
+    applyBrandFields: function (fields) {
+      var list = fields === null || fields === undefined
+        ? [{ key: 'nickname', required: false }, { key: 'phone', required: false }]
+        : fields;
+      var keys = [];
+      var required = {};
+      (list || []).forEach(function (f) {
+        var key = typeof f === 'string' ? f : f.key;
+        keys.push(key);
+        required[key] = !!(f && f.required);
+      });
+      this.brandFieldKeys = keys;
+      this.brandFieldRequired = required;
+    },
+    openBrand: function () {
+      var self = this;
+      this.brandType = this.codeType;
+      this.brandVisible = true;
+      this.brandLoading = true;
+      this.brandPreviewUrl = '';
+      var api = this.brandType === 'invite' ? '/api/v1/admin/invite-brand' : '/api/v1/admin/completion-brand';
+      WorkDesktop.request.get(api).then(function (res) {
+        if (res && res.success && res.data) {
+          if (self.brandType === 'invite') {
+            self.brandForm = {
+              brand_name: res.data.brand_name || '',
+              welcome: res.data.welcome || '',
+              theme_color: res.data.theme_color || '',
+              logo: res.data.logo || '',
+              submit_text: res.data.submit_text || '',
+              success_text: res.data.success_text || '',
+              agreement: res.data.agreement || '',
+              background: res.data.background || '',
+              footer_text: res.data.footer_text || ''
+            };
+            self.applyBrandFields(res.data.fields);
+          } else {
+            var a = res.data.appearance || {};
+            self.brandForm = {
+              logo: a.logo || '', title: a.title || '', welcome: a.welcome || '',
+              theme_color: a.theme_color || '', background: a.background || '',
+              button_text: a.button_text || '', footer_text: a.footer_text || ''
+            };
+          }
+          self.refreshBrandPreview();
+        } else {
+          AdminUI.toastFail(res, '加载页面外观失败');
+        }
+      }).catch(function () {}).finally(function () {
+        self.brandLoading = false;
+      });
+    },
+    collectBrandAppearance: function () {
+      var f = this.brandForm;
+      var out = {};
+      ['logo', 'title', 'welcome', 'theme_color', 'background', 'button_text', 'footer_text'].forEach(function (key) {
+        var value = (f[key] || '').trim();
+        if (value) out[key] = value;
+      });
+      return out;
+    },
+    refreshBrandPreview: function () {
+      var self = this;
+      if (!this.brandVisible) return;
+      if (this.brandPreviewTimer) clearTimeout(this.brandPreviewTimer);
+      this.brandPreviewTimer = setTimeout(function () {
+        WorkDesktop.request.post('/api/v1/admin/invite-appearance/preview', {
+          page_type: self.brandType === 'invite' ? 'invite' : 'completion',
+          appearance: self.brandType === 'invite'
+            ? {
+                logo: self.brandForm.logo || '', welcome: self.brandForm.welcome || '',
+                theme_color: self.brandForm.theme_color || '', background: self.brandForm.background || '',
+                footer_text: self.brandForm.footer_text || ''
+              }
+            : self.collectBrandAppearance()
+        }).then(function (res) {
+          if (res && res.success && res.data) {
+            self.brandPreviewUrl = '/appearance-preview/' + res.data.preview_token;
+          }
+        }).catch(function () {});
+      }, 300);
+    },
+    openBrandFullPreview: function () {
+      if (this.brandPreviewUrl) window.open(this.brandPreviewUrl, '_blank');
+    },
+    onBrandLogoPick: function (e) {
+      var self = this;
+      var file = e.target.files && e.target.files[0];
+      e.target.value = '';
+      if (!file) return;
+      if (!/^image\//.test(file.type)) {
+        ElementPlus.ElMessage.warning('请选择图片文件');
+        return;
+      }
+      var reader = new FileReader();
+      reader.onload = function () {
+        var img = new Image();
+        img.onload = function () {
+          var scale = Math.min(1, 360 / img.width, 120 / img.height);
+          var canvas = document.createElement('canvas');
+          canvas.width = Math.max(1, Math.round(img.width * scale));
+          canvas.height = Math.max(1, Math.round(img.height * scale));
+          canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+          self.brandForm.logo = canvas.toDataURL('image/png');
+          self.refreshBrandPreview();
+        };
+        img.onerror = function () {
+          ElementPlus.ElMessage.error('图片读取失败');
+        };
+        img.src = reader.result;
+      };
+      reader.readAsDataURL(file);
+    },
+    saveBrand: function () {
+      var self = this;
+      if (this.brandForm.theme_color && !/^#[0-9a-fA-F]{6}$/.test(this.brandForm.theme_color)) {
+        ElementPlus.ElMessage.warning('主题色格式应为 #RRGGBB');
+        return;
+      }
+      if (this.brandForm.background && !/^#[0-9a-fA-F]{6}$/.test(this.brandForm.background)
+        && !/^(https:\/\/|data:image\/)/.test(this.brandForm.background)) {
+        ElementPlus.ElMessage.warning('背景应为 #RRGGBB 颜色或 https 图片链接');
+        return;
+      }
+      var payload;
+      if (this.brandType === 'invite') {
+        payload = {
+          brand_name: this.brandForm.brand_name,
+          welcome: this.brandForm.welcome,
+          theme_color: this.brandForm.theme_color || '',
+          logo: this.brandForm.logo || '',
+          fields: this.collectFieldConfig(this.brandFieldKeys, this.brandFieldRequired),
+          submit_text: this.brandForm.submit_text,
+          success_text: this.brandForm.success_text,
+          agreement: this.brandForm.agreement,
+          background: this.brandForm.background || '',
+          footer_text: this.brandForm.footer_text
+        };
+      } else {
+        payload = { appearance: this.collectBrandAppearance() };
+      }
+      var api = this.brandType === 'invite' ? '/api/v1/admin/invite-brand' : '/api/v1/admin/completion-brand';
+      this.brandSaving = true;
+      WorkDesktop.request.put(api, payload).then(function (res) {
+        if (res && res.success) {
+          ElementPlus.ElMessage.success('页面外观已保存');
+          self.brandVisible = false;
+        } else {
+          AdminUI.toastFail(res, '保存失败');
+        }
+      }).catch(function () {}).finally(function () {
+        self.brandSaving = false;
+      });
+    }
+  },
+  watch: {
+    'form.appearance': {
+      handler: function () { this.refreshAppearancePreview(); },
+      deep: true
+    },
+    activeTab: function (tab) {
+      if (tab === 'appearance') this.refreshAppearancePreview();
+    },
+    brandForm: {
+      handler: function () { this.refreshBrandPreview(); },
+      deep: true
+    }
+  }
+});
+</script>
+{% endblock %}

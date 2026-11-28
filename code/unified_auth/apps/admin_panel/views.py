@@ -214,7 +214,7 @@ def recent_activities(request):
 
 
 def _login_action_filter():
-    return {"action__in": ["auth.login", "sms_login", "social_login", "superadmin.login"]}
+    return {"action__in": ["auth.login", "admin.login", "sms_login", "social_login", "superadmin.login"]}
 
 
 def _login_trend_data(tenant_id, days):
@@ -222,7 +222,7 @@ def _login_trend_data(tenant_id, days):
     qs = AuditLog.objects.filter(**_login_action_filter())
     if tenant_id:
         qs = qs.filter(tenant_id=tenant_id)
-    start = datetime.now(tz.get_current_timezone()).date() - timedelta(days=days - 1)
+    start = tz.now().date() - timedelta(days=days - 1)
     qs = qs.filter(created_at__date__gte=start)
     return (
         qs.annotate(date=TruncDate("created_at"))
@@ -235,18 +235,27 @@ def _login_trend_data(tenant_id, days):
 @api_view(["GET"])
 def login_trend_view(request):
     days = _parse_days(request, 7)
-    data = _login_trend_data(request.tenant_id, days)
-    return Response(success({
-        "days": days,
-        "trend": [{"date": d["date"].isoformat(), "total": d["count"], "success": d["count"], "fail": 0} for d in data],
-    }))
+    data = list(_login_trend_data(request.tenant_id, days))
+    counts = {}
+    for item in data:
+        day = item["date"]
+        if isinstance(day, datetime):
+            day = day.date()
+        counts[str(day)] = item["count"]
+    start = tz.now().date() - timedelta(days=days - 1)
+    trend = []
+    for offset in range(days):
+        day = start + timedelta(days=offset)
+        count = counts.get(str(day), 0)
+        trend.append({"date": day.isoformat(), "total": count, "success": count, "fail": 0})
+    return Response(success({"days": days, "trend": trend}))
 
 
 @api_view(["GET"])
 def login_distribution_view(request):
     qs = AuditLog.objects.filter(**_login_action_filter(), tenant_id=request.tenant_id)
     data = qs.values("action").annotate(count=Count("id")).order_by("-count")
-    labels = {"auth.login": "密码登录", "sms_login": "短信登录", "social_login": "社交登录", "superadmin.login": "超管登录"}
+    labels = {"auth.login": "密码登录", "admin.login": "管理员登录", "sms_login": "短信登录", "social_login": "社交登录", "superadmin.login": "超管登录"}
     total = sum(d["count"] for d in data) or 1
     items = {}
     for d in data:
@@ -2499,7 +2508,7 @@ def superadmin_global_login_trend_view(request):
 def superadmin_global_login_distribution_view(request):
     qs = AuditLog.objects.filter(**_login_action_filter())
     data = qs.values("action").annotate(count=Count("id")).order_by("-count")
-    labels = {"auth.login": "密码登录", "sms_login": "短信登录", "social_login": "社交登录", "superadmin.login": "超管登录"}
+    labels = {"auth.login": "密码登录", "admin.login": "管理员登录", "sms_login": "短信登录", "social_login": "社交登录", "superadmin.login": "超管登录"}
     total = sum(d["count"] for d in data) or 1
     items = {}
     for d in data:

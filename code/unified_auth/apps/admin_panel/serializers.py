@@ -82,10 +82,10 @@ class AdminTenantSmsConfigSerializer(serializers.Serializer):
     sms_provider = serializers.ChoiceField(
         choices=["", "mock", "aliyun"], required=False, allow_null=True, default=""
     )
-    sms_access_key_id = serializers.CharField(max_length=256, required=False, allow_null=True)
-    sms_access_key_secret = serializers.CharField(max_length=512, required=False, allow_null=True)
-    sms_sign_name = serializers.CharField(max_length=64, required=False, allow_null=True)
-    sms_template_code = serializers.CharField(max_length=64, required=False, allow_null=True)
+    sms_access_key_id = serializers.CharField(max_length=256, required=False, allow_null=True, allow_blank=True)
+    sms_access_key_secret = serializers.CharField(max_length=512, required=False, allow_null=True, allow_blank=True)
+    sms_sign_name = serializers.CharField(max_length=64, required=False, allow_null=True, allow_blank=True)
+    sms_template_code = serializers.CharField(max_length=64, required=False, allow_null=True, allow_blank=True)
 
 
 class AdminAppStatusSerializer(serializers.Serializer):

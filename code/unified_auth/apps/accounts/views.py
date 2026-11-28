@@ -437,16 +437,36 @@ def social_login(request):
             return Response(error(ErrorCode.WECHAT_API_ERROR, data={"detail": str(e)}), status=400)
 
     with transaction.atomic():
+        # 策略①：同 provider + open_id 精确匹配（同一应用再次登录）
         social = SocialAccount.objects.filter(
             provider=provider, open_id=open_id
         ).first()
 
+        # 策略②：union_id 匹配。同一微信用户在不同应用（appid）下 open_id 不同，
+        # 但绑定到同一微信开放平台账号后 union_id 相同，据此归一到同一个用户
+        if social is None and union_id:
+            union_social = SocialAccount.objects.filter(union_id=union_id).first()
+            if union_social:
+                if union_social.user.status == 0:
+                    return Response(error(ErrorCode.USER_DISABLED), status=403)
+                social = union_social
+                # 将当前应用的 open_id 挂到已有用户名下，下次登录直接命中策略①
+                SocialAccount.objects.create(
+                    user=social.user,
+                    provider=provider,
+                    open_id=open_id,
+                    union_id=union_id,
+                    extra_data={"code": code, "app_key": app_key},
+                )
+
         if social:
+            # 命中已有账号，直接登录
             created = False
             user = social.user
             if user.status == 0:
                 return Response(error(ErrorCode.USER_DISABLED), status=403)
         else:
+            # 策略③：全新用户，创建账号并记录社交身份
             created = True
             tenant = Tenant.objects.first()
             if tenant is None:

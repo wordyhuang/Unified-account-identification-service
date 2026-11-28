@@ -25,10 +25,16 @@
        DataGrid height="fix" 以其直接父级（panel body）的当前高度计算，body 定高后 fix 才能正确生效，
        并随窗口尺寸、搜索面板收起/展开自动重算 */
     .page-flex { height: 100%; display: flex; flex-direction: column; }
-    .page-flex > .grid-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; margin-bottom: 0; }
-    .page-flex > .grid-panel .wd-panel__content,
-    .page-flex > .grid-panel .wd-panel__content-inner { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-    .page-flex > .grid-panel .wd-panel__body { flex: 1; min-height: 0; }
+    /* tab 页（page-flex > el-tabs）：把 tabs 中间层接入 flex 高度链，否则 pane 内 panel body 高度自适应，
+       DataGrid height="fix" 首算取到内容高度（首屏不占满，切 tab 后重算才正常） */
+    .page-flex > .el-tabs { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+    .page-flex > .el-tabs > .el-tabs__header { flex: none; }
+    .page-flex > .el-tabs > .el-tabs__content { flex: 1; min-height: 0; }
+    .page-flex > .el-tabs > .el-tabs__content > .el-tab-pane { height: 100%; display: flex; flex-direction: column; }
+    .page-flex .grid-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; margin-bottom: 0; }
+    .page-flex .grid-panel .wd-panel__content,
+    .page-flex .grid-panel .wd-panel__content-inner { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+    .page-flex .grid-panel .wd-panel__body { flex: 1; min-height: 0; }
     /* el-button-group：相邻按钮紧贴、仅两端保留圆角，兼容组内含 el-dropdown 触发器的情况 */
     .el-button-group { display: inline-flex; vertical-align: middle; }
     .el-button-group > .el-button + .el-button,

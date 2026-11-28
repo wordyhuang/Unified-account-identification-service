@@ -5,94 +5,265 @@
 
 {% block head %}
 <style>
-  .page-tips { margin-bottom: 12px; }
-  .page-card { margin-bottom: 12px; }
-  .page-card:last-child { margin-bottom: 0; }
-  .stat-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; }
-  .stat-card { background: var(--el-bg-color); border: 1px solid var(--el-border-color-lighter); border-radius: 8px; padding: 16px; }
-  .stat-card .stat-label { color: var(--el-text-color-secondary); font-size: 13px; margin-bottom: 8px; }
-  .stat-card .stat-value { font-size: 26px; font-weight: 600; line-height: 1.2; }
-  .stat-card .stat-sub { color: var(--el-text-color-secondary); font-size: 12px; margin-top: 6px; }
-  .panel-row { margin-bottom: 12px; }
-  .dist-item { display: flex; align-items: center; margin-bottom: 10px; }
-  .dist-item .dist-label { width: 90px; font-size: 13px; color: var(--el-text-color-regular); flex: none; }
-  .dist-item .dist-bar { flex: 1; height: 10px; background: var(--el-fill-color-light); border-radius: 5px; overflow: hidden; }
-  .dist-item .dist-bar > i { display: block; height: 100%; background: var(--el-color-primary); border-radius: 5px; }
-  .dist-item .dist-num { width: 110px; text-align: right; font-size: 12px; color: var(--el-text-color-secondary); flex: none; }
-  .chart-wrap { padding: 4px 0 0; }
+  /* ===== 顶部提示条 ===== */
+  .top-note { display: flex; align-items: center; gap: 8px; background: #f5f7fa; border: 1px solid var(--el-border-color-lighter);
+    border-radius: 8px; padding: 8px 14px; font-size: 12px; color: var(--el-text-color-secondary); margin-bottom: 12px; }
+  .top-note .right { margin-left: auto; }
+
+  /* ===== 主卡片 ===== */
+  .hero-card { display: flex; align-items: center; gap: 18px; background: #fff; border: 1px solid var(--el-border-color-lighter);
+    border-radius: 12px; padding: 18px 20px; margin-bottom: 12px; }
+  .hero-badge { width: 42px; height: 42px; border-radius: 10px; background: var(--el-color-primary-light-9);
+    color: var(--el-color-primary); display: flex; align-items: center; justify-content: center; font-size: 22px; flex: none; }
+  .hero-title { margin: 0; font-size: 20px; font-weight: 600; }
+  .hero-sub { margin-top: 4px; font-size: 12px; color: var(--el-text-color-secondary); }
+  .hero-progress { flex: 1; min-width: 220px; max-width: 380px; }
+  .progress-label { display: flex; justify-content: space-between; font-size: 12px; color: var(--el-text-color-secondary); margin-bottom: 6px; }
+  .bar { height: 8px; background: var(--el-fill-color-light); border-radius: 4px; overflow: hidden; }
+  .bar > i { display: block; height: 100%; background: var(--el-color-primary); border-radius: 4px; transition: width .4s; }
+  .hero-right { margin-left: auto; display: flex; align-items: center; gap: 12px; font-size: 12px; color: var(--el-text-color-secondary); flex: none; }
+
+  /* ===== 问候条 ===== */
+  .hello-strip { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 14px; background: #eef4ff; border: 1px solid #d6e4ff;
+    border-radius: 10px; padding: 10px 16px; margin-bottom: 12px; font-size: 13px; color: #303133; }
+  .hello-strip .links { margin-left: auto; display: flex; gap: 18px; font-size: 12px; }
+  .hello-strip .links a { color: var(--el-color-primary); text-decoration: none; }
+
+  /* ===== 通用区块（wd-panel） ===== */
+  div.wd-panel.dash-card { margin-bottom: 12px; }
+  .dash-row { row-gap: 12px; }
+  .dash-row + .dash-row { margin-top: 12px; }
+  .dash-row div.wd-panel.dash-card { margin-bottom: 0; }
+  .dash-card .wd-panel__title-icon { color: var(--el-color-primary); }
+  .dash-link { font-size: 12px; color: var(--el-color-primary); text-decoration: none; }
+  .empty-tip { color: var(--el-text-color-secondary); text-align: center; padding: 28px 0; font-size: 13px; }
+
+  /* ===== 今日核心工作 ===== */
+  .task-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .task-card { border: 1px solid var(--el-border-color-lighter); border-radius: 10px; padding: 14px 16px;
+    cursor: pointer; transition: border-color .2s, box-shadow .2s; background: #fff; }
+  .task-card:hover { border-color: var(--el-color-primary-light-5); box-shadow: 0 4px 14px rgba(22, 119, 255, .08); }
+  .task-top { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--el-text-color-secondary); margin-bottom: 8px; }
+  .task-index { font-size: 12px; color: var(--el-text-color-placeholder); }
+  .task-card h4 { margin: 0 0 10px; font-size: 14px; font-weight: 600; color: var(--el-text-color-primary); }
+  .task-meta { display: flex; align-items: center; font-size: 12px; color: var(--el-text-color-secondary); margin-top: 10px; }
+  .task-meta .tag { margin-left: auto; }
+
+  /* ===== 数据总览 ===== */
+  .kpi-grid { display: grid; grid-template-columns: repeat(3, 1fr); }
+  .kpi-item { padding: 14px 16px; border-right: 1px solid var(--el-border-color-lighter); border-bottom: 1px solid var(--el-border-color-lighter); }
+  .kpi-item:nth-child(3n) { border-right: none; }
+  .kpi-item:nth-child(n+4) { border-bottom: none; }
+  .kpi-label { font-size: 12px; color: var(--el-text-color-secondary); margin-bottom: 8px; }
+  .kpi-value { font-size: 24px; font-weight: 600; line-height: 1.1; color: var(--el-text-color-primary); }
+  .kpi-unit { margin-left: 4px; font-size: 12px; font-weight: 400; color: var(--el-text-color-secondary); }
+  .kpi-sub { display: flex; align-items: center; gap: 6px; margin-top: 8px; font-size: 12px; color: var(--el-text-color-secondary); }
+  .kpi-sub .spark { margin-left: auto; flex: none; }
+
+  /* ===== 异常提醒 ===== */
+  .alert-box { background: #fef0f0; border: 1px solid #fde2e2; color: #f56c6c; border-radius: 8px; padding: 10px 12px; font-size: 12px; line-height: 1.6; margin-bottom: 10px; }
+  .alert-item { display: flex; align-items: flex-start; gap: 8px; padding: 12px 0; border-bottom: 1px dashed var(--el-border-color-lighter); }
+  .alert-item:last-child { border-bottom: none; padding-bottom: 0; }
+  .alert-item .name { font-size: 13px; font-weight: 500; color: var(--el-text-color-primary); }
+  .alert-item .sub { font-size: 12px; color: var(--el-text-color-secondary); margin-top: 4px; line-height: 1.5; }
+  .alert-item .link { margin-left: auto; flex: none; font-size: 12px; color: var(--el-color-primary); text-decoration: none; }
+
+  /* ===== 图表 ===== */
   .chart-legend { display: flex; gap: 16px; font-size: 12px; color: var(--el-text-color-secondary); margin-bottom: 4px; }
   .chart-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; }
-  .empty-tip { color: var(--el-text-color-secondary); text-align: center; padding: 32px 0; font-size: 13px; }
-  @media (max-width: 1200px) { .stat-grid { grid-template-columns: repeat(3, 1fr); } }
+  .big-chart { width: 100%; height: 250px; }
+
+  /* ===== 最近动态 ===== */
+  .act-item { display: flex; align-items: flex-start; gap: 10px; padding: 10px 0; border-bottom: 1px dashed var(--el-border-color-lighter); }
+  .act-item:last-child { border-bottom: none; }
+  .act-main { flex: 1; min-width: 0; }
+  .act-title { font-size: 13px; color: var(--el-text-color-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .act-sub { margin-top: 4px; font-size: 12px; color: var(--el-text-color-secondary); }
+
+  /* ===== 分布条 ===== */
+  .dist-item { display: flex; align-items: center; margin-bottom: 12px; }
+  .dist-item .dist-label { width: 92px; font-size: 13px; color: var(--el-text-color-regular); flex: none; }
+  .dist-item .dist-bar { flex: 1; height: 10px; background: var(--el-fill-color-light); border-radius: 5px; overflow: hidden; }
+  .dist-item .dist-bar > i { display: block; height: 100%; background: var(--el-color-primary); border-radius: 5px; }
+  .dist-item .dist-num { width: 108px; text-align: right; font-size: 12px; color: var(--el-text-color-secondary); flex: none; }
+
+  @media (max-width: 1200px) {
+    .task-grid { grid-template-columns: 1fr; }
+    .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+    .kpi-item:nth-child(3n) { border-right: 1px solid var(--el-border-color-lighter); }
+    .kpi-item:nth-child(2n) { border-right: none; }
+    .kpi-item:nth-child(n+4) { border-bottom: 1px solid var(--el-border-color-lighter); }
+    .kpi-item:nth-child(n+5) { border-bottom: none; }
+  }
 </style>
 {% endblock %}
 
 {% block content %}
 <div v-loading="loading">
-  <wd-tips type="box" class="page-tips">工作台汇总展示租户内的用户、应用与登录概况，用于日常运营巡检；详细操作请进入对应管理页面。</wd-tips>
+  <!-- 顶部提示 -->
+  <div class="top-note">
+    <el-icon><InfoFilled></InfoFilled></el-icon>
+    <span>工作台汇总租户内的账号、应用与调用概况，用于日常运营巡检；进入页面自动刷新。</span>
+    <span class="right">[[ dateText ]] · 更新于 [[ timeText ]]</span>
+  </div>
 
-  <!-- 指标卡 -->
-  <wd-panel shadow="never" class="page-card" title="核心指标">
-    <div class="stat-grid">
-    <div class="stat-card">
-      <div class="stat-label">总用户数</div>
-      <div class="stat-value">[[ stats.total_users || 0 ]]</div>
-      <div class="stat-sub">今日新增 [[ stats.today_new_users || 0 ]]</div>
+  <!-- 主卡片 -->
+  <div class="hero-card">
+    <div class="hero-badge"><el-icon><Monitor></Monitor></el-icon></div>
+    <div>
+      <h2 class="hero-title">工作台</h2>
+      <div class="hero-sub">账号 · 应用 · 权限 一站式管理</div>
     </div>
-    <div class="stat-card">
-      <div class="stat-label">活跃用户</div>
-      <div class="stat-value">[[ stats.active_users || 0 ]]</div>
-      <div class="stat-sub">状态正常的账号</div>
+    <div class="hero-progress">
+      <div class="progress-label">
+        <span>账号活跃度 <b style="color: var(--el-color-primary)">[[ activePercent ]]%</b></span>
+        <span>已启用 [[ stats.active_users || 0 ]] / 共 [[ stats.total_users || 0 ]] 个账号</span>
+      </div>
+      <div class="bar"><i :style="{ width: activePercent + '%' }"></i></div>
     </div>
-    <div class="stat-card">
-      <div class="stat-label">应用数</div>
-      <div class="stat-value">[[ stats.total_apps || 0 ]]</div>
-      <div class="stat-sub">已接入应用</div>
+    <div class="hero-right">
+      <el-button size="default" @click="go('/admin-panel/users/')">进入用户管理</el-button>
     </div>
-    <div class="stat-card">
-      <div class="stat-label">活跃应用</div>
-      <div class="stat-value">[[ stats.active_apps || 0 ]]</div>
-      <div class="stat-sub">状态正常的应用</div>
+  </div>
+
+  <!-- 问候 + 快捷入口 -->
+  <div class="hello-strip">
+    <span>[[ greeting ]]，[[ currentUser.nickname || currentUser.username ]]，账号统一管理让每次登录都安全可控。</span>
+    <span>提交 · 审批 · 归档 · 复盘</span>
+    <div class="links">
+      <a href="/admin-panel/users/">用户管理</a>
+      <a href="/admin-panel/applications/">应用管理</a>
+      <a href="/admin-panel/roles/">角色权限</a>
+      <a href="/admin-panel/audit/">审计日志</a>
     </div>
-    <div class="stat-card">
-      <div class="stat-label">角色数</div>
-      <div class="stat-value">[[ stats.total_roles || 0 ]]</div>
-      <div class="stat-sub">自定义角色</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-label">日活跃用户 (DAU)</div>
-      <div class="stat-value">[[ activeUsers.dau ? activeUsers.dau.today : 0 ]]</div>
-      <div class="stat-sub">昨日 [[ activeUsers.dau ? activeUsers.dau.yesterday : 0 ]] · 7日均 [[ activeUsers.dau ? activeUsers.dau.avg_7d : 0 ]]</div>
-    </div>
+  </div>
+
+  <!-- 今日核心工作 -->
+  <wd-panel shadow="never" class="dash-card" title="今日核心工作"
+    description="按账号、成员、应用三条线建议优先处理" icon="List">
+    <template #extra><a class="dash-link" href="/admin-panel/users/">全部任务</a></template>
+    <div class="task-grid">
+      <div v-for="task in taskList" :key="task.index" class="task-card" @click="go(task.link)">
+        <div class="task-top">
+          <span class="task-index">[[ task.index ]]</span>
+          <el-icon><component :is="task.icon"></component></el-icon>
+          <span>[[ task.kind ]]</span>
+        </div>
+        <h4>[[ task.title ]]</h4>
+        <div class="bar"><i :style="{ width: task.progress + '%' }"></i></div>
+        <div class="task-meta">
+          <span>[[ task.desc ]]</span>
+          <el-tag :type="task.tagType" size="small" effect="light" class="tag">[[ task.tag ]]</el-tag>
+        </div>
+      </div>
     </div>
   </wd-panel>
 
-  <el-row :gutter="12" class="panel-row">
-    <!-- 登录趋势 -->
-    <el-col :span="12">
-      <wd-panel shadow="never" class="page-card" title="近 7 天登录趋势">
-        <div class="chart-wrap" v-if="loginTrend.length">
-          <div class="chart-legend">
-            <span><i style="background: var(--el-color-primary)"></i>登录总数</span>
-            <span><i style="background: var(--el-color-danger)"></i>失败次数</span>
+  <el-row :gutter="12" class="dash-row">
+    <!-- 今日数据总览 -->
+    <el-col :xs="24" :md="24" :lg="16">
+      <wd-panel shadow="never" class="dash-card" style="height: 100%" title="今日数据总览"
+        :description="'截至 ' + timeText" icon="DataLine">
+        <div class="kpi-grid">
+          <div v-for="item in kpiList" :key="item.label" class="kpi-item">
+            <div class="kpi-label">[[ item.label ]]</div>
+            <div class="kpi-value">[[ item.value ]]<span class="kpi-unit">[[ item.unit ]]</span></div>
+            <div class="kpi-sub">
+              <span>[[ item.sub ]]</span>
+              <svg class="spark" viewBox="0 0 86 26" width="86" height="26">
+                <polygon :points="sparkArea(item.trend)" fill="rgba(22,119,255,.10)"></polygon>
+                <polyline :points="sparkPoints(item.trend)" fill="none" stroke="var(--el-color-primary)" stroke-width="1.5"></polyline>
+              </svg>
+            </div>
           </div>
-          <svg :viewBox="'0 0 560 180'" style="width: 100%; height: 180px">
-            <polyline :points="linePoints(loginTrend, 'total', 560, 160)" fill="none"
-              stroke="var(--el-color-primary)" stroke-width="2" />
-            <polyline :points="linePoints(loginTrend, 'fail', 560, 160)" fill="none"
-              stroke="var(--el-color-danger)" stroke-width="2" />
-            <g v-for="(t, i) in loginTrend" :key="t.date">
-              <text :x="i * (560 / Math.max(loginTrend.length - 1, 1))" y="176" text-anchor="middle"
-                font-size="11" fill="var(--el-text-color-secondary)">[[ shortDate(t.date) ]]</text>
-            </g>
+        </div>
+      </wd-panel>
+    </el-col>
+
+    <!-- 异常提醒 -->
+    <el-col :xs="24" :md="24" :lg="8">
+      <wd-panel shadow="never" class="dash-card" style="height: 100%" title="异常提醒" icon="WarningFilled">
+        <div v-if="alertList.length">
+          <div class="alert-box">共 [[ alertList.length ]] 条异常需要处理，请尽快确认，避免影响账号与应用正常运行。</div>
+          <div v-for="alert in alertList" :key="alert.title" class="alert-item">
+            <div>
+              <div class="name">[[ alert.title ]]</div>
+              <div class="sub">[[ alert.sub ]]</div>
+            </div>
+            <a class="link" :href="alert.link">[[ alert.action ]]</a>
+          </div>
+        </div>
+        <div v-else class="empty-tip">运行平稳，暂无异常</div>
+      </wd-panel>
+    </el-col>
+  </el-row>
+
+  <el-row :gutter="12" class="dash-row">
+    <!-- 登录趋势 -->
+    <el-col :xs="24" :md="24" :lg="16">
+      <wd-panel shadow="never" class="dash-card" style="height: 100%" title="登录趋势"
+        description="近 30 天登录次数" icon="TrendCharts">
+        <template #extra>
+          <span class="dash-link" style="color: var(--el-text-color-secondary)">近 7 天合计 [[ loginTotal7d ]] 次</span>
+        </template>
+        <div v-if="loginTrend.length">
+          <div class="chart-legend"><span><i style="background: var(--el-color-primary)"></i>登录次数</span></div>
+          <svg class="big-chart" viewBox="0 0 720 240" preserveAspectRatio="none">
+            <line v-for="tick in chartYTicks" :key="'y' + tick.y" x1="0" :y1="tick.y" x2="720" :y2="tick.y"
+              stroke="var(--el-border-color-lighter)" stroke-width="1"></line>
+            <text v-for="tick in chartYTicks" :key="'t' + tick.y" x="4" :y="tick.y - 4"
+              font-size="11" fill="var(--el-text-color-secondary)">[[ tick.label ]]</text>
+            <polygon :points="chartArea" fill="rgba(22,119,255,.10)"></polygon>
+            <polyline :points="chartPoints" fill="none" stroke="var(--el-color-primary)" stroke-width="2"></polyline>
+            <circle v-for="p in chartDots" :key="'d' + p.x" :cx="p.x" :cy="p.y" r="2.5" fill="var(--el-color-primary)"></circle>
+            <text v-for="p in chartXLabels" :key="'x' + p.x" :x="p.x" y="234" text-anchor="middle"
+              font-size="11" fill="var(--el-text-color-secondary)">[[ p.label ]]</text>
           </svg>
         </div>
         <div v-else class="empty-tip">暂无数据</div>
       </wd-panel>
     </el-col>
+
+    <!-- 最近动态 -->
+    <el-col :xs="24" :md="24" :lg="8">
+      <wd-panel shadow="never" class="dash-card" style="height: 100%" title="最近动态" icon="Bell">
+        <template #extra><a class="dash-link" href="/admin-panel/audit/">全部</a></template>
+        <div v-if="activities.length">
+          <div v-for="act in activities.slice(0, 5)" :key="act.id" class="act-item">
+            <div class="act-main">
+              <div class="act-title">[[ act.actor_name || '系统' ]] [[ actionText(act.action) ]]<span v-if="act.resource_id"> #[[ act.resource_id ]]</span></div>
+              <div class="act-sub">[[ fmtTime(act.created_at) ]]</div>
+            </div>
+          </div>
+        </div>
+        <div v-else class="empty-tip">暂无动态</div>
+      </wd-panel>
+    </el-col>
+  </el-row>
+
+  <el-row :gutter="12" class="dash-row">
+    <!-- 应用概况 -->
+    <el-col :xs="24" :md="24" :lg="14">
+      <wd-panel shadow="never" class="dash-card" style="height: 100%" title="应用概况"
+        description="近 7 天调用" icon="Grid">
+        <template #extra><a class="dash-link" href="/admin-panel/applications/">应用管理</a></template>
+        <el-table :data="stats.app_stats || []" size="default" max-height="240">
+          <el-table-column prop="name" label="应用" min-width="130" show-overflow-tooltip></el-table-column>
+          <el-table-column prop="app_key" label="AppKey" min-width="130" show-overflow-tooltip></el-table-column>
+          <el-table-column label="状态" width="80" align="center">
+            <template #default="{ row }">
+              <el-tag :type="row.status ? 'success' : 'danger'" size="small" effect="light">[[ row.status ? '正常' : '停用' ]]</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="call_count_7d" label="7日调用" width="100" align="right"></el-table-column>
+        </el-table>
+        <div v-if="!(stats.app_stats && stats.app_stats.length)" class="empty-tip">暂无应用</div>
+      </wd-panel>
+    </el-col>
+
     <!-- 登录方式分布 -->
-    <el-col :span="12">
-      <wd-panel shadow="never" class="page-card" title="登录方式分布">
+    <el-col :xs="24" :md="24" :lg="10">
+      <wd-panel shadow="never" class="dash-card" style="height: 100%" title="登录方式分布" icon="PieChart">
         <template v-if="distList.length">
           <div v-for="item in distList" :key="item.label" class="dist-item">
             <span class="dist-label">[[ item.label ]]</span>
@@ -104,47 +275,6 @@
       </wd-panel>
     </el-col>
   </el-row>
-
-  <el-row :gutter="12" class="panel-row">
-    <!-- 用户增长 -->
-    <el-col :span="12">
-      <wd-panel shadow="never" class="page-card" :title="'近 30 天用户增长（当前总量 ' + userGrowthTotal + '）'">
-        <div class="chart-wrap" v-if="userGrowth.length">
-          <svg :viewBox="'0 0 560 160'" style="width: 100%; height: 160px">
-            <polyline :points="linePoints(userGrowth, 'new_users', 560, 140)" fill="none"
-              stroke="var(--el-color-success)" stroke-width="2" />
-          </svg>
-        </div>
-        <div v-else class="empty-tip">暂无数据</div>
-      </wd-panel>
-    </el-col>
-    <!-- 应用调用排行 -->
-    <el-col :span="12">
-      <wd-panel shadow="never" class="page-card" title="应用概况（近 7 天调用）">
-        <el-table :data="stats.app_stats || []" size="default" max-height="220">
-          <el-table-column prop="name" label="应用" min-width="120" show-overflow-tooltip ></el-table-column>
-          <el-table-column prop="app_key" label="AppKey" min-width="130" show-overflow-tooltip ></el-table-column>
-          <el-table-column label="状态" width="70" align="center">
-            <template #default="{ row }">
-              <el-tag :type="row.status === 1 ? 'success' : 'danger'" size="default">[[ row.status === 1 ? '正常' : '停用' ]]</el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column prop="call_count_7d" label="7日调用" width="90" align="right" ></el-table-column>
-        </el-table>
-      </wd-panel>
-    </el-col>
-  </el-row>
-
-  <!-- 最近动态 -->
-  <wd-panel shadow="never" class="page-card" title="最近动态">
-    <el-timeline v-if="activities.length" style="padding-left: 4px">
-      <el-timeline-item v-for="act in activities" :key="act.id" :timestamp="fmtTime(act.created_at)" placement="top">
-        <b>[[ act.actor_name || '系统' ]]</b>&nbsp;[[ actionText(act.action) ]]
-        <span v-if="act.resource_id">&nbsp;#[[ act.resource_id ]]</span>
-      </el-timeline-item>
-    </el-timeline>
-    <div v-else class="empty-tip">暂无动态</div>
-  </wd-panel>
 </div>
 {% endblock %}
 
@@ -158,9 +288,9 @@ AdminUI.start('/admin-panel/dashboard/', {
       loginTrend: [],
       loginDist: {},
       userGrowth: [],
-      userGrowthTotal: 0,
       activeUsers: {},
-      activities: []
+      activities: [],
+      now: new Date()
     };
   },
   computed: {
@@ -169,23 +299,184 @@ AdminUI.start('/admin-panel/dashboard/', {
       return Object.keys(items).map(function (label) {
         return { label: label, count: items[label].count, percentage: items[label].percentage };
       }).sort(function (a, b) { return b.count - a.count; });
+    },
+    activePercent: function () {
+      var total = this.stats.total_users || 0;
+      if (!total) return 0;
+      return Math.round((this.stats.active_users || 0) / total * 100);
+    },
+    disabledCount: function () {
+      return Math.max((this.stats.total_users || 0) - (this.stats.active_users || 0), 0);
+    },
+    noCallApps: function () {
+      var apps = this.stats.app_stats || [];
+      return apps.filter(function (a) { return !a.call_count_7d; });
+    },
+    todayNewUsers: function () {
+      return this.stats.today_new_users || 0;
+    },
+    loginTotal7d: function () {
+      var trend = this.loginTrend.slice(-7);
+      return trend.reduce(function (sum, t) { return sum + (t.total || 0); }, 0);
+    },
+    callTotal7d: function () {
+      return (this.stats.app_stats || []).reduce(function (sum, a) { return sum + (a.call_count_7d || 0); }, 0);
+    },
+    taskList: function () {
+      var total = this.stats.total_users || 0;
+      var active = this.stats.active_users || 0;
+      var disabled = this.disabledCount;
+      var apps = this.stats.total_apps || 0;
+      var activeApps = this.stats.active_apps || 0;
+      var newUsers30d = this.userGrowth.reduce(function (sum, d) { return sum + (d.new_users || 0); }, 0);
+      return [
+        {
+          index: '01', icon: 'CircleCheck', kind: '账号状态巡检', link: '/admin-panel/users/',
+          title: disabled ? '处理 ' + disabled + ' 个禁用账号' : '账号状态正常',
+          desc: '已启用 ' + active + ' / 共 ' + total + ' 个账号',
+          progress: total ? Math.round(active / total * 100) : 0,
+          tag: disabled ? '待处理' : '正常', tagType: disabled ? 'warning' : 'success'
+        },
+        {
+          index: '02', icon: 'UserFilled', kind: '新成员跟进', link: '/admin-panel/users/',
+          title: '今日新增 ' + this.todayNewUsers + ' 名用户',
+          desc: '近 30 天新增 ' + newUsers30d + ' 人',
+          progress: total ? Math.min(Math.round(newUsers30d / total * 100), 100) : 0,
+          tag: this.todayNewUsers ? '进行中' : '暂无', tagType: this.todayNewUsers ? 'primary' : 'info'
+        },
+        {
+          index: '03', icon: 'Platform', kind: '应用接入巡检', link: '/admin-panel/applications/',
+          title: this.noCallApps.length ? this.noCallApps.length + ' 个应用近 7 天无调用' : '应用调用正常',
+          desc: '活跃应用 ' + activeApps + ' / 共 ' + apps + ' 个',
+          progress: apps ? Math.round(activeApps / apps * 100) : 0,
+          tag: this.noCallApps.length ? '待关注' : '正常', tagType: this.noCallApps.length ? 'warning' : 'success'
+        }
+      ];
+    },
+    kpiList: function () {
+      var self = this;
+      var growth = this.userGrowth.map(function (d) { return d.new_users || 0; });
+      var logins = this.loginTrend.map(function (d) { return d.total || 0; });
+      var topApp = (this.stats.app_stats || []).slice().sort(function (a, b) {
+        return (b.call_count_7d || 0) - (a.call_count_7d || 0);
+      })[0];
+      var dau = (this.activeUsers && this.activeUsers.dau) || {};
+      return [
+        { label: '总用户数', value: this.stats.total_users || 0, unit: '人', trend: growth,
+          sub: '今日新增 ' + this.todayNewUsers },
+        { label: '活跃账号', value: this.stats.active_users || 0, unit: '个', trend: logins,
+          sub: '占比 ' + this.activePercent + '%' },
+        { label: '今日新增', value: this.todayNewUsers, unit: '人', trend: growth,
+          sub: 'DAU 今日 ' + (dau.today || 0) + ' · 昨日 ' + (dau.yesterday || 0) },
+        { label: '应用总数', value: this.stats.total_apps || 0, unit: '个', trend: logins,
+          sub: '正常 ' + (this.stats.active_apps || 0) + ' 个' },
+        { label: '近 7 日调用', value: this.callTotal7d, unit: '次', trend: logins,
+          sub: topApp ? '最高：' + topApp.name : '暂无调用' },
+        { label: '近 7 日登录', value: this.loginTotal7d, unit: '次', trend: logins,
+          sub: '日均 ' + Math.round(this.loginTotal7d / 7) + ' 次' }
+      ];
+    },
+    alertList: function () {
+      var list = [];
+      if (this.disabledCount) {
+        list.push({
+          title: '有 ' + this.disabledCount + ' 个账号处于禁用状态',
+          sub: '禁用账号无法登录任何接入应用，请确认是否需要恢复或清理。',
+          action: '去处理', link: '/admin-panel/users/'
+        });
+      }
+      if (this.noCallApps.length) {
+        list.push({
+          title: this.noCallApps.length + ' 个应用近 7 天无调用',
+          sub: '可能存在接入未完成或密钥失效，建议检查应用配置与回调地址。',
+          action: '去核实', link: '/admin-panel/applications/'
+        });
+      }
+      return list;
+    },
+    dateText: function () {
+      var d = this.now;
+      var week = ['日', '一', '二', '三', '四', '五', '六'][d.getDay()];
+      return d.getFullYear() + '年' + (d.getMonth() + 1) + '月' + d.getDate() + '日 · 星期' + week;
+    },
+    timeText: function () {
+      var d = this.now;
+      return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
+    },
+    greeting: function () {
+      var h = this.now.getHours();
+      if (h < 6) return '夜深了';
+      if (h < 12) return '早上好';
+      if (h < 14) return '中午好';
+      if (h < 18) return '下午好';
+      return '晚上好';
+    },
+    chartMax: function () {
+      var max = 1;
+      this.loginTrend.forEach(function (t) { if ((t.total || 0) > max) max = t.total; });
+      return max;
+    },
+    chartYTicks: function () {
+      var max = this.chartMax;
+      return [1, 0.66, 0.33, 0].map(function (r) {
+        return { y: +(10 + (1 - r) * 190).toFixed(1), label: Math.round(max * r) };
+      });
+    },
+    chartPoints: function () {
+      return this.buildPoints();
+    },
+    chartArea: function () {
+      var points = this.buildPoints();
+      return points ? '0,200 ' + points + ' 720,200' : '';
+    },
+    chartDots: function () {
+      var trend = this.loginTrend;
+      if (!trend.length) return [];
+      var max = this.chartMax;
+      var stepX = 720 / Math.max(trend.length - 1, 1);
+      return trend.map(function (t, i) {
+        return { x: +(i * stepX).toFixed(1), y: +(200 - (t.total || 0) / max * 180).toFixed(1) };
+      });
+    },
+    chartXLabels: function () {
+      var trend = this.loginTrend;
+      if (!trend.length) return [];
+      var stepX = 720 / Math.max(trend.length - 1, 1);
+      var count = Math.min(6, trend.length);
+      var idx = [];
+      for (var i = 0; i < count; i++) {
+        idx.push(Math.round(i * (trend.length - 1) / Math.max(count - 1, 1)));
+      }
+      var self = this;
+      return idx.map(function (i) {
+        return { x: +(i * stepX).toFixed(1), label: self.shortDate(trend[i].date) };
+      });
     }
   },
   methods: {
     fmtTime: AdminUI.fmtTime,
-    shortDate: function (d) {
-      return d ? String(d).slice(5) : '';
-    },
-    linePoints: function (trend, key, width, height) {
-      if (!trend || !trend.length) return '';
-      var max = 1;
-      trend.forEach(function (t) { if ((t[key] || 0) > max) max = t[key]; });
-      var stepX = width / Math.max(trend.length - 1, 1);
+    go: function (path) { location.href = path; },
+    shortDate: function (d) { return d ? String(d).slice(5) : ''; },
+    buildPoints: function () {
+      var trend = this.loginTrend;
+      if (!trend.length) return '';
+      var max = this.chartMax;
+      var stepX = 720 / Math.max(trend.length - 1, 1);
       return trend.map(function (t, i) {
-        var x = (i * stepX).toFixed(1);
-        var y = (height - (t[key] || 0) / max * (height - 14) - 4).toFixed(1);
-        return x + ',' + y;
+        return (i * stepX).toFixed(1) + ',' + (200 - (t.total || 0) / max * 180).toFixed(1);
       }).join(' ');
+    },
+    sparkPoints: function (vals) {
+      if (!vals || !vals.length) return '';
+      var max = Math.max.apply(null, vals.concat([1]));
+      var step = 86 / Math.max(vals.length - 1, 1);
+      return vals.map(function (v, i) {
+        return (i * step).toFixed(1) + ',' + (26 - (v || 0) / max * 22 - 2).toFixed(1);
+      }).join(' ');
+    },
+    sparkArea: function (vals) {
+      var points = this.sparkPoints(vals);
+      return points ? '0,26 ' + points + ' 86,26' : '';
     },
     actionText: function (action) {
       var map = {
@@ -220,20 +511,16 @@ AdminUI.start('/admin-panel/dashboard/', {
     var get = WorkDesktop.request.get.bind(WorkDesktop.request);
     Promise.all([
       get('/api/v1/admin/stats'),
-      get('/api/v1/admin/stats/login-trend', { days: 7 }),
+      get('/api/v1/admin/stats/login-trend', { days: 30 }),
       get('/api/v1/admin/stats/login-distribution'),
       get('/api/v1/admin/stats/user-growth', { days: 30 }),
       get('/api/v1/admin/stats/active-users'),
       get('/api/v1/admin/recent-activities')
-    ]).then(function (results) {
-      var r = results;
+    ]).then(function (r) {
       if (r[0] && r[0].success) self.stats = r[0].data || {};
       if (r[1] && r[1].success) self.loginTrend = (r[1].data && r[1].data.trend) || [];
       if (r[2] && r[2].success) self.loginDist = (r[2].data && r[2].data.items) || {};
-      if (r[3] && r[3].success) {
-        self.userGrowth = (r[3].data && r[3].data.trend) || [];
-        self.userGrowthTotal = (r[3].data && r[3].data.current_total) || 0;
-      }
+      if (r[3] && r[3].success) self.userGrowth = (r[3].data && r[3].data.trend) || [];
       if (r[4] && r[4].success) self.activeUsers = r[4].data || {};
       if (r[5] && r[5].success) self.activities = (r[5].data && (r[5].data.list || r[5].data.activities)) || [];
     }).finally(function () {

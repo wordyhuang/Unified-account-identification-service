@@ -1,9 +1,10 @@
 import json
 import time
 import pytest
+from unittest.mock import patch
 from django.core.cache import cache
 from django.test.utils import override_settings
-from apps.accounts.models import User
+from apps.accounts.models import User, SocialAccount
 from common.utils import create_access_token
 
 
@@ -247,6 +248,90 @@ class TestSocialLogin:
         )
         data = json.loads(resp.content)
         assert data["code"] < 0
+
+    # ---------- union_id 身份归一测试 ----------
+
+    WECHAT_CONFIG = {
+        "wechat_mp_app_id": "wx_mp_test",
+        "wechat_mp_app_secret": "mp_secret",
+        "wechat_web_app_id": "wx_web_test",
+        "wechat_web_app_secret": "web_secret",
+    }
+
+    def _login_social(self, api_client, app, app_access_token, provider, code, open_id, union_id):
+        """配置应用微信参数并 patch 微信换码接口后发起社交登录，返回响应 JSON"""
+        for field, value in self.WECHAT_CONFIG.items():
+            setattr(app, field, value)
+        app.save(update_fields=list(self.WECHAT_CONFIG.keys()))
+
+        with patch(
+            "apps.accounts.views._exchange_wechat_code",
+            return_value=(open_id, union_id),
+        ):
+            resp = api_client.post(
+                _url("/api/v1/auth/social/login", app_access_token),
+                {"provider": provider, "code": code, "app_key": app.app_key},
+                content_type="application/json",
+            )
+        return json.loads(resp.content)
+
+    def test_social_login_union_id_links_accounts(
+        self, api_client, tenant_default, app, app_access_token
+    ):
+        """union_id 归一 — 同一微信用户在不同应用（openid 不同）登录，归到同一账号"""
+        # 第一次：网页扫码登录（openid_web + union_1）→ 新建用户
+        data1 = self._login_social(
+            api_client, app, app_access_token, "wechat_web", "code_web", "openid_web", "union_1"
+        )
+        assert data1["code"] == 0, data1
+        user_id_1 = data1["data"]["user_id"]
+        assert data1["data"]["is_new"] is True
+
+        # 第二次：同一微信用户改从小程序登录（openid_mp 不同，union_id 相同）→ 复用同一用户
+        data2 = self._login_social(
+            api_client, app, app_access_token, "wechat_mp", "code_mp", "openid_mp", "union_1"
+        )
+        assert data2["code"] == 0, data2
+        assert data2["data"]["is_new"] is False
+        assert data2["data"]["user_id"] == user_id_1
+        # 两条社交身份都挂在同一用户名下
+        assert SocialAccount.objects.filter(user_id=user_id_1).count() == 2
+        assert SocialAccount.objects.filter(
+            user_id=user_id_1, provider="wechat_mp", open_id="openid_mp", union_id="union_1"
+        ).exists()
+
+    def test_social_login_union_id_repeated_login_same_account(
+        self, api_client, tenant_default, app, app_access_token
+    ):
+        """union_id 归一 — 同一应用同一 openid 重复登录，只命中一条社交身份不重复建"""
+        data1 = self._login_social(
+            api_client, app, app_access_token, "wechat_mp", "code_1", "openid_a", "union_1"
+        )
+        assert data1["code"] == 0, data1
+
+        data2 = self._login_social(
+            api_client, app, app_access_token, "wechat_mp", "code_2", "openid_a", "union_1"
+        )
+        assert data2["code"] == 0, data2
+        assert data2["data"]["is_new"] is False
+        assert data2["data"]["user_id"] == data1["data"]["user_id"]
+        assert SocialAccount.objects.count() == 1
+
+    def test_social_login_without_union_id_stays_separate(
+        self, api_client, tenant_default, app, app_access_token
+    ):
+        """无 union_id（如 Mock 模式）时保持原有行为 — 不同 openid 各建各的账号"""
+        data1 = self._login_social(
+            api_client, app, app_access_token, "wechat_mp", "code_1", "openid_a", None
+        )
+        assert data1["code"] == 0, data1
+
+        data2 = self._login_social(
+            api_client, app, app_access_token, "wechat_mp", "code_2", "openid_b", None
+        )
+        assert data2["code"] == 0, data2
+        assert data2["data"]["is_new"] is True
+        assert data2["data"]["user_id"] != data1["data"]["user_id"]
 
 
 class TestWechatLogin:

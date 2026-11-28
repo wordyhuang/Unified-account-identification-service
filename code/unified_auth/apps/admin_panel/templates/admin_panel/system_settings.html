@@ -1,0 +1,161 @@
+{% extends "admin_panel/base.html" %}
+{% load static %}
+
+{% block title %}系统设置{% endblock %}
+
+{% block head %}
+<style>
+  .settings-layout { display: flex; gap: 12px; align-items: flex-start; }
+  .settings-nav { width: 180px; flex-shrink: 0; background: #fff; border: 1px solid var(--el-border-color-lighter); border-radius: 10px; padding: 8px; }
+  .nav-item { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 8px; cursor: pointer; color: var(--el-text-color-regular); font-size: 14px; margin-bottom: 2px; transition: background .2s, color .2s; user-select: none; }
+  .nav-item:last-child { margin-bottom: 0; }
+  .nav-item:hover { background: var(--el-fill-color-light); }
+  .nav-item.active { background: var(--el-color-primary-light-9); color: var(--el-color-primary); font-weight: 600; }
+  .settings-main { flex: 1; min-width: 0; }
+  .page-card { margin-bottom: 12px; }
+  .page-card:last-child { margin-bottom: 0; }
+  .sms-form-card { max-width: 640px; }
+  .test-row { display: flex; gap: 8px; }
+  .test-row .el-input { flex: 1; }
+  .log-card { max-width: 760px; }
+  .log-version { font-weight: 600; font-size: 14px; }
+  .log-item { color: var(--el-text-color-regular); font-size: 13px; line-height: 1.8; }
+</style>
+{% endblock %}
+
+{% block content %}
+<wd-tips type="box" class="page-tips">系统设置集中维护租户级配置项，并支持查看系统版本的升级记录。</wd-tips>
+<div class="settings-layout">
+  <div class="settings-nav">
+    <div class="nav-item" :class="{ active: section === 'sms' }" @click="section = 'sms'">
+      <el-icon><ChatDotSquare></ChatDotSquare></el-icon>
+      <span>短信配置</span>
+    </div>
+    <div class="nav-item" :class="{ active: section === 'changelog' }" @click="section = 'changelog'">
+      <el-icon><Document></Document></el-icon>
+      <span>升级日志</span>
+    </div>
+  </div>
+
+  <div class="settings-main">
+    <div v-show="section === 'sms'">
+      <wd-panel shadow="never" class="page-card sms-form-card" title="短信服务配置">
+        <wd-data-form mode="edit" api="/api/v1/admin/tenant-sms-config"
+          submit-api="/api/v1/admin/tenant-sms-config" submit-method="put"
+          submit-keys="sms_provider,sms_access_key_id,sms_access_key_secret,sms_sign_name,sms_template_code"
+          :active="true" label-width="110px" size="default"
+          @submit-success="onSaved">
+          <template #default="{ model }">
+            <el-form-item label="服务商" prop="sms_provider">
+              <el-radio-group v-model="model.sms_provider">
+                <el-radio value="">未配置</el-radio>
+                <el-radio value="mock">模拟发送</el-radio>
+                <el-radio value="aliyun">阿里云短信</el-radio>
+              </el-radio-group>
+            </el-form-item>
+            <template v-if="model.sms_provider === 'aliyun'">
+              <el-form-item label="AccessKey ID" prop="sms_access_key_id">
+                <el-input v-model="model.sms_access_key_id" clearable ></el-input>
+              </el-form-item>
+              <el-form-item label="AccessKey Secret" prop="sms_access_key_secret">
+                <el-input v-model="model.sms_access_key_secret" placeholder="*** 表示保持不变" clearable ></el-input>
+              </el-form-item>
+              <el-form-item label="短信签名" prop="sms_sign_name">
+                <el-input v-model="model.sms_sign_name" clearable ></el-input>
+              </el-form-item>
+              <el-form-item label="模板编码" prop="sms_template_code">
+                <el-input v-model="model.sms_template_code" clearable ></el-input>
+              </el-form-item>
+            </template>
+            <el-alert v-if="model.sms_provider === 'mock'" type="info" :closable="false"
+              title="模拟发送模式下验证码将直接返回在接口响应中，仅用于开发调试" ></el-alert>
+          </template>
+        </wd-data-form>
+      </wd-panel>
+
+      <wd-panel shadow="never" class="page-card sms-form-card" title="发送测试短信">
+        <div class="test-row">
+          <el-input v-model="testPhone" size="default" placeholder="接收测试短信的手机号" clearable maxlength="11" ></el-input>
+          <el-button size="default" type="primary" :loading="testSending" :disabled="!/^1\d{10}$/.test(testPhone)" @click="onSendTest">发送测试</el-button>
+        </div>
+      </wd-panel>
+    </div>
+
+    <div v-show="section === 'changelog'">
+      <wd-panel shadow="never" class="page-card log-card" title="升级日志">
+        <el-timeline>
+          <el-timeline-item v-for="log in changelog" :key="log.version"
+            :timestamp="log.date" placement="top" :type="log.latest ? 'primary' : ''">
+            <div class="log-version">[[ log.version ]]　[[ log.title ]]</div>
+            <div v-for="(line, idx) in log.items" :key="idx" class="log-item">[[ line ]]</div>
+          </el-timeline-item>
+        </el-timeline>
+      </wd-panel>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block script %}
+<script>
+AdminUI.start('/admin-panel/system-settings/', {
+  data: function () {
+    return {
+      section: 'sms',
+      testPhone: '',
+      testSending: false,
+      changelog: [
+        {
+          version: 'V_1.9', date: '2026-11-27', title: '系统设置上线', latest: true,
+          items: [
+            '原「短信配置」独立页升级为「系统设置」页，采用左侧分类导航 + 右侧内容区布局。',
+            '新增「升级日志」分类，集中展示各版本功能更新记录。'
+          ]
+        },
+        {
+          version: 'V_1.8', date: '2026-11-27', title: '码管理合并',
+          items: [
+            '新增微信绑定码类型，支持管理端生成与启用/停用。',
+            '注册邀请码、资料补全码、微信绑定码三类凭证码合并为「码管理」页，卡片流展示，支持类型切换、搜索、状态筛选与分页。'
+          ]
+        },
+        {
+          version: 'V_1.6', date: '2026-11-26', title: '邀请注册自定义',
+          items: [
+            '支持按租户/邀请码自定义注册资料字段与页面文案，动态渲染注册页。',
+            '新增应用绑定邀请码、注册短链、注册完成跳转地址与 Webhook 事件推送（签名校验、失败重试）。'
+          ]
+        },
+        {
+          version: 'V_1.5', date: '2026-11-25', title: '体验优化',
+          items: [
+            '修复列表页固定高度显示异常问题。',
+            '全站按钮样式统一。'
+          ]
+        }
+      ]
+    };
+  },
+  methods: {
+    onSaved: function () {
+      ElementPlus.ElMessage.success('短信配置已保存');
+    },
+    onSendTest: function () {
+      var self = this;
+      this.testSending = true;
+      WorkDesktop.request.post('/api/v1/admin/tenant-sms-config/test', {
+        phone: this.testPhone
+      }).then(function (res) {
+        if (res && res.success) {
+          ElementPlus.ElMessage.success('发送成功：' + (res.data.message || 'ok'));
+        } else {
+          AdminUI.toastFail(res, '发送失败');
+        }
+      }).finally(function () {
+        self.testSending = false;
+      });
+    }
+  }
+});
+</script>
+{% endblock %}

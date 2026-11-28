@@ -16,7 +16,7 @@ from apps.invites.appearance import (
 )
 from apps.invites.fields import FIELD_REGISTRY
 from apps.invites.models import (
-    InviteCode, ProfileCompletionCode, generate_code, generate_short_code,
+    InviteCode, ProfileCompletionCode, WechatBindCode, generate_code, generate_short_code,
 )
 from common.errors import ErrorCode
 from common.response import success, error
@@ -651,6 +651,209 @@ def completion_code_detail_view(request, code_id):
         actor_name=request.user.username if request.user else "",
         action="admin.completion_code.delete",
         resource_type="profile_completion_code",
+        resource_id=obj.id,
+        detail={"short_code": obj.short_code, "mode": obj.mode},
+    )
+    obj.delete()
+    return Response(success())
+
+
+# ==================== 微信绑定码管理 ====================
+
+
+def _wechat_serialize(obj):
+    data = {
+        "id": obj.id,
+        "code": obj.code,
+        "short_code": obj.short_code,
+        "mode": obj.mode,
+        "user_id": obj.user_id,
+        "username": obj.user.username if obj.user else None,
+        "max_uses": obj.max_uses,
+        "used_count": obj.used_count,
+        "expires_at": obj.expires_at,
+        "status": obj.status,
+        "remark": obj.remark,
+        "created_by": obj.created_by,
+        "created_at": obj.created_at,
+    }
+    return data
+
+
+@api_view(["GET", "POST"])
+def wechat_bind_codes_view(request):
+    if request.method == "GET":
+        search = (request.GET.get("search") or "").strip()
+        status_filter = request.GET.get("status", "")
+        page = max(int(request.GET.get("page", 1) or 1), 1)
+        page_size = min(max(int(request.GET.get("page_size", 20) or 20), 1), 100)
+
+        qs = WechatBindCode.objects.filter(tenant_id=request.tenant_id)
+        if search:
+            from django.db.models import Q
+            qs = qs.filter(
+                Q(short_code__icontains=search) | Q(remark__icontains=search)
+                | Q(user__username__icontains=search)
+            )
+        if status_filter in ("0", "1"):
+            qs = qs.filter(status=int(status_filter))
+        total = qs.count()
+        items = qs[(page - 1) * page_size: page * page_size]
+        return Response(success({
+            "items": [_wechat_serialize(o) for o in items],
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+        }))
+
+    body = request.data if isinstance(request.data, dict) else {}
+    mode = body.get("mode") or "single"
+    if mode not in ("single", "shared"):
+        return Response(error(ErrorCode.PARAM_INVALID, message="mode 不合法"), status=400)
+
+    user = None
+    if mode == "single":
+        user_id = body.get("user_id")
+        if not user_id:
+            return Response(error(ErrorCode.PARAM_MISSING, message="单人模式必须指定用户"), status=400)
+        user = User.objects.filter(id=user_id, tenant_id=request.tenant_id).first()
+        if user is None:
+            return Response(error(ErrorCode.USER_NOT_FOUND), status=404)
+    else:
+        if body.get("user_id"):
+            return Response(
+                error(ErrorCode.PARAM_INVALID, message="多人通用模式不能绑定用户"), status=400
+            )
+
+    max_uses = body.get("max_uses")
+    if max_uses is not None:
+        try:
+            max_uses = int(max_uses)
+            if max_uses < 1:
+                raise ValueError
+        except (TypeError, ValueError):
+            return Response(error(ErrorCode.PARAM_INVALID, message="使用次数上限不合法"), status=400)
+
+    expires_at = _parse_expires_at(body.get("expires_at"))
+    if body.get("expires_at") and expires_at is None:
+        return Response(error(ErrorCode.PARAM_INVALID, message="有效期格式错误"), status=400)
+
+    remark = str(body.get("remark") or "").strip() or None
+    if remark and len(remark) > 255:
+        return Response(error(ErrorCode.PARAM_INVALID, message="备注过长"), status=400)
+
+    while True:
+        code = generate_code(32)
+        if not WechatBindCode.objects.filter(code=code).exists():
+            break
+    while True:
+        short_code = generate_short_code(8)
+        if not WechatBindCode.objects.filter(short_code=short_code).exists():
+            break
+
+    obj = WechatBindCode.objects.create(
+        tenant_id=request.tenant_id,
+        user=user,
+        code=code,
+        short_code=short_code,
+        mode=mode,
+        max_uses=max_uses,
+        expires_at=expires_at,
+        remark=remark,
+        created_by=request.user.username if request.user else None,
+    )
+    AuditLog.objects.create(
+        tenant_id=request.tenant_id,
+        actor_id=request.user_id,
+        actor_name=request.user.username if request.user else "",
+        action="admin.wechat_bind_code.create",
+        resource_type="wechat_bind_code",
+        resource_id=obj.id,
+        detail={"mode": mode, "username": user.username if user else None, "short_code": obj.short_code},
+    )
+    return Response(success(_wechat_serialize(obj)))
+
+
+@api_view(["GET", "PATCH", "DELETE"])
+def wechat_bind_code_detail_view(request, code_id):
+    try:
+        obj = WechatBindCode.objects.get(id=code_id, tenant_id=request.tenant_id)
+    except WechatBindCode.DoesNotExist:
+        return Response(error(ErrorCode.USER_NOT_FOUND, message="绑定码不存在"), status=404)
+
+    if request.method == "GET":
+        return Response(success(_wechat_serialize(obj)))
+
+    if request.method == "PATCH":
+        body = request.data if isinstance(request.data, dict) else {}
+        changed = []
+
+        if "mode" in body and body.get("mode") != obj.mode:
+            return Response(error(ErrorCode.PARAM_INVALID, message="mode 创建后不可修改"), status=400)
+
+        if "status" in body:
+            status_value = body.get("status")
+            if status_value not in (0, 1, "0", "1"):
+                return Response(error(ErrorCode.PARAM_INVALID, message="status 取值不合法"), status=400)
+            obj.status = int(status_value)
+            changed.append("status")
+
+        if "user_id" in body:
+            if obj.mode != "single":
+                return Response(error(ErrorCode.PARAM_INVALID, message="多人通用模式不能绑定用户"), status=400)
+            user = User.objects.filter(id=body.get("user_id"), tenant_id=request.tenant_id).first()
+            if user is None:
+                return Response(error(ErrorCode.USER_NOT_FOUND), status=404)
+            obj.user = user
+            changed.append("user_id")
+
+        if "max_uses" in body:
+            try:
+                max_uses = int(body.get("max_uses"))
+                if max_uses < 1:
+                    raise ValueError
+            except (TypeError, ValueError):
+                return Response(error(ErrorCode.PARAM_INVALID, message="使用次数上限不合法"), status=400)
+            if max_uses < obj.used_count:
+                return Response(error(ErrorCode.PARAM_INVALID, message="使用次数上限不能低于已使用次数"), status=400)
+            obj.max_uses = max_uses
+            changed.append("max_uses")
+
+        if "expires_at" in body:
+            expires_at = _parse_expires_at(body.get("expires_at"))
+            if body.get("expires_at") and expires_at is None:
+                return Response(error(ErrorCode.PARAM_INVALID, message="有效期格式错误"), status=400)
+            obj.expires_at = expires_at
+            changed.append("expires_at")
+
+        if "remark" in body:
+            remark = str(body.get("remark") or "").strip() or None
+            if remark and len(remark) > 255:
+                return Response(error(ErrorCode.PARAM_INVALID, message="备注过长"), status=400)
+            obj.remark = remark
+            changed.append("remark")
+
+        if not changed:
+            return Response(error(ErrorCode.PARAM_MISSING, message="缺少需要修改的配置项"), status=400)
+
+        obj.save()
+        AuditLog.objects.create(
+            tenant_id=request.tenant_id,
+            actor_id=request.user_id,
+            actor_name=request.user.username if request.user else "",
+            action="admin.wechat_bind_code.update",
+            resource_type="wechat_bind_code",
+            resource_id=obj.id,
+            detail={"changed": changed},
+        )
+        return Response(success(_wechat_serialize(obj)))
+
+    AuditLog.objects.create(
+        tenant_id=request.tenant_id,
+        actor_id=request.user_id,
+        actor_name=request.user.username if request.user else "",
+        action="admin.wechat_bind_code.delete",
+        resource_type="wechat_bind_code",
         resource_id=obj.id,
         detail={"short_code": obj.short_code, "mode": obj.mode},
     )

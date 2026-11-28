@@ -1,7 +1,7 @@
 {% extends "admin_panel/base.html" %}
 {% load static %}
 
-{% block title %}角色管理{% endblock %}
+{% block title %}角色与标签管理{% endblock %}
 
 {% block head %}
 <style>
@@ -11,47 +11,97 @@
   .perm-group-title { font-weight: 600; margin-bottom: 4px; display: flex; align-items: center; justify-content: space-between; }
   .perm-expand { padding: 4px 16px; }
   .perm-expand .el-tag { margin: 2px 6px 2px 0; }
+  .color-dot { display: inline-block; width: 14px; height: 14px; border-radius: 3px; vertical-align: middle; margin-right: 6px; border: 1px solid var(--el-border-color); }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="page-flex">
-<wd-tips type="box" class="page-tips">角色管理用于定义角色及其接口权限，角色可批量分配给用户；权限项在行展开中查看。</wd-tips>
-<wd-panel shadow="never" class="page-card grid-panel">
-  <wd-data-grid ref="gridRef" api="/api/v1/admin/roles" api-method="get" active row-key="id"
-    :tools="{ add: true, refresh: true }" height="fix"
-    @add="openCreate">
-    <el-table-column type="expand">
-      <template #default="{ row }">
-        <div class="perm-expand">
-          <template v-if="row.permissions && row.permissions.length">
-            <el-tag v-for="p in row.permissions" :key="p.id" size="default" effect="plain"
-              :title="p.method + ' ' + p.path">[[ p.name ]]</el-tag>
+<wd-tips type="box" class="page-tips">
+  角色与标签管理用于定义角色及其接口权限、维护用户标签体系：角色可批量分配给用户并控制 API 权限；
+  标签可在用户管理中批量绑定。
+</wd-tips>
+
+<el-tabs v-model="activeTab">
+  <!-- ============ 角色 ============ -->
+  <el-tab-pane label="角色" name="roles" lazy>
+    <wd-panel shadow="never" class="page-card grid-panel">
+      <wd-data-grid ref="gridRef" api="/api/v1/admin/roles" api-method="get" :active="activeTab === 'roles'" row-key="id"
+        :tools="{ refresh: true }" height="fix">
+        <template #toolbar>
+          <el-button type="primary" @click="openCreate"><el-icon><Plus></Plus></el-icon>新增</el-button>
+        </template>
+        <el-table-column type="expand">
+          <template #default="{ row }">
+            <div class="perm-expand">
+              <template v-if="row.permissions && row.permissions.length">
+                <el-tag v-for="p in row.permissions" :key="p.id" size="default" effect="plain"
+                  :title="p.method + ' ' + p.path">[[ p.name ]]</el-tag>
+              </template>
+              <span v-else style="color: var(--el-text-color-secondary)">未分配权限</span>
+            </div>
           </template>
-          <span v-else style="color: var(--el-text-color-secondary)">未分配权限</span>
-        </div>
-      </template>
-    </el-table-column>
-    <el-table-column prop="name" label="角色名称" min-width="140" show-overflow-tooltip ></el-table-column>
-    <el-table-column prop="code" label="角色编码" min-width="140" show-overflow-tooltip>
-      <template #default="{ row }"><span style="font-family: monospace">[[ row.code ]]</span></template>
-    </el-table-column>
-    <el-table-column label="权限数" width="90" align="center">
-      <template #default="{ row }">[[ row.permissions ? row.permissions.length : 0 ]]</template>
-    </el-table-column>
-    <el-table-column label="创建时间" width="150">
-      <template #default="{ row }">[[ fmtTime(row.created_at) ]]</template>
-    </el-table-column>
-    <el-table-column label="操作" width="130" align="center" fixed="right">
-      <template #default="{ row }">
-        <el-button-group size="default">
-          <el-button type="primary" plain @click="onRowAction({ command: 'edit', row: row })">编辑</el-button>
-          <el-button type="primary" plain @click="onRowAction({ command: 'copy', row: row })">复制</el-button>
-        </el-button-group>
-      </template>
-    </el-table-column>
-  </wd-data-grid>
-</wd-panel>
+        </el-table-column>
+        <el-table-column prop="name" label="角色名称" min-width="140" show-overflow-tooltip ></el-table-column>
+        <el-table-column prop="code" label="角色编码" min-width="140" show-overflow-tooltip>
+          <template #default="{ row }"><span style="font-family: monospace">[[ row.code ]]</span></template>
+        </el-table-column>
+        <el-table-column label="权限数" width="90" align="center">
+          <template #default="{ row }">[[ row.permissions ? row.permissions.length : 0 ]]</template>
+        </el-table-column>
+        <el-table-column label="创建时间" width="150">
+          <template #default="{ row }">[[ fmtTime(row.created_at) ]]</template>
+        </el-table-column>
+        <el-table-column label="操作" width="130" align="center" fixed="right">
+          <template #default="{ row }">
+            <el-button-group size="small">
+              <el-button type="primary" @click="onRowAction({ command: 'edit', row: row })">编辑</el-button>
+              <el-button type="primary" @click="onRowAction({ command: 'copy', row: row })">复制</el-button>
+            </el-button-group>
+          </template>
+        </el-table-column>
+      </wd-data-grid>
+    </wd-panel>
+  </el-tab-pane>
+
+  <!-- ============ 标签 ============ -->
+  <el-tab-pane label="标签" name="tags" lazy>
+    <wd-panel shadow="never" class="page-card grid-panel">
+      <wd-data-grid ref="tagGridRef" api="/api/v1/admin/tags" api-method="get" :active="activeTab === 'tags'" row-key="id"
+        :tools="{ refresh: true }" height="fix">
+        <template #toolbar>
+          <el-button type="primary" @click="openTagCreate"><el-icon><Plus></Plus></el-icon>新增</el-button>
+        </template>
+        <el-table-column label="标签" min-width="160">
+          <template #default="{ row }">
+            <el-tag :color="row.color" size="default" effect="dark" style="border-color: transparent">[[ row.name ]]</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="颜色" width="130">
+          <template #default="{ row }">
+            <span class="color-dot" :style="{ backgroundColor: row.color }"></span>
+            <span style="font-family: monospace">[[ row.color ]]</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="description" label="描述" min-width="200" show-overflow-tooltip>
+          <template #default="{ row }">[[ row.description || '-' ]]</template>
+        </el-table-column>
+        <el-table-column prop="sort_order" label="排序" width="80" align="center" ></el-table-column>
+        <el-table-column label="创建时间" width="150">
+          <template #default="{ row }">[[ fmtTime(row.created_at) ]]</template>
+        </el-table-column>
+        <el-table-column label="操作" width="130" align="center" fixed="right">
+          <template #default="{ row }">
+            <el-button-group size="small">
+              <el-button type="primary" @click="onTagRowAction({ command: 'edit', row: row })">编辑</el-button>
+              <el-button type="danger" @click="onTagRowAction({ command: 'delete', row: row })">删除</el-button>
+            </el-button-group>
+          </template>
+        </el-table-column>
+      </wd-data-grid>
+    </wd-panel>
+  </el-tab-pane>
+</el-tabs>
 </div>
 
 <!-- 新增 / 编辑角色 -->
@@ -108,6 +158,30 @@
     <el-button size="default" type="primary" :loading="copySaving" :disabled="!copyName.trim() || !copyCode.trim()" @click="onCopySave">确定</el-button>
   </template>
 </el-dialog>
+
+<!-- 新增 / 编辑标签 -->
+<el-drawer v-model="tagDrawerVisible" :title="tagFormMode === 'create' ? '新增标签' : '编辑标签'" size="380px" destroy-on-close>
+  <wd-data-form v-if="tagDrawerVisible" size="default" :mode="tagFormMode"
+    :submit-api="tagFormMode === 'edit' ? '/api/v1/admin/tags/' + formTagId : '/api/v1/admin/tags/create'"
+    :submit-method="tagFormMode === 'edit' ? 'put' : 'post'"
+    submit-keys="name,color,description"
+    :data="tagFormMode === 'edit' && editRow ? { name: editRow.name, color: editRow.color, description: editRow.description } : { color: '#1890ff', description: '' }"
+    :active="true" :rules="tagFormRules" head-refresh-datagrid
+    @close="tagDrawerVisible = false">
+    <template #default="{ model }">
+      <el-form-item label="标签名称" prop="name">
+        <el-input v-model="model.name" clearable ></el-input>
+      </el-form-item>
+      <el-form-item label="颜色" prop="color">
+        <el-color-picker v-model="model.color" ></el-color-picker>
+        <span style="margin-left: 8px; font-family: monospace">[[ model.color ]]</span>
+      </el-form-item>
+      <el-form-item label="描述" prop="description">
+        <el-input v-model="model.description" type="textarea" :rows="3" placeholder="选填" ></el-input>
+      </el-form-item>
+    </template>
+  </wd-data-form>
+</el-drawer>
 {% endblock %}
 
 {% block script %}
@@ -115,6 +189,8 @@
 AdminUI.start('/admin-panel/roles/', {
   data: function () {
     return {
+      activeTab: 'roles',
+      /* ---------- 角色 ---------- */
       drawerVisible: false,
       formMode: 'create',
       formRoleId: null,
@@ -131,7 +207,15 @@ AdminUI.start('/admin-panel/roles/', {
       copySource: null,
       copyName: '',
       copyCode: '',
-      copySaving: false
+      copySaving: false,
+      /* ---------- 标签 ---------- */
+      tagDrawerVisible: false,
+      tagFormMode: 'create',
+      formTagId: null,
+      editRow: null,
+      tagFormRules: {
+        name: [{ required: true, message: '请输入标签名称', trigger: 'blur' }]
+      }
     };
   },
   computed: {
@@ -153,6 +237,7 @@ AdminUI.start('/admin-panel/roles/', {
   methods: {
     fmtTime: AdminUI.fmtTime,
 
+    /* ---------- 角色权限 ---------- */
     loadPermissions: function () {
       var self = this;
       this.permLoading = true;
@@ -164,7 +249,7 @@ AdminUI.start('/admin-panel/roles/', {
       });
     },
 
-    /* ---------- 分组全选 ---------- */
+    /* ---------- 角色分组全选 ---------- */
     isGroupChecked: function (group, selected) {
       var ids = selected || [];
       return group.items.every(function (p) { return ids.indexOf(p.id) !== -1; });
@@ -184,7 +269,7 @@ AdminUI.start('/admin-panel/roles/', {
       selected.splice.apply(selected, [0, selected.length].concat(ids));
     },
 
-    /* ---------- 新增 / 编辑 ---------- */
+    /* ---------- 角色新增 / 编辑 ---------- */
     openCreate: function () {
       this.formMode = 'create';
       this.formRoleId = null;
@@ -204,7 +289,7 @@ AdminUI.start('/admin-panel/roles/', {
       }
     },
 
-    /* ---------- 复制 ---------- */
+    /* ---------- 角色复制 ---------- */
     onCopySave: function () {
       var self = this;
       this.copySaving = true;
@@ -222,6 +307,40 @@ AdminUI.start('/admin-panel/roles/', {
       }).finally(function () {
         self.copySaving = false;
       });
+    },
+
+    /* ---------- 标签 ---------- */
+    openTagCreate: function () {
+      this.tagFormMode = 'create';
+      this.formTagId = null;
+      this.editRow = null;
+      this.tagDrawerVisible = true;
+    },
+    onTagRowAction: function (evt) {
+      var row = evt.row;
+      if (evt.command === 'edit') {
+        this.tagFormMode = 'edit';
+        this.formTagId = row.id;
+        this.editRow = row;
+        this.tagDrawerVisible = true;
+      } else if (evt.command === 'delete') {
+        this.onTagDelete(row);
+      }
+    },
+    onTagDelete: function (row) {
+      var self = this;
+      ElementPlus.ElMessageBox.confirm('确定删除标签「' + row.name + '」吗？将同时解除所有用户的该标签绑定。', '删除标签', {
+        type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消'
+      }).then(function () {
+        return WorkDesktop.request.delete('/api/v1/admin/tags/' + row.id + '/delete');
+      }).then(function (res) {
+        if (res && res.success) {
+          ElementPlus.ElMessage.success('已删除');
+          self.$refs.tagGridRef.refresh();
+        } else {
+          AdminUI.toastFail(res, '删除失败');
+        }
+      }).catch(function () {});
     }
   }
 });

@@ -10,113 +10,171 @@
   .import-tip { margin: 0 0 8px; color: var(--el-text-color-secondary); font-size: 12px; }
   .form-hint { margin-left: 10px; color: var(--el-text-color-secondary); font-size: 12px; }
   .tab-footer { display: flex; justify-content: flex-end; margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--el-border-color-lighter); }
+  .muted { color: var(--el-text-color-secondary); font-size: 12px; }
+  .token-text { font-family: monospace; font-size: 12px; word-break: break-all; background: var(--el-fill-color-light); padding: 8px 10px; border-radius: 4px; max-height: 90px; overflow: auto; }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="page-flex">
-<wd-tips type="box" class="page-tips">用户管理用于维护租户内账号信息，支持新增、导入、批量操作、角色与标签绑定及重置密码。</wd-tips>
-<wd-panel shadow="never" class="page-card">
-  <wd-search-panel head-refresh-datagrid="true" :default-expand="true" label-width="70px">
-    <template #default="{ model }">
-      <wd-search-item label="关键词" prop="search">
-        <el-input v-model="model.search" placeholder="用户名 / 手机号 / 邮箱" clearable style="width: 200px" ></el-input>
-      </wd-search-item>
-      <wd-search-item label="状态" prop="status">
-        <wd-select v-model="model.status" placeholder="全部" clearable style="width: 120px"
-          :data-source="[{ text: '正常', value: 1 }, { text: '禁用', value: 0 }]" ></wd-select>
-      </wd-search-item>
-      <wd-search-item label="管理员" prop="is_staff">
-        <wd-select v-model="model.is_staff" placeholder="全部" clearable style="width: 120px"
-          :data-source="[{ text: '管理员', value: 1 }, { text: '普通用户', value: 0 }]" ></wd-select>
-      </wd-search-item>
-      <wd-search-item label="标签" prop="tag_id">
-        <wd-select v-model="model.tag_id" placeholder="全部" clearable style="width: 150px"
-          api="/api/v1/admin/tags" text-prop="name" value-prop="id" ></wd-select>
-      </wd-search-item>
-    </template>
-  </wd-search-panel>
-</wd-panel>
+<wd-tips type="box" class="page-tips">
+  用户管理用于维护租户内账号与用户组：支持用户新增、导入、批量操作、角色与标签绑定及重置密码；
+  用户组用于控制「谁能进入某个应用」，应用绑定用户组后仅组内成员可通过该应用的准入校验。
+</wd-tips>
 
-<wd-panel shadow="never" class="page-card grid-panel">
-  <wd-data-grid ref="gridRef" api="/api/v1/admin/users" api-method="get" active with-selection v-model="selected"
-    row-key="id" :tools="{ add: true, refresh: true }" height="fix"
-    @add="openCreate">
-    <template #toolbar="{ selection }">
-      <el-button-group size="default">
-        <el-button :disabled="!selection.length" @click="onBatchStatus(1)">批量启用</el-button>
-        <el-button :disabled="!selection.length" @click="onBatchStatus(0)">批量禁用</el-button>
-        <el-button :disabled="!selection.length" @click="batchTypeVisible = true">批量类型</el-button>
-        <el-button type="danger" plain :disabled="!selection.length" @click="onBatchDelete">批量删除</el-button>
-        <el-button @click="onExport">导出 CSV</el-button>
-        <el-button @click="openImport">导入</el-button>
-      </el-button-group>
-    </template>
+<el-tabs v-model="activeTab">
+  <!-- ============ 用户 ============ -->
+  <el-tab-pane label="用户" name="users" lazy>
+    <wd-panel shadow="never" class="page-card">
+      <wd-search-panel head-refresh-datagrid="true" :default-expand="true" label-width="70px">
+        <template #default="{ model }">
+          <wd-search-item label="关键词" prop="search">
+            <el-input v-model="model.search" placeholder="用户名 / 手机号 / 邮箱" clearable style="width: 200px" ></el-input>
+          </wd-search-item>
+          <wd-search-item label="状态" prop="status">
+            <wd-select v-model="model.status" placeholder="全部" clearable style="width: 120px"
+              :data-source="[{ text: '正常', value: 1 }, { text: '禁用', value: 0 }]" ></wd-select>
+          </wd-search-item>
+          <wd-search-item label="管理员" prop="is_staff">
+            <wd-select v-model="model.is_staff" placeholder="全部" clearable style="width: 120px"
+              :data-source="[{ text: '管理员', value: 1 }, { text: '普通用户', value: 0 }]" ></wd-select>
+          </wd-search-item>
+          <wd-search-item label="标签" prop="tag_id">
+            <wd-select v-model="model.tag_id" placeholder="全部" clearable style="width: 150px"
+              api="/api/v1/admin/tags" text-prop="name" value-prop="id" ></wd-select>
+          </wd-search-item>
+        </template>
+      </wd-search-panel>
+    </wd-panel>
 
-    <el-table-column prop="username" label="用户名" min-width="140" show-overflow-tooltip>
-      <template #default="{ row }">
-        <el-tag :type="row.user_type === 'internal' ? 'primary' : 'success'" size="default" style="margin-right: 4px">
-          [[ row.user_type === 'internal' ? '内部' : '外部' ]]
-        </el-tag>
-        <el-tag v-if="row.is_staff" type="warning" size="default" style="margin-right: 4px">管理员</el-tag>[[ row.username ]]
-      </template>
-    </el-table-column>
-    <el-table-column prop="nickname" label="昵称" min-width="100" show-overflow-tooltip>
-      <template #default="{ row }">[[ row.nickname || '-' ]]</template>
-    </el-table-column>
-    <el-table-column prop="phone" label="手机号" min-width="120">
-      <template #default="{ row }">[[ row.phone || '-' ]]</template>
-    </el-table-column>
-    <el-table-column prop="department" label="部门" min-width="110" show-overflow-tooltip>
-      <template #default="{ row }">[[ row.department || '-' ]]</template>
-    </el-table-column>
-    <el-table-column label="角色" min-width="140" show-overflow-tooltip>
-      <template #default="{ row }">
-        <template v-if="row.role_names && row.role_names.length">
-          <el-tag v-for="name in row.role_names" :key="name" size="default" style="margin-right: 4px">[[ name ]]</el-tag>
+    <wd-panel shadow="never" class="page-card grid-panel">
+      <wd-data-grid ref="gridRef" api="/api/v1/admin/users" api-method="get" :active="activeTab === 'users'" with-selection v-model="selected"
+        row-key="id" :tools="{ refresh: true }" height="fix">
+        <template #toolbar="{ selection }">
+          <el-button type="primary" @click="openCreate"><el-icon><Plus></Plus></el-icon>新增</el-button>
+          <el-button @click="loginTestVisible = true">登录测试</el-button>
+          <el-button-group size="default">
+            <el-button :disabled="!selection.length" @click="onBatchStatus(1)">批量启用</el-button>
+            <el-button :disabled="!selection.length" @click="onBatchStatus(0)">批量禁用</el-button>
+            <el-button :disabled="!selection.length" @click="batchTypeVisible = true">批量类型</el-button>
+            <el-button type="danger" :disabled="!selection.length" @click="onBatchDelete">批量删除</el-button>
+            <el-button @click="onExport">导出 CSV</el-button>
+            <el-button @click="openImport">导入</el-button>
+          </el-button-group>
         </template>
-        <span v-else>-</span>
-      </template>
-    </el-table-column>
-    <el-table-column label="标签" min-width="120" show-overflow-tooltip>
-      <template #default="{ row }">
-        <template v-if="row.tags && row.tags.length">
-          <el-tag v-for="t in row.tags" :key="t.id" size="default"
-            :color="t.color || '#f4f4f5'" :style="{ color: t.color ? '#fff' : '#909399' }"
-            style="margin-right: 4px">[[ t.name ]]</el-tag>
+
+        <el-table-column prop="username" label="用户名" min-width="140" show-overflow-tooltip>
+          <template #default="{ row }">
+            <el-tag :type="row.user_type === 'internal' ? 'primary' : 'success'" size="default" style="margin-right: 4px">
+              [[ row.user_type === 'internal' ? '内部' : '外部' ]]
+            </el-tag>
+            <el-tag v-if="row.is_staff" type="warning" size="default" style="margin-right: 4px">管理员</el-tag>[[ row.username ]]
+          </template>
+        </el-table-column>
+        <el-table-column prop="nickname" label="昵称" min-width="100" show-overflow-tooltip>
+          <template #default="{ row }">[[ row.nickname || '-' ]]</template>
+        </el-table-column>
+        <el-table-column prop="phone" label="手机号" min-width="120">
+          <template #default="{ row }">[[ row.phone || '-' ]]</template>
+        </el-table-column>
+        <el-table-column prop="department" label="部门" min-width="110" show-overflow-tooltip>
+          <template #default="{ row }">[[ row.department || '-' ]]</template>
+        </el-table-column>
+        <el-table-column label="角色" min-width="140" show-overflow-tooltip>
+          <template #default="{ row }">
+            <template v-if="row.role_names && row.role_names.length">
+              <el-tag v-for="name in row.role_names" :key="name" size="default" style="margin-right: 4px">[[ name ]]</el-tag>
+            </template>
+            <span v-else>-</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="标签" min-width="120" show-overflow-tooltip>
+          <template #default="{ row }">
+            <template v-if="row.tags && row.tags.length">
+              <el-tag v-for="t in row.tags" :key="t.id" size="default"
+                :color="t.color || '#f4f4f5'" :style="{ color: t.color ? '#fff' : '#909399' }"
+                style="margin-right: 4px">[[ t.name ]]</el-tag>
+            </template>
+            <span v-else>-</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="所属组" min-width="120" show-overflow-tooltip>
+          <template #default="{ row }">
+            <template v-if="row.groups && row.groups.length">
+              <el-tag v-for="g in row.groups.slice(0, 2)" :key="g.id" size="default"
+                type="warning" style="margin-right: 4px">[[ g.name ]]</el-tag>
+              <span v-if="row.groups.length > 2" style="color: var(--el-text-color-secondary); font-size: 12px">+[[ row.groups.length - 2 ]]</span>
+            </template>
+            <span v-else>-</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="状态" width="80" align="center">
+          <template #default="{ row }">
+            <wd-switch v-model="row.status" :api="'/api/v1/admin/users/' + row.id + '/status'"
+              api-method="patch" :active-value="1" :inactive-value="0" ></wd-switch>
+          </template>
+        </el-table-column>
+        <el-table-column label="最后登录" width="150">
+          <template #default="{ row }">[[ fmtTime(row.last_login_at) ]]</template>
+        </el-table-column>
+        <el-table-column label="操作" width="120" align="center" fixed="right">
+          <template #default="{ row }">
+            <el-button-group size="small">
+              <el-button type="primary" @click="openEdit(row)">编辑</el-button>
+              <el-button type="danger" @click="onDelete(row)">删除</el-button>
+            </el-button-group>
+          </template>
+        </el-table-column>
+      </wd-data-grid>
+    </wd-panel>
+  </el-tab-pane>
+
+  <!-- ============ 用户组 ============ -->
+  <el-tab-pane label="用户组" name="groups" lazy>
+    <wd-panel shadow="never" class="page-card grid-panel">
+      <wd-data-grid ref="groupGridRef" api="/api/v1/admin/user-groups" api-method="get" :active="activeTab === 'groups'" row-key="id"
+        :tools="{ refresh: true }" height="fix">
+        <template #toolbar>
+          <el-button type="primary" @click="openGroupCreate"><el-icon><Plus></Plus></el-icon>新增</el-button>
         </template>
-        <span v-else>-</span>
-      </template>
-    </el-table-column>
-    <el-table-column label="所属组" min-width="120" show-overflow-tooltip>
-      <template #default="{ row }">
-        <template v-if="row.groups && row.groups.length">
-          <el-tag v-for="g in row.groups.slice(0, 2)" :key="g.id" size="default"
-            type="warning" style="margin-right: 4px">[[ g.name ]]</el-tag>
-          <span v-if="row.groups.length > 2" style="color: var(--el-text-color-secondary); font-size: 12px">+[[ row.groups.length - 2 ]]</span>
-        </template>
-        <span v-else>-</span>
-      </template>
-    </el-table-column>
-    <el-table-column label="状态" width="80" align="center">
-      <template #default="{ row }">
-        <wd-switch v-model="row.status" :api="'/api/v1/admin/users/' + row.id + '/status'"
-          api-method="patch" :active-value="1" :inactive-value="0" ></wd-switch>
-      </template>
-    </el-table-column>
-    <el-table-column label="最后登录" width="150">
-      <template #default="{ row }">[[ fmtTime(row.last_login_at) ]]</template>
-    </el-table-column>
-    <el-table-column label="操作" width="120" align="center" fixed="right">
-      <template #default="{ row }">
-        <el-button-group size="default">
-          <el-button type="primary" plain @click="openEdit(row)">编辑</el-button>
-          <el-button type="danger" plain @click="onDelete(row)">删除</el-button>
-        </el-button-group>
-      </template>
-    </el-table-column>
-  </wd-data-grid>
-</wd-panel>
+        <el-table-column prop="name" label="组名称" min-width="150">
+          <template #default="{ row }">
+            <span style="font-weight: 500">[[ row.name ]]</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="code" label="组编码" width="140">
+          <template #default="{ row }">[[ row.code || '-' ]]</template>
+        </el-table-column>
+        <el-table-column prop="description" label="描述" min-width="200" show-overflow-tooltip>
+          <template #default="{ row }">[[ row.description || '-' ]]</template>
+        </el-table-column>
+        <el-table-column label="成员数" width="90" align="center">
+          <template #default="{ row }">[[ row.member_count ]]</template>
+        </el-table-column>
+        <el-table-column label="关联应用" width="100" align="center">
+          <template #default="{ row }">[[ row.app_count ]]</template>
+        </el-table-column>
+        <el-table-column label="状态" width="90" align="center">
+          <template #default="{ row }">
+            <el-tag :type="row.status ? 'success' : 'info'" size="default">[[ row.status ? '启用' : '停用' ]]</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="创建时间" width="150">
+          <template #default="{ row }">[[ fmtTime(row.created_at) ]]</template>
+        </el-table-column>
+        <el-table-column label="操作" width="210" align="center" fixed="right">
+          <template #default="{ row }">
+            <el-button-group size="small">
+              <el-button type="primary" @click="openMembers(row)">成员</el-button>
+              <el-button @click="openGroupEdit(row)">编辑</el-button>
+              <el-button type="danger" @click="onGroupDelete(row)">删除</el-button>
+            </el-button-group>
+          </template>
+        </el-table-column>
+      </wd-data-grid>
+    </wd-panel>
+  </el-tab-pane>
+</el-tabs>
 </div>
 
 <!-- 新增 / 编辑用户 -->
@@ -298,6 +356,109 @@
     <el-button size="default" type="primary" :loading="importSaving" :disabled="!importContent.trim()" @click="onImportSubmit">开始导入</el-button>
   </template>
 </el-dialog>
+
+<!-- 新增 / 编辑用户组 -->
+<el-drawer v-model="groupDrawerVisible" :title="groupFormMode === 'create' ? '新增用户组' : '编辑用户组'" size="420px" destroy-on-close>
+  <el-form :model="groupForm" label-width="90px" :rules="groupFormRules" ref="groupFormRef">
+    <el-form-item label="组名称" prop="name">
+      <el-input v-model="groupForm.name" maxlength="64" placeholder="如：财务组"></el-input>
+    </el-form-item>
+    <el-form-item label="组编码">
+      <el-input v-model="groupForm.code" maxlength="64" placeholder="选填，如 finance"></el-input>
+    </el-form-item>
+    <el-form-item label="描述">
+      <el-input v-model="groupForm.description" type="textarea" :rows="3" maxlength="256" placeholder="选填"></el-input>
+    </el-form-item>
+    <el-form-item label="状态">
+      <el-switch v-model="groupForm.status" active-text="启用" inactive-text="停用"></el-switch>
+    </el-form-item>
+  </el-form>
+  <template #footer>
+    <el-button @click="groupDrawerVisible = false">取消</el-button>
+    <el-button type="primary" :loading="groupSaving" @click="saveGroupForm">保存</el-button>
+  </template>
+</el-drawer>
+
+<!-- 成员管理 -->
+<el-drawer v-model="memberDrawerVisible" :title="'成员管理 · ' + (memberGroup ? memberGroup.name : '')" size="640px" destroy-on-close @closed="onMemberClosed">
+  <div class="muted" style="margin-bottom: 8px">
+    勾选即加入成员，取消勾选即移除，改动实时保存。
+  </div>
+  <el-input v-model="memberSearch" placeholder="筛选用户名 / 昵称 / 手机号" clearable style="margin-bottom: 8px"></el-input>
+  <wd-data-grid
+    :data-source="memberRows"
+    :with-pager="false"
+    with-selection
+    row-key="id"
+    selection-key="id"
+    v-model="memberIds"
+    :height="460">
+    <el-table-column prop="username" label="用户名" min-width="150" show-overflow-tooltip>
+      <template #default="{ row }">
+        <span>[[ row.username ]]</span>
+        <el-tag v-if="row.user_type === 'external'" type="warning" style="margin-left: 6px">外部</el-tag>
+      </template>
+    </el-table-column>
+    <el-table-column prop="nickname" label="昵称" min-width="130" show-overflow-tooltip></el-table-column>
+    <el-table-column prop="phone" label="手机号" min-width="120" show-overflow-tooltip></el-table-column>
+  </wd-data-grid>
+  <div class="muted" style="margin-top: 8px">
+    已选 [[ memberIds.length ]] 人<span v-if="memberSaving"> · 保存中…</span>
+  </div>
+  <template #footer>
+    <el-button @click="memberDrawerVisible = false">关闭</el-button>
+  </template>
+</el-drawer>
+
+<!-- 登录测试 -->
+<el-drawer v-model="loginTestVisible" title="登录测试" size="560px" destroy-on-close>
+  <el-alert type="info" :closable="false" style="margin-bottom: 12px"
+    title="使用租户内用户的账号密码进行登录验证，测试结果不会影响到正式会话" ></el-alert>
+  <el-form label-width="80px" @submit.prevent>
+    <el-form-item label="用户名">
+      <el-input v-model="testUsername" placeholder="租户内用户的用户名" clearable ></el-input>
+    </el-form-item>
+    <el-form-item label="密码">
+      <el-input v-model="testPassword" type="password" show-password placeholder="用户密码"
+        @keyup.enter="onTest" ></el-input>
+    </el-form-item>
+    <el-form-item>
+      <el-button size="default" type="primary" :loading="testing" :disabled="!testUsername.trim() || !testPassword" @click="onTest">开始测试</el-button>
+    </el-form-item>
+  </el-form>
+
+  <template v-if="testResult">
+    <el-descriptions :column="2" border size="default" style="margin-top: 12px">
+      <el-descriptions-item label="用户 ID">[[ testResult.user_id ]]</el-descriptions-item>
+      <el-descriptions-item label="用户名">[[ testResult.username ]]</el-descriptions-item>
+      <el-descriptions-item label="昵称">[[ testResult.nickname || '-' ]]</el-descriptions-item>
+      <el-descriptions-item label="用户类型">
+        <el-tag :type="testResult.user_type === 'internal' ? 'primary' : 'success'" size="default">
+          [[ testResult.user_type === 'internal' ? '内部' : '外部' ]]
+        </el-tag>
+      </el-descriptions-item>
+      <el-descriptions-item label="员工">[[ testResult.is_staff ? '是' : '否' ]]</el-descriptions-item>
+      <el-descriptions-item label="标签">
+        <template v-if="testResult.tags && testResult.tags.length">
+          <el-tag v-for="t in testResult.tags" :key="t" size="default" style="margin-right: 4px">[[ t ]]</el-tag>
+        </template>
+        <span v-else>-</span>
+      </el-descriptions-item>
+    </el-descriptions>
+    <el-form label-width="90px" style="margin-top: 12px">
+      <el-form-item label="Access Token">
+        <div class="token-text">[[ testResult.access_token ]]</div>
+      </el-form-item>
+      <el-form-item label="Refresh Token">
+        <div class="token-text">[[ testResult.refresh_token ]]</div>
+      </el-form-item>
+      <el-form-item>
+        <el-button size="default" @click="onCopy(testResult.access_token)">复制 Access Token</el-button>
+        <el-button size="default" @click="onCopy(testResult.refresh_token)">复制 Refresh Token</el-button>
+      </el-form-item>
+    </el-form>
+  </template>
+</el-drawer>
 {% endblock %}
 
 {% block script %}
@@ -305,6 +466,8 @@
 AdminUI.start('/admin-panel/users/', {
   data: function () {
     return {
+      activeTab: 'users',
+      /* ---------- 用户 ---------- */
       selected: [],
       drawerVisible: false,
       formMode: 'create',
@@ -330,13 +493,65 @@ AdminUI.start('/admin-panel/users/', {
       importVisible: false,
       importContent: '',
       importResult: null,
-      importSaving: false
+      importSaving: false,
+      /* ---------- 用户组 ---------- */
+      groupDrawerVisible: false,
+      groupFormMode: 'create',
+      groupEditId: null,
+      groupSaving: false,
+      groupForm: { name: '', code: '', description: '', status: true },
+      groupFormRules: {
+        name: [{ required: true, message: '请输入组名称', trigger: 'blur' }]
+      },
+      memberDrawerVisible: false,
+      memberGroup: null,
+      memberIds: [],
+      memberSavedIds: [],
+      memberSearch: '',
+      memberSaving: false,
+      memberSaveTimer: null,
+      userAllOptions: [],
+      /* ---------- 登录测试 ---------- */
+      loginTestVisible: false,
+      testUsername: '',
+      testPassword: '',
+      testing: false,
+      testResult: null
     };
+  },
+  computed: {
+    /* 成员管理表格：按关键词本地过滤全量用户 */
+    memberRows: function () {
+      var kw = (this.memberSearch || '').trim().toLowerCase();
+      if (!kw) return this.userAllOptions;
+      return this.userAllOptions.filter(function (u) {
+        return (u.username || '').toLowerCase().indexOf(kw) > -1
+          || (u.nickname || '').toLowerCase().indexOf(kw) > -1
+          || (u.phone || '').indexOf(kw) > -1;
+      });
+    }
+  },
+  watch: {
+    /* 选中即加入 / 取消即移除：与已保存基线比对后自动保存（打开与回显赋值时跳过） */
+    memberIds: {
+      deep: true,
+      handler: function (val) {
+        var self = this;
+        if (!this.memberDrawerVisible || !this.memberGroup) return;
+        var norm = function (arr) {
+          return (arr || []).slice().sort(function (a, b) { return a - b; });
+        };
+        var cur = norm(val), saved = norm(this.memberSavedIds);
+        if (cur.length === saved.length && cur.every(function (v, i) { return v === saved[i]; })) return;
+        clearTimeout(this.memberSaveTimer);
+        this.memberSaveTimer = setTimeout(function () { self.saveMembers(); }, 400);
+      }
+    }
   },
   methods: {
     fmtTime: AdminUI.fmtTime,
 
-    /* ---------- 新增 / 编辑 ---------- */
+    /* ---------- 用户新增 / 编辑 ---------- */
     openCreate: function () {
       this.formMode = 'create';
       this.formUserId = null;
@@ -369,7 +584,7 @@ AdminUI.start('/admin-panel/users/', {
       }
     },
 
-    /* ---------- 角色分配 ---------- */
+    /* ---------- 用户角色分配 ---------- */
     loadRoles: function (userId) {
       this.roleIds = [];
       this.roleLoading = true;
@@ -398,7 +613,7 @@ AdminUI.start('/admin-panel/users/', {
       });
     },
 
-    /* ---------- 标签分配 ---------- */
+    /* ---------- 用户标签分配 ---------- */
     loadTags: function (userId) {
       this.tagIds = [];
       this.tagLoading = true;
@@ -427,7 +642,7 @@ AdminUI.start('/admin-panel/users/', {
       });
     },
 
-    /* ---------- 重置密码 / 删除 ---------- */
+    /* ---------- 用户重置密码 / 删除 ---------- */
     onPwdSave: function () {
       var self = this;
       ElementPlus.ElMessageBox.confirm('重置后将生成新的随机密码，原密码立即失效，是否继续？', '重置密码', {
@@ -447,11 +662,7 @@ AdminUI.start('/admin-panel/users/', {
     },
     copyPassword: function () {
       if (!this.pwdResult) return;
-      navigator.clipboard.writeText(this.pwdResult.password).then(function () {
-        ElementPlus.ElMessage.success('已复制');
-      }).catch(function () {
-        ElementPlus.ElMessage.error('复制失败，请手动选择复制');
-      });
+      this.onCopy(this.pwdResult.password);
     },
     onDelete: function (row) {
       var self = this;
@@ -469,7 +680,7 @@ AdminUI.start('/admin-panel/users/', {
       }).catch(function () {});
     },
 
-    /* ---------- 批量操作 ---------- */
+    /* ---------- 用户批量操作 ---------- */
     selectedIds: function () {
       return this.selected.map(function (u) { return u.id; });
     },
@@ -529,7 +740,7 @@ AdminUI.start('/admin-panel/users/', {
       }).catch(function () {});
     },
 
-    /* ---------- 导入 / 导出 ---------- */
+    /* ---------- 用户导入 / 导出 ---------- */
     onExport: function () {
       AdminUI.downloadCsv('/api/v1/admin/users/export', {}, 'users.csv');
     },
@@ -571,6 +782,167 @@ AdminUI.start('/admin-panel/users/', {
       }).finally(function () {
         self.importSaving = false;
       });
+    },
+
+    /* ---------- 用户组 ---------- */
+    openMembers: function (row) {
+      var self = this;
+      this.memberGroup = row;
+      this.memberSavedIds = [];
+      this.memberIds = [];
+      this.memberSearch = '';
+      this.userAllOptions = [];
+      this.memberDrawerVisible = true;
+      WorkDesktop.request.get('/api/v1/admin/user-groups/' + row.id + '/members?page_size=100').then(function (res) {
+        if (res && res.success && res.data) {
+          // 先同步已保存基线再赋值选中，避免 watch 误判为用户操作
+          var ids = (res.data.items || []).map(function (i) { return i.user_id; });
+          self.memberSavedIds = ids.slice();
+          self.memberIds = ids.slice();
+        }
+      });
+      WorkDesktop.request.get('/api/v1/admin/users?page=1&page_size=1000').then(function (res) {
+        if (res && res.success && res.data) {
+          self.userAllOptions = (res.data.users || []).map(function (u) {
+            return { id: u.id, username: u.username, nickname: u.nickname, phone: u.phone, user_type: u.user_type };
+          });
+        }
+      });
+    },
+    saveMembers: function () {
+      var self = this;
+      if (!this.memberGroup) return;
+      var ids = this.memberIds.slice();
+      this.memberSaving = true;
+      WorkDesktop.request.put('/api/v1/admin/user-groups/' + this.memberGroup.id + '/members', {
+        user_ids: ids
+      }).then(function (res) {
+        if (res && res.success) {
+          self.memberSavedIds = ids.slice();
+          ElementPlus.ElMessage.success('成员已更新');
+          self.$refs.groupGridRef.refresh();
+        } else {
+          AdminUI.toastFail(res, '保存失败');
+          self.reloadMembers();
+        }
+      }).finally(function () {
+        self.memberSaving = false;
+      });
+    },
+    reloadMembers: function () {
+      var self = this;
+      if (!this.memberGroup) return;
+      WorkDesktop.request.get('/api/v1/admin/user-groups/' + this.memberGroup.id + '/members?page_size=100').then(function (res) {
+        if (res && res.success && res.data) {
+          var ids = (res.data.items || []).map(function (i) { return i.user_id; });
+          self.memberSavedIds = ids.slice();
+          self.memberIds = ids.slice();
+        }
+      });
+    },
+    onMemberClosed: function () {
+      clearTimeout(this.memberSaveTimer);
+      this.memberSearch = '';
+      this.userAllOptions = [];
+      this.memberSavedIds = [];
+      this.memberIds = [];
+      this.memberGroup = null;
+    },
+    openGroupEdit: function (row) {
+      this.groupFormMode = 'edit';
+      this.groupEditId = row.id;
+      this.groupForm = {
+        name: row.name,
+        code: row.code || '',
+        description: row.description || '',
+        status: !!row.status
+      };
+      this.groupDrawerVisible = true;
+    },
+    saveGroupForm: function () {
+      var self = this;
+      this.$refs.groupFormRef.validate(function (valid) {
+        if (!valid) return;
+        self.groupSaving = true;
+        var payload = {
+          name: self.groupForm.name,
+          code: self.groupForm.code,
+          description: self.groupForm.description,
+          status: self.groupForm.status
+        };
+        var req = self.groupFormMode === 'edit'
+          ? WorkDesktop.request.patch('/api/v1/admin/user-groups/' + self.groupEditId, payload)
+          : WorkDesktop.request.post('/api/v1/admin/user-groups', payload);
+        req.then(function (res) {
+          if (res && res.success) {
+            ElementPlus.ElMessage.success(self.groupFormMode === 'edit' ? '已保存' : '已创建');
+            self.groupDrawerVisible = false;
+            self.$refs.groupGridRef.refresh();
+          } else {
+            AdminUI.toastFail(res, '保存失败');
+          }
+        }).finally(function () {
+          self.groupSaving = false;
+        });
+      });
+    },
+    openGroupCreate: function () {
+      this.groupFormMode = 'create';
+      this.groupEditId = null;
+      this.groupForm = { name: '', code: '', description: '', status: true };
+      this.groupDrawerVisible = true;
+    },
+    onGroupDelete: function (row) {
+      var self = this;
+      ElementPlus.ElMessageBox.confirm(
+        '确定删除用户组「' + row.name + '」吗？将同时移除其成员关系与应用绑定。',
+        '删除用户组',
+        { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' }
+      ).then(function () {
+        return WorkDesktop.request.delete('/api/v1/admin/user-groups/' + row.id);
+      }).then(function (res) {
+        if (res && res.success) {
+          ElementPlus.ElMessage.success('已删除');
+          self.$refs.groupGridRef.refresh();
+        } else {
+          AdminUI.toastFail(res, '删除失败');
+        }
+      }).catch(function () {});
+    },
+
+    /* ---------- 登录测试 ---------- */
+    onTest: function () {
+      var self = this;
+      this.testing = true;
+      this.testResult = null;
+      WorkDesktop.request.post('/api/v1/admin/login-test', {
+        username: this.testUsername.trim(),
+        password: this.testPassword
+      }).then(function (res) {
+        if (res && res.success) {
+          self.testResult = res.data;
+          ElementPlus.ElMessage.success('登录验证通过');
+        } else {
+          AdminUI.toastFail(res, '测试失败');
+        }
+      }).finally(function () {
+        self.testing = false;
+      });
+    },
+    onCopy: function (text) {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(function () {
+          ElementPlus.ElMessage.success('已复制');
+        });
+      } else {
+        var ta = document.createElement('textarea');
+        ta.value = text;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        ElementPlus.ElMessage.success('已复制');
+      }
     }
   }
 });

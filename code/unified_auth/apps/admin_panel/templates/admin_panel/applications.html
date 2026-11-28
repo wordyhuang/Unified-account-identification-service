@@ -83,10 +83,10 @@
     </el-table-column>
     <el-table-column label="操作" width="130" align="center" fixed="right">
       <template #default="{ row }">
-        <el-button-group size="default">
-          <el-button type="primary" plain @click="onRowAction({ command: 'edit', row: row })">编辑</el-button>
+        <el-button-group size="small">
+          <el-button type="primary" @click="onRowAction({ command: 'edit', row: row })">编辑</el-button>
           <el-dropdown trigger="click" @command="function(cmd) { onRowAction({ command: cmd, row: row }) }">
-            <el-button plain>更多</el-button>
+            <el-button>更多</el-button>
             <template #dropdown>
               <el-dropdown-menu>
                 <el-dropdown-item command="secret">密钥</el-dropdown-item>
